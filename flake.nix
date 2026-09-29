@@ -116,6 +116,9 @@
             ./analysis_options.yaml
             ./lib
             ./linux
+            # dependency_overrides の path 依存。Android ビルド以外では
+            # 参照されないが、pub get 解決時に必ず実在が要求される。
+            ./packages
             ./pubspec.lock
             ./pubspec.yaml
             icon

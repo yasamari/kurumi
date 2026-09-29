@@ -1,0 +1,100 @@
+import java.io.File
+import java.nio.file.Files
+import java.security.MessageDigest
+
+group 'com.alexmercerind.media_kit_libs_android_video'
+version '1.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    // Conditional for compatibility with AGP <4.2.
+    if (project.android.hasProperty("namespace")) {
+        namespace 'com.alexmercerind.media_kit_libs_android_video'
+    }
+
+    compileSdkVersion 36
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdkVersion 16
+    }
+
+    dependencies {
+        implementation fileTree(dir: "$buildDir/output", include: "*.jar")
+    }
+}
+
+task downloadDependencies(type: Exec) {   
+        // Delete previously created /output subdirectory.
+
+        def outputDir = file("$buildDir/output")
+        if (outputDir.exists()) {
+            outputDir.deleteDir()
+        }
+        outputDir.mkdirs()
+
+        // Download all *.jar dependencies & verify their MD5 checksums.
+        // libaribcaption を有効化して ARIB 字幕に対応した自前のビルドを使う。
+        def filesToDownload = [
+            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20260930/default-arm64-v8a.jar", "md5": "649639e7655bb5af3d7fb254357975d3", "destination": file("$buildDir/20260930/default-arm64-v8a.jar")],
+            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20260930/default-armeabi-v7a.jar", "md5": "7ffa8e9961f819760a2758a8804f5304", "destination": file("$buildDir/20260930/default-armeabi-v7a.jar")],
+            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20260930/default-x86_64.jar", "md5": "94037fbbcbf64c9b2e84e2c02fec8a05", "destination": file("$buildDir/20260930/default-x86_64.jar")],
+            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20260930/default-x86.jar", "md5": "2a765405ea899fc6f58ba5d5c74f81d1", "destination": file("$buildDir/20260930/default-x86.jar")]
+        ]
+
+        filesToDownload.each { fileInfo ->
+            def destFile = fileInfo.destination
+            if (destFile.exists()) {
+                def calculatedMD5 = MessageDigest.getInstance("MD5").digest(Files.readAllBytes(destFile.toPath())).encodeHex().toString()
+
+                if (calculatedMD5 != fileInfo.md5) {
+                    destFile.delete()
+                    println "MD5 mismatch. File deleted: ${destFile}"
+                }
+
+            }
+
+            if (!destFile.exists()) {
+                destFile.parentFile.mkdirs()
+                println "Downloading file from: ${fileInfo.url}"
+                destFile.withOutputStream { os ->
+                    os << new URL(fileInfo.url).openStream()
+                }
+
+                def calculatedMD5 = MessageDigest.getInstance("MD5").digest(Files.readAllBytes(destFile.toPath())).encodeHex().toString()
+                if (calculatedMD5 != fileInfo.md5) {
+                    throw new GradleException("MD5 verification failed for ${destFile}")
+                }
+            }
+
+            copy {
+                from destFile
+                into outputDir
+            }
+        }
+}
+
+assemble.dependsOn(downloadDependencies)

@@ -46,6 +46,16 @@ dependencies:
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
 
+# Android の libmpv を自前のビルドに差し替える。
+# media_kit_libs_android_video は Android プラットフォームのみの対象で、
+# .jar を Gradle 時に GitHub Releases から取得する。同梱版は upstream の
+# media-kit/libmpv-android-video-build (ffmpeg 6.0) を指しており ARIB 字幕に
+# 対応しないため、ARIB 字幕に対応したビルドを Releases に用意して
+# packages/ に取り込んだものを path 依存で差し替える。
+dependency_overrides:
+  media_kit_libs_android_video:
+    path: packages/media_kit_libs_android_video
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
