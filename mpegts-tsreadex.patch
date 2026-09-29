@@ -1,0 +1,117 @@
+--- a/libavformat/mpegts.c
++++ b/libavformat/mpegts.c
+@@ -1067,9 +1067,91 @@
+     return ret;
+ }
+ 
++static int timed_id3_extract_arib(PESContext *pes, AVPacket *pkt)
++{
++    FFIOContext id3_buf;
++    ID3v2ExtraMeta *extra_meta = NULL;
++    ID3v2ExtraMeta *cur;
++    AVDictionary *metadata = NULL;
++    AVBufferRef *buf = NULL;
++    int ret = 0;
++
++    if (pkt->size < ID3v2_HEADER_SIZE ||
++        !ff_id3v2_match(pkt->data, ID3v2_DEFAULT_MAGIC))
++        return 0;
++
++    ffio_init_read_context(&id3_buf, pkt->data, pkt->size);
++    ff_id3v2_read_dict(&id3_buf.pub, &metadata,
++                      ID3v2_DEFAULT_MAGIC, &extra_meta);
++
++    for (cur = extra_meta; cur; cur = cur->next) {
++        ID3v2ExtraMetaPRIV *priv;
++
++        if (strcmp(cur->tag, "PRIV"))
++            continue;
++
++        priv = &cur->data.priv;
++        if (strcmp((const char *)priv->owner, "aribb24.js") ||
++            priv->datasize < 1)
++            continue;
++
++        if (priv->data[0] != 0x80 && priv->data[0] != 0x81)
++            continue;
++
++        buf = av_buffer_alloc(priv->datasize + AV_INPUT_BUFFER_PADDING_SIZE);
++        if (!buf) {
++            ret = AVERROR(ENOMEM);
++            goto end;
++        }
++
++        memcpy(buf->data, priv->data, priv->datasize);
++        memset(buf->data + priv->datasize, 0,
++               AV_INPUT_BUFFER_PADDING_SIZE);
++
++        av_buffer_unref(&pkt->buf);
++        pkt->buf = buf;
++        buf = NULL;
++        pkt->data = pkt->buf->data;
++        pkt->size = priv->datasize;
++
++        {
++            FFStream *const sti = ffstream(pes->st);
++            int video_index;
++
++            pes->st->codecpar->codec_type = AVMEDIA_TYPE_SUBTITLE;
++            pes->st->codecpar->codec_id   = AV_CODEC_ID_ARIB_CAPTION;
++            pes->st->codecpar->profile    = AV_PROFILE_ARIB_PROFILE_A;
++            pes->st->disposition |= AV_DISPOSITION_DEFAULT;
++            av_dict_set(&pes->st->metadata, "language", "jpn",
++                        AV_DICT_DONT_OVERWRITE);
++
++            video_index = av_find_best_stream(pes->stream, AVMEDIA_TYPE_VIDEO,
++                                               -1, 1, NULL, 0);
++            if (video_index >= 0) {
++                AVStream *video_st = pes->stream->streams[video_index];
++                pes->st->codecpar->width  = video_st->codecpar->width;
++                pes->st->codecpar->height = video_st->codecpar->height;
++            }
++
++            sti->need_parsing = AVSTREAM_PARSE_NONE;
++            sti->need_context_update = 1;
++        }
++
++        ret = 1;
++        break;
++    }
++
++end:
++    av_buffer_unref(&buf);
++    ff_id3v2_free_extra_meta(&extra_meta);
++    av_dict_free(&metadata);
++    return ret;
++}
++
+ static int new_pes_packet(PESContext *pes, AVPacket *pkt)
+ {
+     uint8_t *sd;
++    int arib;
+ 
+     av_packet_unref(pkt);
+ 
+@@ -1100,7 +1182,12 @@
+         }
+     }
+ 
+-    memset(pkt->data + pkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
++    arib = timed_id3_extract_arib(pes, pkt);
++    if (arib < 0)
++        return arib;
++
++    if (!arib)
++        memset(pkt->data + pkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
+ 
+     // Separate out the AC3 substream from an HDMV combined TrueHD/AC3 PID
+     if (pes->sub_st && pes->stream_type == STREAM_TYPE_BLURAY_AUDIO_TRUEHD && pes->extended_stream_id == 0x76)
+@@ -1121,7 +1208,7 @@
+         return AVERROR(ENOMEM);
+     *sd = pes->stream_id;
+ 
+-    if (pes->st->codecpar->codec_id == AV_CODEC_ID_TIMED_ID3) {
++    if (!arib && pes->st->codecpar->codec_id == AV_CODEC_ID_TIMED_ID3) {
+         int ret = timed_id3_update_metadata(pes->st, pkt);
+         if (ret < 0)
+             return ret;

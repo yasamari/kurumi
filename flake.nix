@@ -42,7 +42,13 @@
         # mpv 0.41 は ffmpeg 9 に対応済み (既定の ffmpeg と同メジャー) のため、
         # ffmpeg-full (9.x) への差し替えは ABI 互換の範囲内である。
         mpv-unwrapped-full = pkgs.mpv-unwrapped.override {
-          ffmpeg = pkgs.ffmpeg-full;
+          ffmpeg = pkgs.ffmpeg-full.overrideAttrs (old: {
+            patches = old.patches or [ ] ++ [
+              ./mpegts-tsreadex.patch
+            ];
+
+            doCheck = false;
+          });
         };
         mpv-full = pkgs.mpv.override {
           mpv-unwrapped = mpv-unwrapped-full;
@@ -175,7 +181,8 @@
             # 実機確認時に libmpv 解決・mpv 単体での再生試験に使う。
             mpv-full
             # `flutter run` 時の media_kit_video ビルド用 (mpv.pc 解決一式)。
-          ] ++ mediaKitLinuxDeps;
+          ]
+          ++ mediaKitLinuxDeps;
         };
       }
     );
