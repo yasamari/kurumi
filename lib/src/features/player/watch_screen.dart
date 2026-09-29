@@ -11,6 +11,7 @@ import '../../data/backends/konomi/konomi_live.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
+import 'mpv_options.dart';
 import 'watch_providers.dart';
 
 /// ライブ視聴画面。全画面プレイヤー遷移先 (`/watch/:channelId`)。
@@ -230,11 +231,22 @@ class _LivePlayerState extends State<_LivePlayer> {
         setState(() => _errorMessage = message);
       }
     });
-    _open();
+    _initialize();
+  }
+
+  /// mpvオプションを適用してから映像を開く。
+  ///
+  /// オプションはデコーダ生成時に読まれるため、必ず `open` より前に渡す。
+  Future<void> _initialize() async {
+    await applyLiveMpvOptions(_player);
+    if (!mounted) return;
+    await _open();
   }
 
   Future<void> _open() async {
-    setState(() => _errorMessage = null);
+    if (mounted) {
+      setState(() => _errorMessage = null);
+    }
     await _player.open(Media(widget.url.toString()));
   }
 
