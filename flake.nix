@@ -28,6 +28,7 @@
           platformVersions = [ "36" ];
           includeCmake = true;
           includeNDK = true;
+          ndkVersions = [ "28.2.13676358" ];
           includeEmulator = true;
           includeSystemImages = true;
           systemImageTypes = [ "google_apis" ];
