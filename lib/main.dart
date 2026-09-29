@@ -1,11 +1,15 @@
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:media_kit/media_kit.dart';
 
 import 'src/core/router/router.dart';
 import 'src/core/theme/app_theme.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // media_kit のネイティブ初期化。Linux 等で必須。
+  MediaKit.ensureInitialized();
   runApp(const ProviderScope(child: KurumiApp()));
 }
 

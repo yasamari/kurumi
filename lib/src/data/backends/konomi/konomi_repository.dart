@@ -1,9 +1,12 @@
 import 'package:dio/dio.dart';
 
+import '../../../domain/entities/channel.dart';
 import '../../../domain/entities/channel_item.dart';
+import '../../../domain/entities/live_stream.dart';
 import '../../../domain/repositories/tv_repository.dart';
 import 'konomi_api_client.dart';
 import 'konomi_filter.dart';
+import 'konomi_live.dart';
 
 /// KonomiTV向け [TvRepository] 実装。
 ///
@@ -26,4 +29,21 @@ class KonomiTvRepository implements TvRepository {
 
   @override
   Future<void> testConnection() => _client.checkVersion();
+
+  @override
+  Future<LiveStream> getLiveStream(
+    Channel channel, {
+    String quality = defaultKonomiQuality,
+  }) async {
+    if (baseUrl.isEmpty) {
+      throw const BackendUnconfiguredException();
+    }
+    final normalized = normalizeKonomiQuality(quality);
+    final url = buildKonomiLiveStreamUrl(
+      baseUrl: baseUrl,
+      displayChannelId: channel.id,
+      quality: normalized,
+    );
+    return LiveStream(url: url, qualityLabel: normalized);
+  }
 }

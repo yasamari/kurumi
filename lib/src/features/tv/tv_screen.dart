@@ -107,6 +107,7 @@ class _ChannelGrid extends ConsumerWidget {
               itemBuilder: (context, index) => ChannelCard(
                 item: items[index],
                 pinFooterToBottom: false,
+                onTap: () => context.push('/watch/${items[index].channel.id}'),
               ),
             );
           }
@@ -120,8 +121,10 @@ class _ChannelGrid extends ConsumerWidget {
               mainAxisExtent: 280,
             ),
             itemCount: items.length,
-            itemBuilder: (context, index) =>
-                ChannelCard(item: items[index]),
+            itemBuilder: (context, index) => ChannelCard(
+              item: items[index],
+              onTap: () => context.push('/watch/${items[index].channel.id}'),
+            ),
           );
         },
       ),

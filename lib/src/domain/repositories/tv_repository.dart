@@ -1,4 +1,6 @@
+import '../entities/channel.dart';
 import '../entities/channel_item.dart';
+import '../entities/live_stream.dart';
 
 /// サーバー未設定時に送出する例外。UI側で設定誘導表示に使う。
 class BackendUnconfiguredException implements Exception {
@@ -15,4 +17,10 @@ abstract class TvRepository {
 
   /// 接続テスト。成功時は正常終了、失敗時は [Exception] を送出する。
   Future<void> testConnection();
+
+  /// ライブ視聴用のストリーム情報を返す。
+  ///
+  /// [quality] はKonomiTVの画質指定 (例: `original`)。Mirakurunでは無視され、
+  /// `decode=1` 固定のストリームを返す。未設定時は [BackendUnconfiguredException]。
+  Future<LiveStream> getLiveStream(Channel channel, {String quality = 'original'});
 }

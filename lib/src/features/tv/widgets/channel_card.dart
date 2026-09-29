@@ -15,10 +15,14 @@ class ChannelCard extends StatelessWidget {
     super.key,
     required this.item,
     this.pinFooterToBottom = true,
+    this.onTap,
   });
 
   final ChannelItem item;
   final bool pinFooterToBottom;
+
+  /// カードタップ時のコールバック。視聴画面への遷移に使う。
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
@@ -32,9 +36,11 @@ class ChannelCard extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: pinFooterToBottom
               ? MainAxisSize.max
@@ -105,6 +111,7 @@ class ChannelCard extends StatelessWidget {
               ),
             ],
           ],
+        ),
         ),
       ),
     );
