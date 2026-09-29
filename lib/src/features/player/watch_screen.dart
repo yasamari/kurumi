@@ -123,30 +123,58 @@ class _BackButton extends StatelessWidget {
 }
 
 /// 画質切替ボタン (KonomiTVのみ表示)。全17画質から選択できる。
+///
+/// `PopupMenuButton` は使わない。media_kit のコントロールは自動非表示になる
+/// と `mount=false` としてツリーから取り除かれるため、メニュー選択時点で
+/// このウィジェットが破棄されていることがある。その場合 Flutter 内部の
+/// `if (!mounted) return;` により `onSelected` が呼ばれず、画質が切り替わらない。
+/// そのため `showMenu` を直接呼び、`ProviderContainer` 経由で反映する。
 class _QualityMenuButton extends ConsumerWidget {
   const _QualityMenuButton();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final quality = ref.watch(watchQualityProvider);
-    return PopupMenuButton<String>(
+    return IconButton(
       icon: const Icon(Icons.high_quality_outlined),
-      iconColor: Colors.white,
       color: Colors.white,
       tooltip: '画質切替',
-      initialValue: quality,
-      onSelected: (value) =>
-          ref.read(watchQualityProvider.notifier).setQuality(value),
-      itemBuilder: (context) => [
-        for (final q in konomiLiveQualities)
-          CheckedPopupMenuItem<String>(
-            value: q,
-            checked: q == quality,
-            child: Text(q),
-          ),
-      ],
+      onPressed: () => _showQualityMenu(context, quality),
     );
   }
+}
+
+/// 画質選択メニューを表示し、選択結果を反映する。
+Future<void> _showQualityMenu(BuildContext context, String current) async {
+  // コントロールが破棄された後でも状態を反映できるよう、コンテナを先に控える。
+  final container = ProviderScope.containerOf(context, listen: false);
+  final anchorBox = context.findRenderObject() as RenderBox?;
+  final overlayBox =
+      Overlay.of(context).context.findRenderObject() as RenderBox?;
+  if (anchorBox == null || !anchorBox.hasSize) return;
+  if (overlayBox == null || !overlayBox.hasSize) return;
+
+  final origin = anchorBox.localToGlobal(Offset.zero, ancestor: overlayBox);
+  final selected = await showMenu<String>(
+    context: context,
+    // `PopupMenuButton` の既定位置指定に合わせる (ボタン直下・左右16px)。
+    position: RelativeRect.fromLTRB(
+      origin.dx + 16,
+      origin.dy + anchorBox.size.height,
+      overlayBox.size.width - origin.dx - anchorBox.size.width - 16,
+      overlayBox.size.height - origin.dy - anchorBox.size.height,
+    ),
+    items: [
+      for (final q in konomiLiveQualities)
+        CheckedPopupMenuItem<String>(
+          value: q,
+          checked: q == current,
+          child: Text(q),
+        ),
+    ],
+  );
+  if (selected == null) return;
+  container.read(watchQualityProvider.notifier).setQuality(selected);
 }
 
 class _WatchBody extends ConsumerWidget {
@@ -287,6 +315,9 @@ class _LivePlayerState extends State<_LivePlayer> {
       automaticallyImplySkipPreviousButton: false,
       // 画面を開いた直後は操作ボタン (戻るボタン等) を表示しておく。
       visibleOnMount: true,
+      // 既定3秒だと画質メニュー (全17件) を操作する前に消えてしまうため、
+      // 長く表示し続ける。
+      controlsHoverDuration: const Duration(seconds: 15),
       topButtonBar: topButtonBar,
     );
     final liveDesktopTheme = MaterialDesktopVideoControlsThemeData(
@@ -294,6 +325,7 @@ class _LivePlayerState extends State<_LivePlayer> {
       automaticallyImplySkipNextButton: false,
       automaticallyImplySkipPreviousButton: false,
       visibleOnMount: true,
+      controlsHoverDuration: const Duration(seconds: 15),
       topButtonBar: topButtonBar,
     );
     return Stack(

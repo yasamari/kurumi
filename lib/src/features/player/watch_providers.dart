@@ -8,7 +8,10 @@ import '../tv/tv_providers.dart';
 part 'watch_providers.g.dart';
 
 /// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
-@riverpod
+///
+/// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
+/// 破棄・再生成で状態が初期値に戻らないようにするため。
+@Riverpod(keepAlive: true)
 class WatchQuality extends _$WatchQuality {
   @override
   String build() => defaultKonomiQuality;

@@ -9,21 +9,30 @@ part of 'watch_providers.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 /// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
+///
+/// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
+/// 破棄・再生成で状態が初期値に戻らないようにするため。
 
 @ProviderFor(WatchQuality)
 final watchQualityProvider = WatchQualityProvider._();
 
 /// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
+///
+/// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
+/// 破棄・再生成で状態が初期値に戻らないようにするため。
 final class WatchQualityProvider
     extends $NotifierProvider<WatchQuality, String> {
   /// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
+  ///
+  /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
+  /// 破棄・再生成で状態が初期値に戻らないようにするため。
   WatchQualityProvider._()
     : super(
         from: null,
         argument: null,
         retry: null,
         name: r'watchQualityProvider',
-        isAutoDispose: true,
+        isAutoDispose: false,
         dependencies: null,
         $allTransitiveDependencies: null,
       );
@@ -44,9 +53,12 @@ final class WatchQualityProvider
   }
 }
 
-String _$watchQualityHash() => r'6a4cf75ac6389cc1ea0052061cd733a78247c65a';
+String _$watchQualityHash() => r'c577ce1487ac82dfaf5235c8f4b874555bc3964c';
 
 /// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
+///
+/// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
+/// 破棄・再生成で状態が初期値に戻らないようにするため。
 
 abstract class _$WatchQuality extends $Notifier<String> {
   String build();

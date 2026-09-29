@@ -9,16 +9,25 @@ part of 'router.dart';
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
 /// 5タブ構成のルーター。テレビ/ビデオ/番組表/録画予約/設定。
+///
+/// ライブ視聴 (`/watch/:channelId`) だけはシェルの外側・root Navigator上に
+/// 積む。ナビゲーション (Bar/Rail/Drawer) を表示しないため。
 
 @ProviderFor(appRouter)
 final appRouterProvider = AppRouterProvider._();
 
 /// 5タブ構成のルーター。テレビ/ビデオ/番組表/録画予約/設定。
+///
+/// ライブ視聴 (`/watch/:channelId`) だけはシェルの外側・root Navigator上に
+/// 積む。ナビゲーション (Bar/Rail/Drawer) を表示しないため。
 
 final class AppRouterProvider
     extends $FunctionalProvider<GoRouter, GoRouter, GoRouter>
     with $Provider<GoRouter> {
   /// 5タブ構成のルーター。テレビ/ビデオ/番組表/録画予約/設定。
+  ///
+  /// ライブ視聴 (`/watch/:channelId`) だけはシェルの外側・root Navigator上に
+  /// 積む。ナビゲーション (Bar/Rail/Drawer) を表示しないため。
   AppRouterProvider._()
     : super(
         from: null,
@@ -52,4 +61,4 @@ final class AppRouterProvider
   }
 }
 
-String _$appRouterHash() => r'7f21a6ec38e8a0b2fd8d49cecd1798adaf5cac7c';
+String _$appRouterHash() => r'973dc87fc136c6ff3509fd63b5553e28b24db209';
