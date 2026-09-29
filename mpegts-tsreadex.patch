@@ -1,9 +1,28 @@
 --- a/libavformat/mpegts.c
 +++ b/libavformat/mpegts.c
-@@ -1067,9 +1067,91 @@
+@@ -1067,9 +1067,118 @@
      return ret;
  }
  
++/**
++ * Extract an ARIB STD-B24 caption payload carried inside an ID3 timed
++ * metadata PES packet (as produced by tsreadex and friends, which wrap the
++ * caption PES in an ID3v2 PRIV frame owned by "aribb24.js").
++ *
++ * On success the packet payload is replaced by the raw ARIB data, the stream
++ * is re-tagged as ARIB caption and 1 is returned.
++ *
++ * A payload that is not an ARIB caption is dropped, not forwarded: the stream
++ * is re-tagged on the first caption packet and stays tagged from then on, so
++ * forwarding the untouched ID3 tag would hand "ID3..." to libaribcaption, which
++ * rejects it with "Invalid data_identifier". FFERROR_REDO tells the framework
++ * to read the next packet instead.
++ *
++ * @return 1 if the packet now carries ARIB caption data,
++ *         FFERROR_REDO if the packet is not an ARIB caption and must be
++ *                      dropped, or 0 if the packet is not an ARIB stream at all
++ *         (a plain timed ID3 packet, left untouched).
++ */
 +static int timed_id3_extract_arib(PESContext *pes, AVPacket *pkt)
 +{
 +    FFIOContext id3_buf;
@@ -32,8 +51,11 @@
 +            priv->datasize < 1)
 +            continue;
 +
++        /* 0x80 is caption, 0x81 is superimpose. libaribcaption is set up for
++         * ARIBCC_CAPTIONTYPE_CAPTION and rejects superimpose with a
++         * "data_identifier mismatch" error, so only caption is usable. */
 +        if (priv->data[0] != 0x80)
-+            continue;
++            break;
 +
 +        buf = av_buffer_alloc(priv->datasize + AV_INPUT_BUFFER_PADDING_SIZE);
 +        if (!buf) {
@@ -75,8 +97,13 @@
 +        }
 +
 +        ret = 1;
-+        break;
++        goto end;
 +    }
++
++    /* An "aribb24.js" payload that is not a caption (superimpose, or anything
++     * else) is not decodable as ARIB caption; drop it. */
++    if (pes->st->codecpar->codec_id == AV_CODEC_ID_ARIB_CAPTION)
++        ret = FFERROR_REDO;
 +
 +end:
 +    av_buffer_unref(&buf);
@@ -92,26 +119,45 @@
  
      av_packet_unref(pkt);
  
-@@ -1100,7 +1182,12 @@
+@@ -1100,13 +1209,25 @@
          }
      }
  
 -    memset(pkt->data + pkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
-+    arib = timed_id3_extract_arib(pes, pkt);
-+    if (arib < 0)
-+        return arib;
-+
-+    if (!arib)
-+        memset(pkt->data + pkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
- 
+-
      // Separate out the AC3 substream from an HDMV combined TrueHD/AC3 PID
      if (pes->sub_st && pes->stream_type == STREAM_TYPE_BLURAY_AUDIO_TRUEHD && pes->extended_stream_id == 0x76)
-@@ -1121,7 +1208,7 @@
+         pkt->stream_index = pes->sub_st->index;
+     else
+         pkt->stream_index = pes->st->index;
++
++    arib = timed_id3_extract_arib(pes, pkt);
++    if (arib < 0 && arib != FFERROR_REDO)
++        return arib;
++
++    if (!arib) {
++        memset(pkt->data + pkt->size, 0, AV_INPUT_BUFFER_PADDING_SIZE);
++
++        if (pes->st->codecpar->codec_id == AV_CODEC_ID_TIMED_ID3) {
++            int ret = timed_id3_update_metadata(pes->st, pkt);
++            if (ret < 0)
++                return ret;
++        }
++    }
+     pkt->pts = pes->pts;
+     pkt->dts = pes->dts;
+     /* store position of first TS packet of this PES packet */
+@@ -1121,10 +1242,9 @@
          return AVERROR(ENOMEM);
      *sd = pes->stream_id;
  
 -    if (pes->st->codecpar->codec_id == AV_CODEC_ID_TIMED_ID3) {
-+    if (!arib && pes->st->codecpar->codec_id == AV_CODEC_ID_TIMED_ID3) {
-         int ret = timed_id3_update_metadata(pes->st, pkt);
-         if (ret < 0)
-             return ret;
+-        int ret = timed_id3_update_metadata(pes->st, pkt);
+-        if (ret < 0)
+-            return ret;
++    if (arib == FFERROR_REDO) {
++        av_packet_unref(pkt);
++        return FFERROR_REDO;
+     }
+ 
+     return 0;
