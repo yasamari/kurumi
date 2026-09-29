@@ -32,7 +32,7 @@
 +            priv->datasize < 1)
 +            continue;
 +
-+        if (priv->data[0] != 0x80 && priv->data[0] != 0x81)
++        if (priv->data[0] != 0x80)
 +            continue;
 +
 +        buf = av_buffer_alloc(priv->datasize + AV_INPUT_BUFFER_PADDING_SIZE);
