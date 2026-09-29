@@ -19,7 +19,6 @@ List<ChannelItem> buildKonomiChannelItems({
   for (final channel in response.allInOrder) {
     if (!channel.isDisplay) continue;
     final present = channel.programPresent;
-    if (present == null) continue;
     final following = channel.programFollowing;
 
     items.add(
@@ -31,7 +30,7 @@ List<ChannelItem> buildKonomiChannelItems({
           channelNumber: channel.channelNumber ?? '',
           logoUrl: '$baseUrl/api/channels/${channel.displayChannelId}/logo',
         ),
-        nowOnAir: _toTvProgram(present),
+        nowOnAir: present == null ? null : _toTvProgram(present),
         nextUp: following == null ? null : _toTvProgram(following),
       ),
     );
