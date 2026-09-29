@@ -175,45 +175,26 @@ class BackendSettingsScreen extends ConsumerWidget {
     required String initialValue,
     required String hintText,
   }) {
-    final controller = TextEditingController(text: initialValue);
-    return showDialog(
+    return showDialog<void>(
       context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: Text('${backendType.label} サーバーURL'),
-          content: TextField(
-            controller: controller,
-            keyboardType: TextInputType.url,
-            autofocus: true,
-            decoration: InputDecoration(hintText: hintText),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('キャンセル'),
-            ),
-            TextButton(
-              onPressed: () {
-                final url = normalizeBaseUrl(controller.text);
-                if (url.isNotEmpty && !isValidBaseUrl(url)) {
-                  Navigator.of(context).pop();
-                  _showErrorDialog(context, 'URLの形式が正しくありません');
-                  return;
-                }
-                final notifier = ref.read(appSettingsProvider.notifier);
-                if (backendType == BackendType.konomiTv) {
-                  notifier.setKonomiBaseUrl(url);
-                } else {
-                  notifier.setMirakurunBaseUrl(url);
-                }
-                Navigator.of(context).pop();
-              },
-              child: const Text('保存'),
-            ),
-          ],
-        );
-      },
-    ).whenComplete(controller.dispose);
+      builder: (dialogContext) => _UrlEditDialog(
+        backendType: backendType,
+        initialValue: initialValue,
+        hintText: hintText,
+        // エラーダイアログはダイアログ自身のコンテキストではなく呼び出し元の
+        // コンテキストで出す（pop 済みでも使用可能なため）。
+        onInvalid: () =>
+            _showErrorDialog(context, 'URLの形式が正しくありません'),
+        onSave: (url) {
+          final notifier = ref.read(appSettingsProvider.notifier);
+          if (backendType == BackendType.konomiTv) {
+            notifier.setKonomiBaseUrl(url);
+          } else {
+            notifier.setMirakurunBaseUrl(url);
+          }
+        },
+      ),
+    );
   }
 
   /// エラー表示ダイアログ。
@@ -231,6 +212,76 @@ class BackendSettingsScreen extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// サーバーURLの入力ダイアログ。
+///
+/// [TextEditingController] はこのウィジェットが破棄されるタイミングで
+/// dispose する（ダイアログ Future の完了時点では画面遷移アニメーションが
+/// まだ進行中で、TextField が controller を参照しうるため）。
+class _UrlEditDialog extends StatefulWidget {
+  const _UrlEditDialog({
+    required this.backendType,
+    required this.initialValue,
+    required this.hintText,
+    required this.onSave,
+    required this.onInvalid,
+  });
+
+  final BackendType backendType;
+  final String initialValue;
+  final String hintText;
+  final ValueChanged<String> onSave;
+  final VoidCallback onInvalid;
+
+  @override
+  State<_UrlEditDialog> createState() => _UrlEditDialogState();
+}
+
+class _UrlEditDialogState extends State<_UrlEditDialog> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleSave() {
+    final url = normalizeBaseUrl(_controller.text);
+    if (url.isNotEmpty && !isValidBaseUrl(url)) {
+      widget.onInvalid();
+      return;
+    }
+    widget.onSave(url);
+    Navigator.of(context).pop();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text('${widget.backendType.label} サーバーURL'),
+      content: TextField(
+        controller: _controller,
+        keyboardType: TextInputType.url,
+        autofocus: true,
+        decoration: InputDecoration(hintText: widget.hintText),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('キャンセル'),
+        ),
+        TextButton(onPressed: _handleSave, child: const Text('保存')),
+      ],
     );
   }
 }
