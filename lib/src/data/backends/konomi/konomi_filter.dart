@@ -8,8 +8,8 @@ import 'konomi_dtos.dart';
 ///
 /// 仕様:
 /// - `is_display` が false のチャンネルは除外する
-/// - `program_present` が null (放送情報なし) のチャンネルは除外する
-///   (Mirakurun側の「放送中のみ」方針に合わせる)
+/// - `program_present` が null (放送情報なし) のチャンネルも残し、
+///   `nowOnAir` を null にする
 /// - 出力順はレスポンスの種別・配列順 (GR→BS→CS→CATV→SKY→BS4K) を維持する
 List<ChannelItem> buildKonomiChannelItems({
   required KonomiChannelsResponse response,

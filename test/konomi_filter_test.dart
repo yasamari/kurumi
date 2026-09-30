@@ -36,7 +36,7 @@ KonomiChannelDto _channel({
 }
 
 void main() {
-  test('is_display=false と番組なしチャンネルを除外する', () {
+  test('is_display=false を除外し、番組なしチャンネルは残す', () {
     final response = KonomiChannelsResponse(
       gr: [
         _channel(
@@ -60,14 +60,17 @@ void main() {
       baseUrl: _baseUrl,
     );
 
-    expect(items.length, 1);
-    expect(items.single.channel.name, 'A局');
-    expect(items.single.nowOnAir?.title, '今');
-    expect(items.single.nextUp?.title, '次');
+    expect(items.length, 2);
+    expect(items[0].channel.name, 'A局');
+    expect(items[0].nowOnAir?.title, '今');
+    expect(items[0].nextUp?.title, '次');
     expect(
-      items.single.channel.logoUrl,
+      items[0].channel.logoUrl,
       '$_baseUrl/api/channels/gr011/logo',
     );
+    expect(items[1].channel.name, '番組なし局');
+    expect(items[1].nowOnAir, isNull);
+    expect(items[1].nextUp, isNull);
   });
 
   test('種別順 (GR→BS) と配列順を維持する', () {
