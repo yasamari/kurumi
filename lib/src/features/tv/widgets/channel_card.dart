@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/utils/time_format.dart';
+import '../../../core/widgets/program_symbol_text.dart';
 import '../../../domain/entities/channel_item.dart';
 
 /// チャンネルカード。デザイン差し替え時はこのファイルのみ変更する。
@@ -49,7 +50,7 @@ class ChannelCard extends StatelessWidget {
             _Header(item: item),
             const SizedBox(height: 8),
             if (nowOnAir != null) ...[
-              Text(
+              ProgramSymbolText(
                 nowOnAir.title,
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
@@ -66,7 +67,7 @@ class ChannelCard extends StatelessWidget {
               ),
               if (nowOnAir.description.isNotEmpty) ...[
                 const SizedBox(height: 4),
-                Text(
+                ProgramSymbolText(
                   nowOnAir.description,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
@@ -83,7 +84,7 @@ class ChannelCard extends StatelessWidget {
               const SizedBox(height: 12),
             if (nextUp != null) ...[
               const Divider(height: 16),
-              Text(
+              ProgramSymbolText(
                 '次▶ ${nextUp.title}',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurface,

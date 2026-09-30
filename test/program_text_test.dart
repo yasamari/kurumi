@@ -104,4 +104,29 @@ void main() {
     const text = 'ニュース・報道 テスト太郎 １月１日';
     expect(formatProgramText(text), 'ニュース・報道 テスト太郎 1月1日');
   });
+
+  test('文字列を通常文と記号に分割する', () {
+    final segments = parseProgramTextSymbols('[新]ドラマ[字][解]再放送');
+    expect(segments, [
+      (text: '新', isSymbol: true),
+      (text: 'ドラマ', isSymbol: false),
+      (text: '字', isSymbol: true),
+      (text: '解', isSymbol: true),
+      (text: '再放送', isSymbol: false),
+    ]);
+  });
+
+  test('空かっこや閉じていないかっこは記号にしない', () {
+    final segments = parseProgramTextSymbols('[]未定[字');
+    expect(segments, [
+      (text: '[]未定[字', isSymbol: false),
+    ]);
+  });
+
+  test('記号なし・空文字は通常文のまま', () {
+    expect(parseProgramTextSymbols('ニュース'), [
+      (text: 'ニュース', isSymbol: false),
+    ]);
+    expect(parseProgramTextSymbols(''), isEmpty);
+  });
 }

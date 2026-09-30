@@ -22,6 +22,31 @@ String formatProgramText(String input) {
   return result;
 }
 
+/// 番組情報文字列の区間。`[字]` のような記号部分は [isSymbol] が真。
+typedef ProgramTextSegment = ({String text, bool isSymbol});
+
+/// 文字列を通常文と `[..]` 記号に分割する (pure 関数)。
+///
+/// `[]` (空) や閉じていない `[` は記号とみなさず通常文に残す。
+List<ProgramTextSegment> parseProgramTextSymbols(String input) {
+  final pattern = RegExp(r'\[([^\[\]]+)\]');
+  final segments = <ProgramTextSegment>[];
+  var position = 0;
+  for (final match in pattern.allMatches(input)) {
+    if (match.start > position) {
+      segments.add(
+        (text: input.substring(position, match.start), isSymbol: false),
+      );
+    }
+    segments.add((text: match.group(1)!, isSymbol: true));
+    position = match.end;
+  }
+  if (position < input.length) {
+    segments.add((text: input.substring(position), isSymbol: false));
+  }
+  return segments;
+}
+
 /// [formatProgramText] で使う変換マップ。挿入順に適用される。
 final Map<String, String> _translationMap =
     buildProgramTextTranslationMap();

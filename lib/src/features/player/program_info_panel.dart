@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/utils/time_format.dart';
+import '../../core/widgets/program_symbol_text.dart';
 import '../../domain/entities/channel_item.dart';
 
 /// 視聴画面用の番組情報パネル。
@@ -28,7 +29,7 @@ class ProgramInfoPanel extends StatelessWidget {
           _ChannelHeader(item: item),
           const SizedBox(height: 12),
           if (program != null) ...[
-            Text(
+            ProgramSymbolText(
               program.title,
               style: theme.textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
@@ -60,7 +61,10 @@ class ProgramInfoPanel extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(program.description, style: theme.textTheme.bodyMedium),
+              ProgramSymbolText(
+                program.description,
+                style: theme.textTheme.bodyMedium,
+              ),
             ],
             if (program.detail.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -153,7 +157,7 @@ class _DetailRow extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 2),
-        Text(body, style: theme.textTheme.bodyMedium),
+        ProgramSymbolText(body, style: theme.textTheme.bodyMedium),
       ],
     );
   }
