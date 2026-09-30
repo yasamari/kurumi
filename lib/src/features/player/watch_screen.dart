@@ -12,6 +12,7 @@ import '../../domain/entities/backend_type.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
 import 'mpv_options.dart';
+import 'player_error.dart';
 import 'watch_providers.dart';
 
 /// ライブ視聴画面。全画面プレイヤー遷移先 (`/watch/:channelId`)。
@@ -247,6 +248,14 @@ class _LivePlayerState extends State<_LivePlayer> {
   late final Player _player;
   late final VideoController _controller;
   StreamSubscription<String>? _errorSub;
+  StreamSubscription<bool>? _playingSub;
+  StreamSubscription<VideoParams>? _videoParamsSub;
+  StreamSubscription<AudioParams>? _audioParamsSub;
+  Timer? _errorTimer;
+  String? _pendingError;
+  bool _isPlaying = false;
+  bool _hasVideo = false;
+  bool _hasAudio = false;
   String? _errorMessage;
 
   @override
@@ -254,9 +263,28 @@ class _LivePlayerState extends State<_LivePlayer> {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
-    _errorSub = _player.stream.error.listen((message) {
-      if (message.isNotEmpty && mounted) {
-        setState(() => _errorMessage = message);
+    // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
+    // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`
+    // など) でも届く。再生状態と組み合わせて判定し、再生できている場合は
+    // エラー表示しない (`player_error.dart` 参照)。
+    _errorSub = _player.stream.error.listen(_onPlayerError);
+    _playingSub = _player.stream.playing.listen((playing) {
+      _isPlaying = playing;
+      _clearErrorIfRecovered();
+    });
+    _videoParamsSub = _player.stream.videoParams.listen((params) {
+      if (hasValidVideoSize(dw: params.dw, dh: params.dh, w: params.w, h: params.h)) {
+        _hasVideo = true;
+        _clearErrorIfRecovered();
+      }
+    });
+    _audioParamsSub = _player.stream.audioParams.listen((params) {
+      if (hasValidAudioFormat(
+        sampleRate: params.sampleRate,
+        channelCount: params.channelCount,
+      )) {
+        _hasAudio = true;
+        _clearErrorIfRecovered();
       }
     });
     _initialize();
@@ -272,15 +300,58 @@ class _LivePlayerState extends State<_LivePlayer> {
   }
 
   Future<void> _open() async {
+    _errorTimer?.cancel();
+    _errorTimer = null;
+    _pendingError = null;
+    _isPlaying = false;
+    _hasVideo = false;
+    _hasAudio = false;
     if (mounted) {
       setState(() => _errorMessage = null);
     }
     await _player.open(Media(widget.url.toString()));
   }
 
+  /// `error` 受信時の処理。再生中の一過性エラーは無視し、それ以外は猶予時間
+  /// 後にまだ回復していなければエラー表示する。
+  void _onPlayerError(String message) {
+    if (message.isEmpty || !mounted) return;
+    if (_isRecovered()) return;
+    _pendingError = message;
+    _errorTimer?.cancel();
+    _errorTimer = Timer(playerErrorGracePeriod, () {
+      if (!mounted) return;
+      // 猶予時間内に再生が始まっていれば一過性エラーだったものとして捨てる。
+      if (_isRecovered()) return;
+      setState(() => _errorMessage = _pendingError);
+      _pendingError = null;
+    });
+  }
+
+  /// 再生が軌道に乗っていれば、表示中・表示待ちのエラーを取り下げる。
+  void _clearErrorIfRecovered() {
+    if (!_isRecovered()) return;
+    _errorTimer?.cancel();
+    _errorTimer = null;
+    _pendingError = null;
+    if (_errorMessage != null && mounted) {
+      setState(() => _errorMessage = null);
+    }
+  }
+
+  bool _isRecovered() => isPlayerRecovered(
+        isPlaying: _isPlaying,
+        hasVideo: _hasVideo,
+        hasAudio: _hasAudio,
+      );
+
   @override
   void dispose() {
+    _errorTimer?.cancel();
     _errorSub?.cancel();
+    _playingSub?.cancel();
+    _videoParamsSub?.cancel();
+    _audioParamsSub?.cancel();
     _player.dispose();
     super.dispose();
   }
