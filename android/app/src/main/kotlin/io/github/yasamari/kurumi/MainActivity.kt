@@ -1,4 +1,4 @@
-package com.example.kurumi
+package io.github.yasamari.kurumi
 
 import io.flutter.embedding.android.FlutterActivity
 
