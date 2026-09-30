@@ -387,32 +387,34 @@ class _LivePlayerState extends State<_LivePlayer> {
       color: Theme.of(context).colorScheme.surface,
       child: ProgramInfoPanel(item: widget.item),
     );
-    return SafeArea(
-      // 映像は黒帯、情報パネルはテーマの地色で描画する。
-      child: isLandscape
-          // 横画面: 映像の右に情報パネルを置く。
-          ? Row(
-              // パネルを画面の高さいっぱいに広げる (既定のcenterだと
-              // 内容量に応じた高さに縮んでしまうため)。
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(
-                  child: Container(color: Colors.black, child: video),
-                ),
-                SizedBox(width: 400, child: info),
-              ],
-            )
-          // 縦画面など: 映像の下に情報パネルを置く。
-          : Column(
-              children: [
-                Container(
-                  color: Colors.black,
-                  child: AspectRatio(aspectRatio: 16 / 9, child: video),
-                ),
-                Expanded(child: info),
-              ],
-            ),
-    );
+    // 映像は黒帯、情報パネルはテーマの地色で描画する。
+    final content = isLandscape
+        // 横画面: 映像の右に情報パネルを置く。
+        ? Row(
+            // パネルを画面の高さいっぱいに広げる (既定のcenterだと
+            // 内容量に応じた高さに縮んでしまうため)。
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Container(color: Colors.black, child: video),
+              ),
+              SizedBox(width: 400, child: info),
+            ],
+          )
+        // 縦画面など: 映像の下に情報パネルを置く。
+        : Column(
+            children: [
+              Container(
+                color: Colors.black,
+                child: AspectRatio(aspectRatio: 16 / 9, child: video),
+              ),
+              Expanded(child: info),
+            ],
+          );
+    // 横画面はインカメラ等を避けず、画面端まで描画する (フルブリード)。
+    // 縦画面のみ SafeArea でノッチ等を避ける。
+    if (isLandscape) return content;
+    return SafeArea(child: content);
   }
 
   /// 映像+標準コントロール+エラー表示。レイアウトによらず共通。
