@@ -29,6 +29,24 @@ Future<void> applyLiveMpvOptions(
   // 組込み low-latency プロファイルを適用する。古い mpv で名前が無い場合も
   // media_kit の command はエラーログのみで例外にならない。
   await platform.command(['apply-profile', 'low-latency']);
+  // ただし低遅延プロファイルは `avformat_find_stream_info()` を省略するため、
+  // ARIB字幕の検出に必要なプローブだけ戻す。
+  //
+  // 理由: KonomiTV の再エンコード画質では字幕が ID3 timed-metadata
+  // (`TIMED_ID3`) として流れる。字幕ストリームとして確定するのは、ffmpeg
+  // パッチ (`mpegts-tsreadex.patch`) がパケット読み取り中に実際の
+  // ARIB STD-B24 ペイロード (PRIV/aribb24.js) を読んだ時で、それまでは
+  // `AVMEDIA_TYPE_DATA` のままである。mpv のトラック一覧は
+  // `avformat_find_stream_info()` の後にしか構築されないため、
+  // `original` のように PMT 時点で字幕ストリームが確定する性質とは異なり、
+  // 再エンコード画質ではプローブを省くと字幕トラックが登録されないまま
+  // 固定されてしまう。
+  await platform.setProperty('demuxer-lavf-probe-info', 'auto');
+  // 同プロファイルが 0.1 秒まで詰める解析時間も戻す (0 は ffmpeg 既定の
+  // 5秒 = 上書き解除を意味する)。KonomiTV は字幕データが現れない場合も
+  // 5秒ごとに代替データ (非表示) を挿入するため、その長さ読まないと
+  // 字幕ストリームへの追従が間に合わない。
+  await platform.setProperty('demuxer-lavf-analyzeduration', '0');
   // media_kit 既定 32M の溜め込み上限を絞る。MPEG-2 TS (15〜24Mbps) で
   // 数秒分の上限になる。シークしないライブのため後方向はさらに小さくする。
   await platform.setProperty('demuxer-max-bytes', '10M');

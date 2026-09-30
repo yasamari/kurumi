@@ -65,6 +65,8 @@ gh release view <tag> --repo yasamari/libmpv-android-video-build
 
 `features/player/mpv_options.dart` の `sub-lavc-o=sub_type=bitmap` は libaribcaption の bitmap レンダラ (freetype 必須) を使うため、`ARIBCC_NO_RENDERER=ON` でビルドした libmpv では字幕が出ない。
 
+KonomiTV の再エンコード画質では字幕が ID3 timed-metadata (`TIMED_ID3`) で流れ、`mpegts-tsreadex.patch` が ARIB ペイロード (PRIV/aribb24.js) を読んだ時点で初めて字幕ストリームへ追従する。mpv のトラック一覧は `avformat_find_stream_info()` の後にしか構築されないため、`apply-profile low-latency` 由来の `demuxer-lavf-probe-info=nostreams` (MPEG-TS ではプローブ省略が成立する) と `demuxer-lavf-analyzeduration=0.1` をそのまま使うと字幕が一切出ない。同ファイルで両方を上書き (+`demuxer-lavf-probe-info=auto` / `analyzeduration=0`) している。低遅延を諦める `apply-profile` 行を消すのは非推奨。
+
 ## Gotchas
 
 - `flake.nix` builds from an explicit `fileset` (`analysis_options.yaml`, `lib`, `linux`, `packages`, `pubspec.yaml`, `pubspec.lock`, launcher icon). Adding `test/`, `assets/`, or new platform dirs requires updating that list or `nix build` breaks. `packages/` は `dependency_overrides` の path 依存なので、ここを抜くと Android ビルド以外でも `pub get` が失敗する。
