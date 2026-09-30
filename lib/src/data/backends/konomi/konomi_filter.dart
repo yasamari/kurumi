@@ -27,6 +27,8 @@ List<ChannelItem> buildKonomiChannelItems({
           id: channel.displayChannelId,
           name: channel.name,
           channelType: channelTypeFromString(channel.type),
+          networkId: channel.networkId,
+          serviceId: channel.serviceId,
           channelNumber: channel.channelNumber ?? '',
           logoUrl: '$baseUrl/api/channels/${channel.displayChannelId}/logo',
         ),

@@ -68,6 +68,8 @@ List<ChannelItem> buildMirakurunChannelItems({
           // Mirakurun の生文字列は KonomiTV 形式に正規化して表示する。
           name: formatProgramText(service.name),
           channelType: channelTypeFromString(channel?.type),
+          networkId: service.networkId,
+          serviceId: service.serviceId,
           channelNumber: service.remoteControlKeyId != null
               ? service.remoteControlKeyId.toString().padLeft(3, '0')
               : '',

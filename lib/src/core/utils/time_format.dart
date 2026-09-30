@@ -23,6 +23,13 @@ String formatProgramSlot(DateTime startAt, DateTime endAt) {
   return '$start 〜 $end ($minutes分)';
 }
 
+/// `10:05:33` 形式に整形する。
+///
+/// 実況コメントなど、時刻部分だけが必要な場面向け。
+String formatClockJa(DateTime dateTime) =>
+    '${_twoDigits(dateTime.hour)}:${_twoDigits(dateTime.minute)}:'
+    '${_twoDigits(dateTime.second)}';
+
 /// 放送進捗率 0.0〜1.0 を返す。範囲外はクランプする。
 double programProgress(DateTime startAt, DateTime endAt, DateTime now) {
   final total = endAt.difference(startAt).inMilliseconds;

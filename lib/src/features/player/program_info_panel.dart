@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../core/utils/time_format.dart';
 import '../../core/widgets/program_symbol_text.dart';
 import '../../domain/entities/channel_item.dart';
+import 'comment_list_panel.dart';
+import 'jikkyo_comment_controller.dart';
 
 /// 視聴画面用の番組情報パネル。
 ///
@@ -11,8 +13,80 @@ import '../../domain/entities/channel_item.dart';
 ///
 /// 自身でスクロールする (`SingleChildScrollView`)。呼び出し側は縦画面なら
 /// 映像の下の `Expanded` に、横画面なら映像の右の固定幅ボックスに置く。
+///
+/// 下端に [NavigationBar] を置き、番組情報と実況コメントを切り替える。
+///
+/// **タブの選択状態は持たない** (制御コンポーネント)。このウィジェットは
+/// 視聴画面の `Row` / `Column` 切り替えの内側に置かれるため、画面の向きが変わると
+/// Element ごと作り直されて State を失う。向きが変わっても選択を保つには
+/// 呼び出し側 ([_LivePlayerState]) が保持する必要がある。
 class ProgramInfoPanel extends StatelessWidget {
-  const ProgramInfoPanel({super.key, required this.item});
+  const ProgramInfoPanel({
+    super.key,
+    required this.item,
+    required this.controller,
+    required this.selectedIndex,
+    required this.onDestinationSelected,
+  });
+
+  final ChannelItem item;
+
+  /// 実況コメントの取得状態。呼び出し側 ([_LivePlayerState]) が所有する。
+  final JikkyoCommentController controller;
+
+  /// 選択中のタブ。0 = 番組情報、1 = コメント。
+  final int selectedIndex;
+
+  /// タブ選択時のコールバック。
+  final ValueChanged<int> onDestinationSelected;
+
+  /// タブのインデックス定数。
+  static const programTab = 0;
+  static const commentTab = 1;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(
+          child: IndexedStack(
+            index: selectedIndex,
+            children: [
+              _ProgramInfoBody(item: item),
+              // コメントタブが選択されている間だけ載せる。ソケットは
+              // [controller] が保持しているので、ここで外しても接続は切れない
+              // (向きが変わるとこのウィジェットは破棄されるため)。
+              if (selectedIndex == commentTab)
+                CommentListPanel(controller: controller),
+            ],
+          ),
+        ),
+        NavigationBar(
+          // 横画面ではパネルが幅 400px のサイドバーになるため縦幅を詰める。
+          height: 64,
+          selectedIndex: selectedIndex,
+          onDestinationSelected: onDestinationSelected,
+          destinations: const [
+            NavigationDestination(
+              icon: Icon(Icons.tv_outlined),
+              selectedIcon: Icon(Icons.tv),
+              label: '番組情報',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.chat_bubble_outline),
+              selectedIcon: Icon(Icons.chat_bubble),
+              label: 'コメント',
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// 番組情報タブの中身。もとの [ProgramInfoPanel] の内容そのもの。
+class _ProgramInfoBody extends StatelessWidget {
+  const _ProgramInfoBody({required this.item});
 
   final ChannelItem item;
 

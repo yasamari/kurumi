@@ -27,4 +27,11 @@ void main() {
     expect(programProgress(start, end, DateTime(2026, 9, 29, 9, 0)), 0.0);
     expect(programProgress(start, end, DateTime(2026, 9, 29, 12, 0)), 1.0);
   });
+
+  test('時刻だけを整形する', () {
+    // 秒は 0 埋めされる。
+    expect(formatClockJa(DateTime(2026, 9, 29, 10, 5, 3)), '10:05:03');
+    expect(formatClockJa(DateTime(2026, 9, 29, 0, 0, 0)), '00:00:00');
+    expect(formatClockJa(DateTime(2026, 9, 29, 23, 59, 59)), '23:59:59');
+  });
 }

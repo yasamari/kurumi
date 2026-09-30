@@ -31,11 +31,26 @@ direnv exec . flutter pub run build_runner build --delete-conflicting-outputs
 - `core/` — router (`go_router`, 5-tab `StatefulShellRoute`), theme (dynamic_color), settings (SharedPreferences-backed `AppSettings` + immutable `AppSettingsState`), shared `Dio`, utils.
 - `domain/` — backend-agnostic entities (freezed) and the `TvRepository` interface.
 - `data/backends/{mirakurun,konomi}/` — per-backend API client (dio), DTOs, `*_filter.dart` (pure mapping), repository.
+- `data/nx_jikkyo/` — ニコニコ実況コメント (NX-Jikkyo)。`TvRepository` とは別系統で、`Channel` の network_id/service_id を `jk<N>` に変換する対応表と、2本の WebSocket セッション。
 - `features/` — UI per tab, `shell/` holds the adaptive scaffold.
 
 Key invariants when adding a backend (Mirakurun, KonomiTV, EDCB…): implement `TvRepository`, then add one line to the switch in `domain/providers/backend_provider.dart` **plus** the `switch` cases in `BackendType.label` and `AppSettingsState.activeBaseUrl`, and a persisted URL + setter in `core/settings/app_settings.dart`. `TvRepository` doc comments state this explicitly.
 
 Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKonomiChannelItems`) with `DateTime now` / `baseUrl` injected — keep it that way so it stays unit-testable.
+
+## 実況コメント (NX-Jikkyo)
+
+接続先は `data/nx_jikkyo/jikkyo_endpoints.dart` の `nxJikkyoBaseUrl` で**コードに固定**。設定画面には出さない (ユーザーが選択済み)。
+
+`jk<N>` への変換表 (`jikkyo_channel_map.dart`) は KonomiTV の `server/static/jikkyo_channels.json` (362行) を移植したもの。うち4組が同じ (network_id, service_id) を共有しているためキー数は358。重複組はどれも `jk` ID が同一なので畳んでも解決結果は変わらない。3点だけ KonomiTV 側と挙動が一致していない:
+
+- 地上波の network_id は実 NID では 0x7880〜0x7FEF だが、表内では番線値 15 に束じてある。したがって `resolveJikkyoChannelId` は network_id を見ず、**`ChannelType` で地上波か判定**する。CATV の network_id (0x7CA0) が地上波の範囲に数値的に含まれうるため、NID の数値だけでは区別できない。
+- 地上波では `sid`, `sid - 1`, `sid - 2` の順に引く (NHK総合2・東京が 1つ前の SID を持つため)。
+- `jikkyo_id: -1` のエントリは `null` として**落とさず保持**する。落とすと sid-1 フォールバックが別地域の SID にマッチして誤検出しうる。登録済み判定は NX-Jikkyo の `KNOWN_JIKKYO_CHANNEL_IDS` (35件) との交差で行う (表にある `jk256` などは接続時に 1008 で拒否される)。
+
+セッションは 2 本: `JikkyoWatchSession` (`/ws/watch`) を張り続け、`room` で得た threadId / yourPostKey から `JikkyoCommentSession` (`/ws/comment`) を起こす。過去ログは「既存より古い」コメントとして届くので `mergeJikkyoComments` (`jikkyo_comment_list.dart`) で常にコメ番順に並べ直すこと。
+
+**実況コメントは Riverpod ではなく `JikkyoCommentController` (`features/player/`, `ChangeNotifier`) が所有する。** 視聴画面は `MediaQuery.orientationOf` で `Row` と `Column` を切り替えるが、ウィジェットの型が変わるとその下の Element が作り直されるため、`Row`/`Column` の内側にある State は画面回転ごとに失われる。タブ選択とコメント接続は回転しても保たれる必要があるため、向きに依存しない `_LivePlayerState` が controller とタブ index を持ち、`dispose` でソケットを閉じる。**ここに `ConsumerWidget` や Riverpod provider を置くと回転のたびにタブが戻り、`connecting` に戻る。**
 
 ## Conventions
 
@@ -71,5 +86,5 @@ KonomiTV の再エンコード画質では字幕が ID3 timed-metadata (`TIMED_I
 
 - `flake.nix` builds from an explicit `fileset` (`analysis_options.yaml`, `lib`, `linux`, `packages`, `pubspec.yaml`, `pubspec.lock`, launcher icon). Adding `test/`, `assets/`, or new platform dirs requires updating that list or `nix build` breaks. `packages/` は `dependency_overrides` の path 依存なので、ここを抜くと Android ビルド以外でも `pub get` が失敗する。
 - `pubspec.lock` に path 依存が `relative: true` で記録される。`packages/` 以下の相対パスを変えたら lock を作り直す。
-- Both backends are plain-HTTP LAN servers. `android/app/src/main/AndroidManifest.xml` has **no `INTERNET` permission** (only `src/debug` and `src/profile` do), and `ios`/`macos` `Info.plist` have **no ATS cleartext exception** — release builds on those platforms cannot reach a backend until this is fixed.
+- Both backends are plain-HTTP LAN servers. Android is fine — `android/app/src/main/AndroidManifest.xml` already declares `INTERNET` **and** `usesCleartextTraffic="true"`, and `ios`/`macos` `Info.plist` declare `NSAllowsLocalNetworking` (local network only; internet-bound cleartext stays blocked by ATS).
 - No CI config exists; verification is local `flutter analyze` + `flutter test` (both currently clean).

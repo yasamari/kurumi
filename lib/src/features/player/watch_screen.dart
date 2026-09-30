@@ -8,11 +8,13 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/settings/app_settings.dart';
 import '../../data/backends/konomi/konomi_live.dart';
+import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
+import 'jikkyo_comment_controller.dart';
 import 'mpv_options.dart';
 import 'player_error.dart';
 import 'program_info_panel.dart';
@@ -340,6 +342,13 @@ class _LivePlayer extends StatefulWidget {
 class _LivePlayerState extends State<_LivePlayer> {
   late final Player _player;
   late final VideoController _controller;
+  late final JikkyoCommentController _jikkyo;
+
+  /// 情報パネルの選択中タブ。
+  ///
+  /// 画面回転で情報パネルが作り直されても選択を維持するため、向きに依存しない
+  /// 位置 (この State) に保持する。
+  int _infoTabIndex = ProgramInfoPanel.programTab;
   StreamSubscription<String>? _errorSub;
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<VideoParams>? _videoParamsSub;
@@ -356,6 +365,12 @@ class _LivePlayerState extends State<_LivePlayer> {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
+    // 実況コメントの接続はここでは張らない。コメントタブを開いた時点で
+    // `selectInfoTab` から開始する (無関係なチャンネルの視聴者数を増やさない)。
+    _jikkyo = JikkyoCommentController(
+      channelId: jikkyoChannelIdFor(widget.item.channel) ?? '',
+    );
+    _jikkyo.addListener(_onJikkyoChanged);
     // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
     // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`
     // など) でも届く。再生状態と組み合わせて判定し、再生できている場合は
@@ -438,6 +453,23 @@ class _LivePlayerState extends State<_LivePlayer> {
         hasAudio: _hasAudio,
       );
 
+  /// 情報パネルのタブを切り替える。
+  ///
+  /// 実況コメントの実況チャンネルが取得できている場合にだけ接続を開始する。
+  /// すでに開始済み (同じ画面内でタブを往復した) なら何もしないので、再接続は
+  /// 起こらない。
+  void _selectInfoTab(int index) {
+    if (index == ProgramInfoPanel.commentTab) _jikkyo.start();
+    if (_infoTabIndex == index) return;
+    setState(() => _infoTabIndex = index);
+  }
+
+  /// コメント状態の更新を反映する。
+  void _onJikkyoChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   @override
   void dispose() {
     _errorTimer?.cancel();
@@ -445,6 +477,9 @@ class _LivePlayerState extends State<_LivePlayer> {
     _playingSub?.cancel();
     _videoParamsSub?.cancel();
     _audioParamsSub?.cancel();
+    _jikkyo.removeListener(_onJikkyoChanged);
+    // 視聴画面を離れたときにソケットを閉じる。
+    _jikkyo.dispose();
     _player.dispose();
     super.dispose();
   }
@@ -456,7 +491,12 @@ class _LivePlayerState extends State<_LivePlayer> {
     final video = _buildVideo(context);
     final info = Container(
       color: Theme.of(context).colorScheme.surface,
-      child: ProgramInfoPanel(item: widget.item),
+      child: ProgramInfoPanel(
+        item: widget.item,
+        controller: _jikkyo,
+        selectedIndex: _infoTabIndex,
+        onDestinationSelected: _selectInfoTab,
+      ),
     );
     // 映像は黒帯、情報パネルはテーマの地色で描画する。
     final content = isLandscape
