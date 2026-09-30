@@ -445,6 +445,12 @@ class _LivePlayerState extends State<_LivePlayer> {
       seekOnDoubleTap: false,
       automaticallyImplySkipNextButton: false,
       automaticallyImplySkipPreviousButton: false,
+      // ライブに再生時刻表示は不要のため、時刻表示を外して
+      // フルスクリーンボタンだけ残す。
+      bottomButtonBar: const [
+        Spacer(),
+        MaterialFullscreenButton(),
+      ],
       // 画面を開いた直後は操作ボタン (戻るボタン等) を表示しておく。
       visibleOnMount: true,
       // 既定3秒だと画質メニュー (全17件) を操作する前に消えてしまうため、
@@ -456,6 +462,12 @@ class _LivePlayerState extends State<_LivePlayer> {
       displaySeekBar: false,
       automaticallyImplySkipNextButton: false,
       automaticallyImplySkipPreviousButton: false,
+      // ライブに再生時刻表示は不要のため、時刻表示を外して
+      // フルスクリーンボタンだけ残す。
+      bottomButtonBar: const [
+        Spacer(),
+        MaterialDesktopFullscreenButton(),
+      ],
       visibleOnMount: true,
       controlsHoverDuration: const Duration(seconds: 15),
       topButtonBar: topButtonBar,
