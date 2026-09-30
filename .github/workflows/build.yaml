@@ -1,0 +1,174 @@
+name: Build
+
+# main push・タグ push では自動実行、PR では自動実行、
+# それ以外のブランチは手動実行 (workflow_dispatch) でビルドする。
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FLUTTER_VERSION: "3.47.4"
+
+jobs:
+  android-debug:
+    # タグ時は release のみ回すため除外。
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter build apk --debug --split-per-abi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kurumi-android-debug-${{ github.sha }}
+          retention-days: 7
+          path: |
+            build/app/outputs/flutter-apk/*.apk
+            LICENSE
+            THIRD-PARTY-NOTICES.md
+
+  android-release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      # 当面は debug 鍵署名のまま配布する (build.gradle.kts 参照)。
+      # 正式鍵に切り替える場合は同一鍵での継続が必須。
+      - run: flutter build apk --release --split-per-abi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kurumi-android-release
+          retention-days: 7
+          path: |
+            build/app/outputs/flutter-apk/*.apk
+            LICENSE
+            THIRD-PARTY-NOTICES.md
+
+  windows-debug:
+    if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter build windows --debug
+      - run: |
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.md build/windows/x64/runner/Debug/
+          Compress-Archive -Path build/windows/x64/runner/Debug/* -DestinationPath kurumi-windows-debug-${{ github.sha }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kurumi-windows-debug-${{ github.sha }}
+          retention-days: 7
+          path: kurumi-windows-debug-${{ github.sha }}.zip
+
+  windows-release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      # 署名なし zip 配布。SmartScreen 警告が出る想定。
+      - run: flutter build windows --release
+      - run: |
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.md build/windows/x64/runner/Release/
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath kurumi-windows-${{ github.ref_name }}.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kurumi-windows-release
+          retention-days: 7
+          path: kurumi-windows-${{ github.ref_name }}.zip
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            nix:
+              - 'flake.nix'
+              - 'flake.lock'
+              - 'lib/**'
+              - 'linux/**'
+              - 'packages/**'
+              - 'pubspec.yaml'
+              - 'pubspec.lock'
+              - 'mpegts-tsreadex.patch'
+              - 'LICENSE'
+              - 'THIRD-PARTY-NOTICES.md'
+              - '.github/workflows/build.yaml'
+      # PR で Nix 無関係の変更のみの場合はスキップ。
+      - if: ${{ github.event_name != 'pull_request' || steps.filter.outputs.nix == 'true' }}
+        uses: DeterminateSystems/nix-installer-action@v17
+      - if: ${{ github.event_name != 'pull_request' || steps.filter.outputs.nix == 'true' }}
+        uses: DeterminateSystems/magic-nix-cache-action@v9
+      - if: ${{ github.event_name != 'pull_request' || steps.filter.outputs.nix == 'true' }}
+        run: nix build .#kurumi-appimage
+      - if: ${{ github.event_name != 'pull_request' || steps.filter.outputs.nix == 'true' }}
+        # nix bundle 同様、出力は /nix/store への symlink のため実体コピーする。
+        run: cp -L result/kurumi.AppImage "kurumi-${{ github.sha }}.AppImage"
+      - if: ${{ github.event_name != 'pull_request' || steps.filter.outputs.nix == 'true' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kurumi-linux-${{ github.sha }}
+          retention-days: 7
+          path: kurumi-${{ github.sha }}.AppImage
+
+  release:
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    needs: [android-release, windows-release, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - run: |
+          mkdir -p release
+          find artifacts/kurumi-android-release -name '*.apk' -exec cp {} release/ \;
+          cp artifacts/kurumi-windows-release/*.zip release/
+          # スナップショット名 (SHA 付き) をリリース名に付け替える。
+          cp artifacts/kurumi-linux-*/kurumi-*.AppImage "release/kurumi-${{ github.ref_name }}-x86_64.AppImage"
+          ls -la release
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          body: |
+            ## 対応ソース
+            - 本体: このタグ (`${{ github.ref_name }}`)
+            - nixpkgs: `flake.lock` のピンリビジョン
+            - Android libmpv: `packages/media_kit_libs_android_video/android/build.gradle` のタグ
+            - ffmpeg 構成 (`--enable-gpl` の有無) はビルドログを参照

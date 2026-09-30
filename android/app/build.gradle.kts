@@ -30,7 +30,8 @@ android {
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
+            // 当面は debug 鍵署名のまま GitHub Releases で配布する。
+            // 正式鍵に切り替える場合は、更新時に同一鍵での継続が必須。
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
         }

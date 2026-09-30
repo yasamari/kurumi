@@ -51,6 +51,9 @@ app.*.map.json
 result
 result-*
 
+# Ignore locally bundled AppImages (`nix build .#kurumi-appimage`)
+*.AppImage
+
 # Ignore automatically generated direnv output
 .direnv
 

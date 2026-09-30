@@ -2,6 +2,11 @@
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
     flake-utils.url = "github:numtide/flake-utils";
+    nix-appimage = {
+      url = "github:ralismark/nix-appimage";
+      inputs.nixpkgs.follows = "nixpkgs";
+      inputs.flake-utils.follows = "flake-utils";
+    };
   };
 
   outputs =
@@ -9,6 +14,7 @@
       self,
       nixpkgs,
       flake-utils,
+      nix-appimage,
     }:
     flake-utils.lib.eachDefaultSystem (
       system:
@@ -232,6 +238,11 @@
         packages = lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           inherit kurumi;
           default = kurumi;
+
+          kurumi-appimage = nix-appimage.lib.${system}.mkAppImage {
+            program = lib.getExe kurumi;
+            pname = "kurumi";
+          };
         };
 
         devShells.default = pkgs.mkShell {
