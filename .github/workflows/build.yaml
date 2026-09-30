@@ -137,8 +137,8 @@ jobs:
       - if: ${{ github.event_name != 'pull_request' || steps.filter.outputs.nix == 'true' }}
         run: nix build .#kurumi-appimage
       - if: ${{ github.event_name != 'pull_request' || steps.filter.outputs.nix == 'true' }}
-        # nix bundle 同様、出力は /nix/store への symlink のため実体コピーする。
-        run: cp -L result/kurumi.AppImage "kurumi-${{ github.sha }}.AppImage"
+        # 出力は AppImage 単一ファイルへの symlink のため実体コピーする。
+        run: cp -L result "kurumi-${{ github.sha }}.AppImage"
       - if: ${{ github.event_name != 'pull_request' || steps.filter.outputs.nix == 'true' }}
         uses: actions/upload-artifact@v4
         with:
