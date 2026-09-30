@@ -9,6 +9,8 @@
 /// ref: https://github.com/xpadev-net/niconicomments
 library;
 
+import 'package:flutter/material.dart';
+
 /// コメントの表示位置。
 enum JikkyoCommentPosition {
   /// 画面中央 (`naka`)。既定。
@@ -128,4 +130,28 @@ String? _colorName(String token) {
   if (derived == null) return null;
   final base = derived.group(1)!;
   return _colorNames.contains(base) ? base : null;
+}
+
+/// ニコ生の色コマンド名を表示用の [Color] に変換する。
+///
+/// [parseJikkyoCommentMail] が返した `color` を渡す。未知の名前は
+/// [defaultJikkyoCommentColor] として扱う。
+///
+/// 「白」「黒」はどちらもテーマの背景に対して読める必要があるため、明るさに
+/// 応じて向きを反転する。
+Color jikkyoCommentColorOf(String name, Brightness brightness) {
+  final dark = brightness == Brightness.dark;
+  return switch (name) {
+    'white' => dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+    'black' => dark ? const Color(0xFF000000) : const Color(0xFFFFFFFF),
+    'red' => const Color(0xFFFF0000),
+    'pink' => const Color(0xFFFF9999),
+    'orange' => const Color(0xFFFFCC00),
+    'yellow' => const Color(0xFFFFFF00),
+    'green' => const Color(0xFF00CC00),
+    'cyan' => const Color(0xFF00FFFF),
+    'blue' => const Color(0xFF3399FF),
+    'purple' => const Color(0xFFCC00FF),
+    _ => dark ? const Color(0xFFFFFFFF) : const Color(0xFF000000),
+  };
 }

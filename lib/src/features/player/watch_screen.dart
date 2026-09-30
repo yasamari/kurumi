@@ -15,6 +15,7 @@ import '../../domain/entities/channel_item.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
 import 'jikkyo_comment_controller.dart';
+import 'jikkyo_danmaku_overlay.dart';
 import 'mpv_options.dart';
 import 'player_error.dart';
 import 'program_info_panel.dart';
@@ -349,6 +350,13 @@ class _LivePlayerState extends State<_LivePlayer> {
   /// 画面回転で情報パネルが作り直されても選択を維持するため、向きに依存しない
   /// 位置 (この State) に保持する。
   int _infoTabIndex = ProgramInfoPanel.programTab;
+
+  /// 実況コメントの弾幕表示の on/off。
+  ///
+  /// ここも向きに依存しない State に持たせる。映像の `Stack` 内は回転で作り
+  /// 直されるため、ウィジェット側に持たせると回転でリセットされる。
+  bool _danmakuEnabled = true;
+
   StreamSubscription<String>? _errorSub;
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<VideoParams>? _videoParamsSub;
@@ -360,17 +368,29 @@ class _LivePlayerState extends State<_LivePlayer> {
   bool _hasAudio = false;
   String? _errorMessage;
 
+  /// 映像の**表示**アスペクト比 (幅 / 高さ)。まだ mpv から届いていなければ null。
+  ///
+  /// media_kit の `Video` は `BoxFit.contain` で描くため、ウィジェット全体には
+  /// 黒帯や柱状 (レターボックス) ができる。弾幕を映像の上だけに重ねるにはこの比
+  /// が必要で、届くまで弾幕は描画しない。
+  ///
+  /// 符号化サイズ (4:3) ではなく表示アスペクト比 (16:9) を使う必要がある。日本語
+  /// のデジタル放送には 1440x1080 を 16:9 に引き伸ばしているチャンネルがあり、
+  /// ここを間違えると矩形がズレて弾幕が黒帯に出る。
+  /// [videoDisplayAspectOf] 参照。
+  double? _videoDisplayAspect;
+
   @override
   void initState() {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
-    // 実況コメントの接続はここでは張らない。コメントタブを開いた時点で
-    // `selectInfoTab` から開始する (無関係なチャンネルの視聴者数を増やさない)。
+    // 実況コメントの接続は実況チャンネルが取得できている場合に即開始する。
+    // 弾幕を既定で表示するため、コメントタブを開くまで待たない。
     _jikkyo = JikkyoCommentController(
       channelId: jikkyoChannelIdFor(widget.item.channel) ?? '',
     );
-    _jikkyo.addListener(_onJikkyoChanged);
+    _jikkyo.start();
     // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
     // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`
     // など) でも届く。再生状態と組み合わせて判定し、再生できている場合は
@@ -385,6 +405,17 @@ class _LivePlayerState extends State<_LivePlayer> {
         _hasVideo = true;
         _clearErrorIfRecovered();
       }
+      // 弾幕を映像の Letterbox の内側に収めるため、表示アスペクト比を保持する。
+      final aspect = videoDisplayAspectOf(
+        aspect: params.aspect,
+        w: params.w,
+        h: params.h,
+        dw: params.dw,
+        dh: params.dh,
+      );
+      if (aspect == null || aspect == _videoDisplayAspect) return;
+      if (!mounted) return;
+      setState(() => _videoDisplayAspect = aspect);
     });
     _audioParamsSub = _player.stream.audioParams.listen((params) {
       if (hasValidAudioFormat(
@@ -455,19 +486,11 @@ class _LivePlayerState extends State<_LivePlayer> {
 
   /// 情報パネルのタブを切り替える。
   ///
-  /// 実況コメントの実況チャンネルが取得できている場合にだけ接続を開始する。
-  /// すでに開始済み (同じ画面内でタブを往復した) なら何もしないので、再接続は
-  /// 起こらない。
+  /// 実況コメントは弾幕を既定で表示するため、視聴画面を開いた時点で既に接続
+  /// 済み。ここでは接続を開始しない。
   void _selectInfoTab(int index) {
-    if (index == ProgramInfoPanel.commentTab) _jikkyo.start();
     if (_infoTabIndex == index) return;
     setState(() => _infoTabIndex = index);
-  }
-
-  /// コメント状態の更新を反映する。
-  void _onJikkyoChanged() {
-    if (!mounted) return;
-    setState(() {});
   }
 
   @override
@@ -477,7 +500,6 @@ class _LivePlayerState extends State<_LivePlayer> {
     _playingSub?.cancel();
     _videoParamsSub?.cancel();
     _audioParamsSub?.cancel();
-    _jikkyo.removeListener(_onJikkyoChanged);
     // 視聴画面を離れたときにソケットを閉じる。
     _jikkyo.dispose();
     _player.dispose();
@@ -548,6 +570,12 @@ class _LivePlayerState extends State<_LivePlayer> {
       ),
       // 字幕切替は画質切替の左に置く (両バックエンド共通)。
       _SubtitleToggleButton(player: _player),
+      // 弾幕切替は字幕切替の右。実況チャンネルが対応している場合のみ出す。
+      if (_jikkyo.isSupported)
+        _DanmakuToggleButton(
+          enabled: _danmakuEnabled,
+          onPressed: () => setState(() => _danmakuEnabled = !_danmakuEnabled),
+        ),
       if (widget.showQualityMenu) const _QualityMenuButton(),
     ];
 
@@ -627,6 +655,23 @@ class _LivePlayerState extends State<_LivePlayer> {
             ),
           ),
         ),
+        // 弾幕は映像の上に重ねる。ただし映像ウィジェットは `BoxFit.contain` で
+        // 描くため、そのまま重ねると黒帯 (レターボックス) にも出てしまう。
+        // 映像の**表示**アスペクト比に合わせて矩形を絞る。`Align` + `AspectRatio`
+        // は `FittedBox(fit: contain)` と同じ矩形になるので、幅高を自分で計算する
+        // 必要はない。比が確定するまで (起動直後・音声のみ) は描画しない。
+        if (_jikkyo.isSupported && _videoDisplayAspect != null)
+          Positioned.fill(
+            child: Align(
+              child: AspectRatio(
+                aspectRatio: _videoDisplayAspect!,
+                child: JikkyoDanmakuOverlay(
+                  controller: _jikkyo,
+                  enabled: _danmakuEnabled,
+                ),
+              ),
+            ),
+          ),
         if (_errorMessage != null)
           Positioned.fill(
             // 上部のコントロール (戻るボタン等) を隠さないよう上端だけ空ける。
@@ -671,6 +716,31 @@ class _LivePlayerState extends State<_LivePlayer> {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// 弾幕表示のオン/オフ切替ボタン。字幕切替ボタンの右に置く。
+///
+/// 弾幕は映像の上に描くため、操作系のボタンに載せる。
+class _DanmakuToggleButton extends StatelessWidget {
+  const _DanmakuToggleButton({
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: Icon(
+        enabled ? Icons.subtitles : Icons.subtitles_off_outlined,
+      ),
+      color: Colors.white,
+      tooltip: enabled ? '弾幕を非表示' : '弾幕を表示',
+      onPressed: onPressed,
     );
   }
 }

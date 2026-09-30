@@ -49,6 +49,10 @@ dependencies:
   # ニコニコ実況コメント (NX-Jikkyo) の WebSocket 接続に使用する。
   web_socket_channel: ^3.0.3
 
+  # 実況コメントの弾幕描画に使用する。CustomPainter で直接描くため Widget 数が
+  # 増えず、弾幕が無いフレームでは描画を自動的に止める。
+  canvas_danmaku: ^0.3.3
+
 # Android の libmpv を自前のビルドに差し替える。
 # media_kit_libs_android_video は Android プラットフォームのみの対象で、
 # .jar を Gradle 時に GitHub Releases から取得する。同梱版は upstream の
