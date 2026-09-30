@@ -640,6 +640,31 @@ class _LivePlayerState extends State<_LivePlayer> {
       controlsHoverDuration: const Duration(seconds: 15),
       topButtonBar: topButtonBar,
     );
+    // 弾幕は映像の上に重ねる。ただし映像ウィジェットは `BoxFit.contain` で
+    // 描くため、そのまま重ねると黒帯 (レターボックス) にも出てしまう。
+    // 映像の**表示**アスペクト比に合わせて矩形を絞る。`Align` + `AspectRatio`
+    // は `FittedBox(fit: contain)` と同じ矩形になるので、幅高を自分で計算する
+    // 必要はない。比が確定するまで (起動直後・音声のみ) は描画しない。
+    //
+    // 描画位置は映像の上・操作オーバーレイの下。media_kit の `Video` は
+    // 「映像テクスチャ → 字幕 → 標準コントロール」を内側の `Stack` で
+    // 描画しているため、弾幕を外側の `Stack` に重ねるとコントロールより上に
+    // なってしまう (逆に順序を入れ替えれば映像テクスチャより下に回って
+    // 見えなくなる)。差し込めるのは controls レイヤーの内側だけなので、
+    // 下の `controls` ビルダーに渡す。
+    final danmaku = _jikkyo.isSupported && _videoDisplayAspect != null
+        ? Positioned.fill(
+            child: Align(
+              child: AspectRatio(
+                aspectRatio: _videoDisplayAspect!,
+                child: JikkyoDanmakuOverlay(
+                  controller: _jikkyo,
+                  enabled: _danmakuEnabled,
+                ),
+              ),
+            ),
+          )
+        : null;
     return Stack(
       children: [
         MaterialVideoControlsTheme(
@@ -651,27 +676,19 @@ class _LivePlayerState extends State<_LivePlayer> {
             // media_kit標準UI。平台で自動切替される。
             child: Video(
               controller: _controller,
-              controls: AdaptiveVideoControls,
-            ),
-          ),
-        ),
-        // 弾幕は映像の上に重ねる。ただし映像ウィジェットは `BoxFit.contain` で
-        // 描くため、そのまま重ねると黒帯 (レターボックス) にも出てしまう。
-        // 映像の**表示**アスペクト比に合わせて矩形を絞る。`Align` + `AspectRatio`
-        // は `FittedBox(fit: contain)` と同じ矩形になるので、幅高を自分で計算する
-        // 必要はない。比が確定するまで (起動直後・音声のみ) は描画しない。
-        if (_jikkyo.isSupported && _videoDisplayAspect != null)
-          Positioned.fill(
-            child: Align(
-              child: AspectRatio(
-                aspectRatio: _videoDisplayAspect!,
-                child: JikkyoDanmakuOverlay(
-                  controller: _jikkyo,
-                  enabled: _danmakuEnabled,
-                ),
+              controls: (state) => Stack(
+                // `Video` 側は `Positioned.fill` で tight 制約を渡している。
+                // 標準コントロールに loose な制約を渡すとグラデーション等が
+                // 縮むため、`Video` と同じ tight 制約を渡す。
+                fit: StackFit.expand,
+                children: [
+                  ?danmaku,
+                  AdaptiveVideoControls(state),
+                ],
               ),
             ),
           ),
+        ),
         if (_errorMessage != null)
           Positioned.fill(
             // 上部のコントロール (戻るボタン等) を隠さないよう上端だけ空ける。

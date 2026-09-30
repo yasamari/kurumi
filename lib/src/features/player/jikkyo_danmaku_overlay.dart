@@ -9,9 +9,12 @@ import 'jikkyo_danmaku_item.dart';
 
 /// 映像に重なる弾幕オーバーレイ。
 ///
-/// 映像の `Stack` に `Positioned.fill` で乗せる。`DanmakuScreen` は
-/// `LayoutBuilder` で親の制約からサイズを取るため `Positioned.fill` が必須
-/// (`Stack` の既定の loose では子にサイズが付かず幅 0 になる)。
+/// media_kit の `Video` の `controls` ビルダーが返す `Stack` の中に
+/// `Positioned.fill` で乗せる (`watch_screen.dart` 参照)。映像テクスチャと
+/// 操作オーバーレイ (標準コントロール) の**間**に描くため、コントロールの
+/// ボタンに隠れない。`DanmakuScreen` は `LayoutBuilder` で親の制約からサイズを
+/// 取るため `Positioned.fill` が必須 (`Stack` の既定の loose では子にサイズが
+/// 付かず幅 0 になる)。
 ///
 /// [enabled] が false のときは [DanmakuScreen] を組まない。弾幕は明示的に
 /// 有効にした時だけ Ticker を回したい。
