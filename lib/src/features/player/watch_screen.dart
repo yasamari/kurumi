@@ -9,10 +9,12 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/settings/app_settings.dart';
 import '../../data/backends/konomi/konomi_live.dart';
 import '../../domain/entities/backend_type.dart';
+import '../../domain/entities/channel_item.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
 import 'mpv_options.dart';
 import 'player_error.dart';
+import 'program_info_panel.dart';
 import 'watch_providers.dart';
 
 /// ライブ視聴画面。全画面プレイヤー遷移先 (`/watch/:channelId`)。
@@ -69,6 +71,7 @@ class WatchScreen extends ConsumerWidget {
             : '${channel.channelNumber} ${channel.name}';
         return _WatchBody(
           channelId: channelId,
+          item: item,
           title: title,
           showQualityMenu: backendType == BackendType.konomiTv,
         );
@@ -181,11 +184,15 @@ Future<void> _showQualityMenu(BuildContext context, String current) async {
 class _WatchBody extends ConsumerWidget {
   const _WatchBody({
     required this.channelId,
+    required this.item,
     required this.title,
     required this.showQualityMenu,
   });
 
   final String channelId;
+
+  /// 番組情報パネルに表示するチャンネル+番組。
+  final ChannelItem item;
 
   /// 上部ボタンバーに表示する番組名 (チャンネル番号 + 局名)。
   final String title;
@@ -217,6 +224,7 @@ class _WatchBody extends ConsumerWidget {
           // URLが変わったらPlayerを作り直す (画質切替対応)。
           key: ValueKey(live.url.toString()),
           url: live.url,
+          item: item,
           title: title,
           showQualityMenu: showQualityMenu,
           // KonomiTVは `original` (生放送TS) のときだけデインタレースする。
@@ -238,12 +246,16 @@ class _LivePlayer extends StatefulWidget {
   const _LivePlayer({
     super.key,
     required this.url,
+    required this.item,
     required this.title,
     required this.showQualityMenu,
     required this.deinterlace,
   });
 
   final Uri url;
+
+  /// 番組情報パネルに表示するチャンネル+番組。
+  final ChannelItem item;
   final String title;
   final bool showQualityMenu;
 
@@ -368,6 +380,43 @@ class _LivePlayerState extends State<_LivePlayer> {
 
   @override
   Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final video = _buildVideo(context);
+    final info = Container(
+      color: Theme.of(context).colorScheme.surface,
+      child: ProgramInfoPanel(item: widget.item),
+    );
+    return SafeArea(
+      // 映像は黒帯、情報パネルはテーマの地色で描画する。
+      child: isLandscape
+          // 横画面: 映像の右に情報パネルを置く。
+          ? Row(
+              // パネルを画面の高さいっぱいに広げる (既定のcenterだと
+              // 内容量に応じた高さに縮んでしまうため)。
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(
+                  child: Container(color: Colors.black, child: video),
+                ),
+                SizedBox(width: 400, child: info),
+              ],
+            )
+          // 縦画面など: 映像の下に情報パネルを置く。
+          : Column(
+              children: [
+                Container(
+                  color: Colors.black,
+                  child: AspectRatio(aspectRatio: 16 / 9, child: video),
+                ),
+                Expanded(child: info),
+              ],
+            ),
+    );
+  }
+
+  /// 映像+標準コントロール+エラー表示。レイアウトによらず共通。
+  Widget _buildVideo(BuildContext context) {
     // AppBarの代わりに、標準コントロールの上部ボタンバーへ載せる。
     final topButtonBar = <Widget>[
       const _BackButton(),

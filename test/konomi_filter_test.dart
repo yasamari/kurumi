@@ -106,4 +106,50 @@ void main() {
       ['B局', 'A局', 'BS局'],
     );
   });
+
+  test('ジャンルを表示用ラベルに変換する', () {
+    final labels = konomiGenreLabels(const [
+      KonomiGenreDto(major: 'ドラマ', middle: '国内ドラマ'),
+      KonomiGenreDto(major: 'ドラマ', middle: '国内ドラマ'),
+      KonomiGenreDto(major: 'ニュース', middle: 'ニュース'),
+      KonomiGenreDto(major: 'スポーツ', middle: ''),
+    ]);
+    expect(labels, ['ドラマ・国内ドラマ', 'ニュース', 'スポーツ']);
+  });
+
+  test('ジャンル・詳細が番組に引き継がれる', () {
+    final response = KonomiChannelsResponse(
+      gr: [
+        KonomiChannelDto(
+          id: 'NID1-SID1',
+          displayChannelId: 'gr011',
+          networkId: 1,
+          serviceId: 1,
+          type: 'GR',
+          name: 'A局',
+          isDisplay: true,
+          channelNumber: '011',
+          programPresent: KonomiProgramDto(
+            eventId: 1,
+            title: '今',
+            description: '概要',
+            startTime: DateTime(2026, 9, 29, 10, 5),
+            endTime: DateTime(2026, 9, 29, 10, 55),
+            genres: const [
+              KonomiGenreDto(major: 'アニメ', middle: 'アニメ'),
+            ],
+            detail: const {'出演者': 'テスト太郎'},
+          ),
+        ),
+      ],
+    );
+
+    final items = buildKonomiChannelItems(
+      response: response,
+      baseUrl: _baseUrl,
+    );
+
+    expect(items.single.nowOnAir?.genres, ['アニメ']);
+    expect(items.single.nowOnAir?.detail, {'出演者': 'テスト太郎'});
+  });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:kurumi/src/data/backends/mirakurun/mirakurun_filter.dart';
+import 'package:kurumi/src/data/backends/mirakurun/mirakurun_genre.dart';
 import 'package:kurumi/src/data/backends/mirakurun/mirakurun_program_dto.dart';
 import 'package:kurumi/src/data/backends/mirakurun/mirakurun_service_dto.dart';
 
@@ -203,5 +204,88 @@ void main() {
 
     expect(items.map((e) => e.channel.name).toList(), ['C局', 'A局']);
     expect(items.first.nextUp?.title, '次');
+  });
+
+  test('ジャンルコードを表示用ラベルに変換する', () {
+    // 大分類のみの場合は大分類名。
+    expect(mirakurunGenreLabel(0), 'ニュース・報道');
+    expect(mirakurunGenreLabel(7), 'アニメ・特撮');
+    expect(mirakurunGenreLabel(15), 'その他');
+    expect(mirakurunGenreLabel(12), isNull);
+    expect(mirakurunGenreLabel(null), isNull);
+    // 中分類まで判明している場合は `大分類・中分類`。
+    expect(mirakurunGenreLabel(3, 0), 'ドラマ・国内ドラマ');
+    expect(mirakurunGenreLabel(7, 0), 'アニメ・特撮・国内アニメ');
+    expect(mirakurunGenreLabel(3, 0xE), 'ドラマ');
+
+    final labels = mirakurunGenreLabels(const [
+      MirakurunProgramGenreDto(lv1: 3, lv2: 0),
+      MirakurunProgramGenreDto(lv1: 3, lv2: 0),
+      MirakurunProgramGenreDto(lv1: 12),
+    ]);
+    expect(labels, ['ドラマ・国内ドラマ']);
+  });
+
+  test('ジャンル・詳細が番組に引き継がれる', () {
+    final services = [
+      _service(id: 1, serviceId: 101, networkId: 1, name: 'A局'),
+    ];
+    final programs = [
+      MirakurunProgramDto(
+        id: 101,
+        eventId: 1001,
+        serviceId: 101,
+        networkId: 1,
+        startAt: nowMs - hourMs,
+        duration: 2 * hourMs,
+        name: '今',
+        description: '概要',
+        genres: const [
+          MirakurunProgramGenreDto(lv1: 1, lv2: 1),
+        ],
+        extended: const {'出演者': 'テスト太郎'},
+      ),
+    ];
+
+    final items = buildMirakurunChannelItems(
+      services: services,
+      programs: programs,
+      now: now,
+      baseUrl: _baseUrl,
+    );
+
+    expect(items.single.nowOnAir?.genres, ['スポーツ・野球']);
+    expect(items.single.nowOnAir?.detail, {'出演者': 'テスト太郎'});
+  });
+
+  test('タイトル・概要・詳細はKonomiTV形式に正規化される', () {
+    final services = [
+      _service(id: 1, serviceId: 101, networkId: 1, name: 'Ａ局'),
+    ];
+    final programs = [
+      MirakurunProgramDto(
+        id: 101,
+        eventId: 1001,
+        serviceId: 101,
+        networkId: 1,
+        startAt: nowMs - hourMs,
+        duration: 2 * hourMs,
+        name: 'ＴＥＳＴ番組！',
+        description: '概要〜詳細',
+        extended: const {'出演者': 'ＡＢＣ'},
+      ),
+    ];
+
+    final items = buildMirakurunChannelItems(
+      services: services,
+      programs: programs,
+      now: now,
+      baseUrl: _baseUrl,
+    );
+
+    expect(items.single.channel.name, 'A局');
+    expect(items.single.nowOnAir?.title, 'TEST番組！');
+    expect(items.single.nowOnAir?.description, '概要～詳細');
+    expect(items.single.nowOnAir?.detail, {'出演者': 'ABC'});
   });
 }

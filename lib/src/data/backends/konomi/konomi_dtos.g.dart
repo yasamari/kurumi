@@ -6,6 +6,15 @@ part of 'konomi_dtos.dart';
 // JsonSerializableGenerator
 // **************************************************************************
 
+KonomiGenreDto _$KonomiGenreDtoFromJson(Map<String, dynamic> json) =>
+    KonomiGenreDto(
+      major: json['major'] as String,
+      middle: json['middle'] as String,
+    );
+
+Map<String, dynamic> _$KonomiGenreDtoToJson(KonomiGenreDto instance) =>
+    <String, dynamic>{'major': instance.major, 'middle': instance.middle};
+
 KonomiProgramDto _$KonomiProgramDtoFromJson(Map<String, dynamic> json) =>
     KonomiProgramDto(
       eventId: (json['event_id'] as num).toInt(),
@@ -13,6 +22,16 @@ KonomiProgramDto _$KonomiProgramDtoFromJson(Map<String, dynamic> json) =>
       description: json['description'] as String,
       startTime: DateTime.parse(json['start_time'] as String),
       endTime: DateTime.parse(json['end_time'] as String),
+      genres:
+          (json['genres'] as List<dynamic>?)
+              ?.map((e) => KonomiGenreDto.fromJson(e as Map<String, dynamic>))
+              .toList() ??
+          const [],
+      detail:
+          (json['detail'] as Map<String, dynamic>?)?.map(
+            (k, e) => MapEntry(k, e as String),
+          ) ??
+          const {},
     );
 
 Map<String, dynamic> _$KonomiProgramDtoToJson(KonomiProgramDto instance) =>
@@ -22,6 +41,8 @@ Map<String, dynamic> _$KonomiProgramDtoToJson(KonomiProgramDto instance) =>
       'description': instance.description,
       'start_time': instance.startTime.toIso8601String(),
       'end_time': instance.endTime.toIso8601String(),
+      'genres': instance.genres,
+      'detail': instance.detail,
     };
 
 KonomiChannelDto _$KonomiChannelDtoFromJson(Map<String, dynamic> json) =>

@@ -1,7 +1,9 @@
+import '../../../core/utils/program_text.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../domain/entities/channel_item.dart';
 import '../../../domain/entities/channel_type.dart';
 import '../../../domain/entities/tv_program.dart';
+import 'mirakurun_genre.dart';
 import 'mirakurun_program_dto.dart';
 import 'mirakurun_service_dto.dart';
 
@@ -63,7 +65,8 @@ List<ChannelItem> buildMirakurunChannelItems({
       ChannelItem(
         channel: Channel(
           id: service.id.toString(),
-          name: service.name,
+          // Mirakurun の生文字列は KonomiTV 形式に正規化して表示する。
+          name: formatProgramText(service.name),
           channelType: channelTypeFromString(channel?.type),
           channelNumber: service.remoteControlKeyId != null
               ? service.remoteControlKeyId.toString().padLeft(3, '0')
@@ -85,9 +88,28 @@ TvProgram _toTvProgram(MirakurunProgramDto dto) {
   final startAt = DateTime.fromMillisecondsSinceEpoch(dto.startAt);
   return TvProgram(
     eventId: dto.eventId,
-    title: dto.name ?? '',
-    description: dto.description ?? '',
+    title: formatProgramText(dto.name ?? ''),
+    description: formatProgramText(dto.description ?? ''),
     startAt: startAt,
     endAt: startAt.add(Duration(milliseconds: dto.duration)),
+    genres: mirakurunGenreLabels(dto.genres),
+    detail: mirakurunDetailStrings(dto.extended),
   );
+}
+
+/// Mirakurun の `extended` (番組詳細) を表示用の文字列マップに変換する。
+///
+/// 値は文字列とは限らないため文字列化し、キー・値とも KonomiTV 形式に
+/// 正規化する。空文字は除く。
+Map<String, String> mirakurunDetailStrings(Map<String, dynamic> extended) {
+  final detail = <String, String>{};
+  for (final entry in extended.entries) {
+    final value = entry.value;
+    if (value == null) continue;
+    final text = value is String ? value : value.toString();
+    if (text.isEmpty) continue;
+    detail[formatProgramText(entry.key)] =
+        formatProgramText(text);
+  }
+  return detail;
 }

@@ -2,9 +2,24 @@ import 'package:json_annotation/json_annotation.dart';
 
 part 'konomi_dtos.g.dart';
 
+/// 番組ジャンル (大分類・中分類は日本語名)。
+@JsonSerializable(fieldRename: FieldRename.snake)
+class KonomiGenreDto {
+  const KonomiGenreDto({required this.major, required this.middle});
+
+  factory KonomiGenreDto.fromJson(Map<String, dynamic> json) =>
+      _$KonomiGenreDtoFromJson(json);
+
+  final String major;
+  final String middle;
+
+  Map<String, dynamic> toJson() => _$KonomiGenreDtoToJson(this);
+}
+
 /// `LiveChannel.program_present / program_following` の番組情報。
 ///
-/// 使うフィールドのみ定義し、未知フィールドは読み捨てる。
+/// 使わないフィールドは定義せず、未知フィールドは読み捨てる。
+/// `genres` はジャンル一覧、`detail` は番組詳細 (キー→説明文)。
 @JsonSerializable(fieldRename: FieldRename.snake)
 class KonomiProgramDto {
   const KonomiProgramDto({
@@ -13,6 +28,8 @@ class KonomiProgramDto {
     required this.description,
     required this.startTime,
     required this.endTime,
+    this.genres = const [],
+    this.detail = const {},
   });
 
   factory KonomiProgramDto.fromJson(Map<String, dynamic> json) =>
@@ -23,6 +40,8 @@ class KonomiProgramDto {
   final String description;
   final DateTime startTime;
   final DateTime endTime;
+  final List<KonomiGenreDto> genres;
+  final Map<String, String> detail;
 
   Map<String, dynamic> toJson() => _$KonomiProgramDtoToJson(this);
 }

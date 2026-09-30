@@ -45,5 +45,22 @@ TvProgram _toTvProgram(KonomiProgramDto dto) {
     description: dto.description,
     startAt: dto.startTime,
     endAt: dto.endTime,
+    genres: konomiGenreLabels(dto.genres),
+    detail: Map<String, String>.of(dto.detail),
   );
+}
+
+/// ジャンル一覧を表示用ラベル一覧に変換する (重複除去、順序維持)。
+///
+/// 中分類が空または大分類と同じ場合は大分類のみ、それ以外は `大分類・中分類`。
+List<String> konomiGenreLabels(List<KonomiGenreDto> genres) {
+  final labels = <String>[];
+  for (final genre in genres) {
+    final label = genre.middle.isEmpty || genre.middle == genre.major
+        ? genre.major
+        : '${genre.major}・${genre.middle}';
+    if (label.isEmpty || labels.contains(label)) continue;
+    labels.add(label);
+  }
+  return labels;
 }
