@@ -8,7 +8,7 @@ import 'package:media_kit/media_kit.dart';
 ///
 /// 前提:
 /// - mpv がリンクする ffmpeg に aribcaption デコーダが含まれていること
-///   (nixpkgs の `ffmpeg` は非対応、`ffmpeg-full` のみ対応)
+///   (flake.nix の最小構成 ffmpeg に libaribcaption を有効化している)
 ///
 /// [player] の映像を開く前に呼ぶこと。デコーダ生成時に読み込まれる。
 Future<void> applyLiveMpvOptions(Player player) async {

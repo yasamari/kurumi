@@ -38,46 +38,95 @@
         };
         androidSdk = androidPackages.androidsdk;
 
-        # media_kit は Linux ではシステムの libmpv を dlopen するため、
-        # ffmpeg フル機能版でビルドした mpv を用意する。
-        # mpv 0.41 は ffmpeg 9 に対応済み (既定の ffmpeg と同メジャー) のため、
-        # ffmpeg-full (9.x) への差し替えは ABI 互換の範囲内である。
-        mpv-unwrapped-full = pkgs.mpv-unwrapped.override {
-          ffmpeg = pkgs.ffmpeg-full.overrideAttrs (old: {
-            patches = old.patches or [ ] ++ [
-              ./mpegts-tsreadex.patch
-            ];
+        ffmpeg-minimal = pkgs.ffmpeg-headless.override {
+          withAribcaption = true;
 
-            doCheck = false;
-          });
+          # 古い GPU のハードウェアデコード用 (headless では無効)。
+          # libvdpau は小さく、mpv 側の vdpauSupport と対にする。
+          withVdpau = true;
+          # バイナリサイズ削減のため --enable-small (Android と同じ)。
+          withSmallBuild = true;
+
+          # 実行ファイル・ドキュメントは libmpv 経由の再生には不要。
+          buildFfmpeg = false;
+          buildFfplay = false;
+          buildFfprobe = false;
+          buildQtFaststart = false;
+          withSdl2 = false;
+          withDocumentation = false;
+          withHtmlDoc = false;
+          withManPages = false;
+          withPodDoc = false;
+          withTxtDoc = false;
+
+          # 放送視聴に使わない外部ライブラリを削る。
+          withAlsa = false;
+          withAmf = false;
+          withAom = false;
+          withBluray = false;
+          withGmp = false;
+          withMp3lame = false;
+          withOpenapv = false;
+          withOpencl = false;
+          withOpenjpeg = false;
+          withOpenmpt = false;
+          withRist = false;
+          withSrt = false;
+          withSsh = false;
+          withSvtav1 = false;
+          withV4l2 = false;
+          withVidStab = false;
+          withX264 = false;
+          withX265 = false;
+          withXvid = false;
+          withZvbi = false;
         };
-        mpv-full = pkgs.mpv.override {
-          mpv-unwrapped = mpv-unwrapped-full;
+        # 上に足した自前パッチ (tsreadex 由来の字幕 PES 抽出) を当てる。
+        ffmpeg-minimal-patched = ffmpeg-minimal.overrideAttrs (old: {
+          patches = old.patches or [ ] ++ [
+            ./mpegts-tsreadex.patch
+          ];
+
+          doCheck = false;
+        });
+        mpv-unwrapped-minimal = pkgs.mpv-unwrapped.override {
+          ffmpeg = ffmpeg-minimal-patched;
+          # 放送視聴に使わない mpv 機能を削る。音声出力 (alsa/pipewire/pulse)、
+          # HW デコード (vaapi/vdpau/vulkan/drm)、描画 (x11/wayland)、
+          # 色管理 (cms) は残す。
+          archiveSupport = false;
+          bluraySupport = false;
+          cacaSupport = false;
+          dvbinSupport = false;
+          dvdnavSupport = false;
+          javascriptSupport = false;
+          openalSupport = false;
+          rubberbandSupport = false;
+          zimgSupport = false;
+        };
+        mpv-minimal = pkgs.mpv.override {
+          mpv-unwrapped = mpv-unwrapped-minimal;
         };
 
         # media_kit_video の CMake は pkg-config で mpv/epoxy を解決する。
         # mpv.pc の Requires(.private) 解決には推移的依存の .pc も全て要るため、
         # 不足分を明示する。パッケージビルドと devShell で共有する。
         mediaKitLinuxDeps = with pkgs; [
-          mpv-unwrapped-full
+          mpv-unwrapped-minimal
           alsa-lib
           brotli
           bzip2
           expat
-          ffmpeg-full
+          ffmpeg-minimal-patched
           fontconfig
           freetype
           fribidi
           glib
           harfbuzz
           lcms2
-          libarchive
           libass
-          libbluray
-          libcaca
           libdisplay-info
           libdrm
-          libdvdnav
           libepoxy
           libgbm
           libglvnd
@@ -90,11 +139,8 @@
           libxkbcommon
           libxml2
           lua5_2
-          mujs
           nv-codec-headers
-          openal-soft
           pipewire
-          rubberband
           vulkan-loader
           wayland
           wayland-protocols
@@ -104,7 +150,6 @@
           libxpresent
           libxrandr
           libxscrnsaver
-          zimg
           zlib
         ];
 
@@ -145,7 +190,7 @@
           # media_kit は Linux ではシステムの libmpv を dlopen する。
           # dart:ffi の DynamicLibrary.open() は RUNPATH を見ないため、
           # builder 標準の runtimeDependencies で LD_LIBRARY_PATH に載せる。
-          runtimeDependencies = [ mpv-unwrapped-full ];
+          runtimeDependencies = [ mpv-unwrapped-minimal ];
 
           postFixup = ''
             mkdir -p $out/share/icons/hicolor/192x192/apps
@@ -194,7 +239,7 @@
             pkgs.jdk17
             pkgs.pkg-config
             # 実機確認時に libmpv 解決・mpv 単体での再生試験に使う。
-            mpv-full
+            mpv-minimal
             # `flutter run` 時の media_kit_video ビルド用 (mpv.pc 解決一式)。
           ]
           ++ mediaKitLinuxDeps;
