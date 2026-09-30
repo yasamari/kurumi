@@ -9,6 +9,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/settings/app_settings.dart';
 import '../../data/backends/konomi/konomi_live.dart';
 import '../../domain/entities/backend_type.dart';
+import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
@@ -208,6 +209,45 @@ class _SubtitleToggleButton extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+/// 前/次チャンネル切替ボタン (デスクトップ下部バー・モバイル中央ボタン用)。
+///
+/// 同一チャンネル種別内 (地デジなら地デジのみ) の順序で移動し、末尾では
+/// 反対端に回り込む。`go` で画面を置き換えるため、旧画面のPlayerは破棄され
+/// チューナーが解放される。
+class _ChannelZapButton extends ConsumerWidget {
+  const _ChannelZapButton({required this.channel, required this.isNext});
+
+  final Channel channel;
+  final bool isNext;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final ids =
+        ref.watch(nowOnAirChannelsProvider).value
+            ?.where(
+              (item) => item.channel.channelType == channel.channelType,
+            )
+            .map((item) => item.channel.id)
+            .toList() ??
+        const [];
+    final index = ids.indexOf(channel.id);
+    final enabled = ids.length > 1 && index >= 0;
+    return IconButton(
+      icon: Icon(isNext ? Icons.skip_next : Icons.skip_previous),
+      color: Colors.white,
+      tooltip: isNext ? '次のチャンネル' : '前のチャンネル',
+      onPressed: enabled
+          ? () {
+              final nextIndex = isNext
+                  ? (index + 1) % ids.length
+                  : (index - 1 + ids.length) % ids.length;
+              context.go('/watch/${ids[nextIndex]}');
+            }
+          : null,
     );
   }
 }
@@ -478,6 +518,23 @@ class _LivePlayerState extends State<_LivePlayer> {
       seekOnDoubleTap: false,
       automaticallyImplySkipNextButton: false,
       automaticallyImplySkipPreviousButton: false,
+      // 中央ボタンは既定のプレイリスト送り (単品再生では無動作) の代わりに、
+      // 前/次チャンネル送りを置く。大きさ・間隔は既定の構成を踏襲する。
+      primaryButtonBar: [
+        const Spacer(flex: 2),
+        _ChannelZapButton(
+          channel: widget.item.channel,
+          isNext: false,
+        ),
+        const Spacer(),
+        const MaterialPlayOrPauseButton(iconSize: 56.0),
+        const Spacer(),
+        _ChannelZapButton(
+          channel: widget.item.channel,
+          isNext: true,
+        ),
+        const Spacer(flex: 2),
+      ],
       // ライブに再生時刻表示は不要のため、時刻表示を外して
       // フルスクリーンボタンだけ残す。
       bottomButtonBar: const [
@@ -496,10 +553,20 @@ class _LivePlayerState extends State<_LivePlayer> {
       automaticallyImplySkipNextButton: false,
       automaticallyImplySkipPreviousButton: false,
       // ライブに再生時刻表示は不要のため、時刻表示を外して
-      // フルスクリーンボタンだけ残す。
-      bottomButtonBar: const [
-        Spacer(),
-        MaterialDesktopFullscreenButton(),
+      // 前/次 (チャンネル送り)・再生・音量・フルスクリーンボタンを残す。
+      bottomButtonBar: [
+        _ChannelZapButton(
+          channel: widget.item.channel,
+          isNext: false,
+        ),
+        const MaterialDesktopPlayOrPauseButton(),
+        _ChannelZapButton(
+          channel: widget.item.channel,
+          isNext: true,
+        ),
+        const MaterialDesktopVolumeButton(),
+        const Spacer(),
+        const MaterialDesktopFullscreenButton(),
       ],
       visibleOnMount: true,
       controlsHoverDuration: const Duration(seconds: 15),
