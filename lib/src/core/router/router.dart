@@ -4,6 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../features/player/watch_screen.dart';
 import '../../features/reservations/reservations_screen.dart';
+import '../../features/settings/about_screen.dart';
 import '../../features/settings/backend_settings_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/shell/adaptive_scaffold.dart';
@@ -71,6 +72,10 @@ GoRouter appRouter(Ref ref) {
                     path: 'backend',
                     builder: (context, state) =>
                         const BackendSettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'about',
+                    builder: (context, state) => const AboutScreen(),
                   ),
                 ],
               ),

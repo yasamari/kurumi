@@ -113,6 +113,8 @@
         src = lib.fileset.toSource {
           root = ./.;
           fileset = lib.fileset.unions [
+            ./LICENSE
+            ./THIRD-PARTY-NOTICES.md
             ./analysis_options.yaml
             ./lib
             ./linux
@@ -148,6 +150,12 @@
           postFixup = ''
             mkdir -p $out/share/icons/hicolor/192x192/apps
             cp ${icon} $out/share/icons/hicolor/192x192/apps/kurumi.png
+            # GPL の配布条件のためライセンス文書を同梱する。
+            # nix-appimage は closure ごと AppImage 化するため、
+            # ここに入れた文書は AppImage 内にも含まれる。
+            mkdir -p $out/share/doc/kurumi
+            cp ${src}/LICENSE $out/share/doc/kurumi/LICENSE
+            cp ${src}/THIRD-PARTY-NOTICES.md $out/share/doc/kurumi/THIRD-PARTY-NOTICES.md
           '';
 
           desktopItems = [
@@ -164,6 +172,9 @@
           ];
 
           meta = {
+            description = "Mirakurun / KonomiTV 向けテレビ視聴アプリ";
+            homepage = "https://github.com/yasamari/kurumi";
+            license = lib.licenses.gpl3Plus;
             platforms = lib.platforms.linux;
             mainProgram = "kurumi";
           };

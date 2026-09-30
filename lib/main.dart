@@ -3,11 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'src/core/licenses/app_licenses.dart';
 import 'src/core/router/router.dart';
 import 'src/core/theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Flutter が自動収録しないネイティブ分 (mpv/FFmpeg 等) の帰属表示。
+  registerAppLicenses();
   // media_kit のネイティブ初期化。Linux 等で必須。
   MediaKit.ensureInitialized();
   runApp(const ProviderScope(child: KurumiApp()));
