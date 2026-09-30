@@ -126,6 +126,7 @@
           lcms2
           libass
           libdisplay-info
+          libdovi
           libdrm
           libepoxy
           libgbm
@@ -133,6 +134,7 @@
           libplacebo
           libpng
           libpulseaudio
+          libunwind
           libuchardet
           libva
           libvdpau
@@ -141,6 +143,7 @@
           lua5_2
           nv-codec-headers
           pipewire
+          shaderc
           vulkan-loader
           wayland
           wayland-protocols
