@@ -219,6 +219,12 @@ class _WatchBody extends ConsumerWidget {
           url: live.url,
           title: title,
           showQualityMenu: showQualityMenu,
+          // KonomiTVは `original` (生放送TS) のときだけデインタレースする。
+          // Mirakurun (`decode=1` 固定) も生放送TSのためデインタレースする。
+          // トランスコード済み画質はプログレッシブのため不要。
+          deinterlace: showQualityMenu
+              ? isOriginalKonomiQuality(live.qualityLabel)
+              : true,
         ),
       ),
     );
@@ -234,11 +240,15 @@ class _LivePlayer extends StatefulWidget {
     required this.url,
     required this.title,
     required this.showQualityMenu,
+    required this.deinterlace,
   });
 
   final Uri url;
   final String title;
   final bool showQualityMenu;
+
+  /// 生放送TS (インターレース) のとき真。mpvの自動デインタレースに使う。
+  final bool deinterlace;
 
   @override
   State<_LivePlayer> createState() => _LivePlayerState();
@@ -294,7 +304,7 @@ class _LivePlayerState extends State<_LivePlayer> {
   ///
   /// オプションはデコーダ生成時に読まれるため、必ず `open` より前に渡す。
   Future<void> _initialize() async {
-    await applyLiveMpvOptions(_player);
+    await applyLiveMpvOptions(_player, deinterlace: widget.deinterlace);
     if (!mounted) return;
     await _open();
   }

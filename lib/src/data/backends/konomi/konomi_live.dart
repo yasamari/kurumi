@@ -31,6 +31,15 @@ String normalizeKonomiQuality(String quality) {
   return konomiLiveQualities.contains(quality) ? quality : defaultKonomiQuality;
 }
 
+/// 再エンコード無しの画質 (`original`) かを判定する。
+///
+/// `original` はインターレース放送のMPEG-2 TS直接出力のため、mpv側で
+/// デインタレースする。他画質はサーバー側でプログレッシブに再エンコード
+/// 済みのため不要。不正値は `original` に正規化される。
+bool isOriginalKonomiQuality(String quality) {
+  return normalizeKonomiQuality(quality) == defaultKonomiQuality;
+}
+
 /// KonomiTVのライブMPEG-TSストリームURLを組み立てる純粋関数。
 ///
 /// 仕様:

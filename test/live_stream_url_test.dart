@@ -82,5 +82,13 @@ void main() {
         'http://192.168.1.2:7000/api/streams/live/bs101/original/mpegts',
       );
     });
+
+    test('originalだけが生放送TS (デインタレース対象) である', () {
+      expect(isOriginalKonomiQuality('original'), isTrue);
+      expect(isOriginalKonomiQuality('720p'), isFalse);
+      expect(isOriginalKonomiQuality('1080p-hevc'), isFalse);
+      // 不正値はoriginalに正規化される
+      expect(isOriginalKonomiQuality('存在しない画質'), isTrue);
+    });
   });
 }
