@@ -181,6 +181,37 @@ Future<void> _showQualityMenu(BuildContext context, String current) async {
   container.read(watchQualityProvider.notifier).setQuality(selected);
 }
 
+/// 字幕表示のオンオフ切替ボタン (ARIB字幕など)。画質ボタンの左に置く。
+class _SubtitleToggleButton extends StatelessWidget {
+  const _SubtitleToggleButton({required this.player});
+
+  final Player player;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<Track>(
+      stream: player.stream.track,
+      builder: (context, snapshot) {
+        final current =
+            snapshot.data?.subtitle ?? player.state.track.subtitle;
+        final isOff = current.id == SubtitleTrack.no().id;
+        return IconButton(
+          icon: Icon(
+            isOff
+                ? Icons.closed_caption_off_outlined
+                : Icons.closed_caption,
+          ),
+          color: Colors.white,
+          tooltip: isOff ? '字幕を表示' : '字幕を非表示',
+          onPressed: () => player.setSubtitleTrack(
+            isOff ? SubtitleTrack.auto() : SubtitleTrack.no(),
+          ),
+        );
+      },
+    );
+  }
+}
+
 class _WatchBody extends ConsumerWidget {
   const _WatchBody({
     required this.channelId,
@@ -435,6 +466,8 @@ class _LivePlayerState extends State<_LivePlayer> {
           overflow: TextOverflow.ellipsis,
         ),
       ),
+      // 字幕切替は画質切替の左に置く (両バックエンド共通)。
+      _SubtitleToggleButton(player: _player),
       if (widget.showQualityMenu) const _QualityMenuButton(),
     ];
 
