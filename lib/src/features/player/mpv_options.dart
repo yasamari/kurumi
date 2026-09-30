@@ -26,6 +26,13 @@ Future<void> applyLiveMpvOptions(
     // web版など mpv を直接扱えない環境では何もしない。
     return;
   }
+  // 組込み low-latency プロファイルを適用する。古い mpv で名前が無い場合も
+  // media_kit の command はエラーログのみで例外にならない。
+  await platform.command(['apply-profile', 'low-latency']);
+  // media_kit 既定 32M の溜め込み上限を絞る。MPEG-2 TS (15〜24Mbps) で
+  // 数秒分の上限になる。シークしないライブのため後方向はさらに小さくする。
+  await platform.setProperty('demuxer-max-bytes', '10M');
+  await platform.setProperty('demuxer-max-back-bytes', '2M');
   await platform.setProperty('sub-lavc-o', 'sub_type=bitmap');
   await platform.setProperty('sub-visibility', 'yes');
   await platform.setProperty('deinterlace', deinterlace ? 'yes' : 'no');
