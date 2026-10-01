@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/widgets/channel_card.dart';
 import '../../domain/entities/channel_item.dart';
 import '../../domain/entities/channel_type.dart';
 import '../../domain/repositories/tv_repository.dart';
 import 'tv_providers.dart';
-import 'widgets/channel_card.dart';
 
 /// テレビ画面: 放送中チャンネルをチャンネル種別タブ+グリッドで表示する。
 class TvScreen extends ConsumerWidget {

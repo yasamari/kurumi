@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
 import '../../core/utils/time_format.dart';
+import '../../core/widgets/channel_logo.dart';
 import '../../core/widgets/program_symbol_text.dart';
 import '../../domain/entities/channel_item.dart';
+import 'channel_switch_panel.dart';
 import 'comment_list_panel.dart';
 import 'jikkyo_comment_controller.dart';
 
@@ -14,7 +16,8 @@ import 'jikkyo_comment_controller.dart';
 /// 自身でスクロールする (`SingleChildScrollView`)。呼び出し側は縦画面なら
 /// 映像の下の `Expanded` に、横画面なら映像の右の固定幅ボックスに置く。
 ///
-/// 下端に [NavigationBar] を置き、番組情報と実況コメントを切り替える。
+/// 下端に [NavigationBar] を置き、番組情報・チャンネル切替・実況コメントを
+/// 切り替える。
 ///
 /// **タブの選択状態は持たない** (制御コンポーネント)。このウィジェットは
 /// 視聴画面の `Row` / `Column` 切り替えの内側に置かれるため、画面の向きが変わると
@@ -27,6 +30,7 @@ class ProgramInfoPanel extends StatelessWidget {
     required this.controller,
     required this.selectedIndex,
     required this.onDestinationSelected,
+    required this.onChannelSelected,
   });
 
   final ChannelItem item;
@@ -34,15 +38,19 @@ class ProgramInfoPanel extends StatelessWidget {
   /// 実況コメントの取得状態。呼び出し側 ([_LivePlayerState]) が所有する。
   final JikkyoCommentController controller;
 
-  /// 選択中のタブ。0 = 番組情報、1 = コメント。
+  /// 選択中のタブ。[programTab] / [channelTab] / [commentTab] のいずれか。
   final int selectedIndex;
 
   /// タブ選択時のコールバック。
   final ValueChanged<int> onDestinationSelected;
 
+  /// チャンネル切替タブでチャンネルを選んだときのコールバック。
+  final ValueChanged<String> onChannelSelected;
+
   /// タブのインデックス定数。
   static const programTab = 0;
-  static const commentTab = 1;
+  static const channelTab = 1;
+  static const commentTab = 2;
 
   @override
   Widget build(BuildContext context) {
@@ -53,6 +61,13 @@ class ProgramInfoPanel extends StatelessWidget {
             index: selectedIndex,
             children: [
               _ProgramInfoBody(item: item),
+              // チャンネル切替タブは選択されている間だけ載せる。選択中の種別の
+              // タブ位置を初期値として持ち直すため、作り直しても問題ない。
+              if (selectedIndex == channelTab)
+                ChannelSwitchPanel(
+                  currentChannelId: item.channel.id,
+                  onChannelSelected: onChannelSelected,
+                ),
               // コメントタブが選択されている間だけ載せる。ソケットは
               // [controller] が保持しているので、ここで外しても接続は切れない
               // (向きが変わるとこのウィジェットは破棄されるため)。
@@ -71,6 +86,11 @@ class ProgramInfoPanel extends StatelessWidget {
               icon: Icon(Icons.tv_outlined),
               selectedIcon: Icon(Icons.tv),
               label: '番組情報',
+            ),
+            NavigationDestination(
+              icon: Icon(Icons.grid_view_outlined),
+              selectedIcon: Icon(Icons.grid_view),
+              label: 'チャンネル',
             ),
             NavigationDestination(
               icon: Icon(Icons.chat_bubble_outline),
@@ -178,23 +198,10 @@ class _ChannelHeader extends StatelessWidget {
 
     return Row(
       children: [
-        if (logoUrl != null)
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              width: 72,
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: Image.network(
-                  logoUrl,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) =>
-                      const SizedBox(),
-                ),
-              ),
-            ),
-          ),
-        if (logoUrl != null) const SizedBox(width: 12),
+        if (logoUrl != null) ...[
+          ChannelLogo(channel: channel),
+          const SizedBox(width: 12),
+        ],
         Expanded(
           child: Text(
             number.isEmpty ? channel.name : '$number ${channel.name}',

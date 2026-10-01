@@ -518,6 +518,9 @@ class _LivePlayerState extends State<_LivePlayer> {
         controller: _jikkyo,
         selectedIndex: _infoTabIndex,
         onDestinationSelected: _selectInfoTab,
+        // チャンネルの切替は `go` で視聴画面ごと置き換える。旧画面の Player と
+        // 実況コメントのソケットはこれで解放される。
+        onChannelSelected: (id) => context.go('/watch/$id'),
       ),
     );
     // 映像は黒帯、情報パネルはテーマの地色で描画する。
