@@ -57,6 +57,9 @@ class ProgramInfoPanel extends StatelessWidget {
     return Column(
       children: [
         Expanded(
+          // `IndexedStack` は `index` が子の範囲外だと例外を投げるため、
+          // 選択されていないタブもダミーで埋めて **3件を必ず**渡す
+          // (`if` で取り除くとコメント選択時に index 2 に対して子1件になり壊れる)。
           child: IndexedStack(
             index: selectedIndex,
             children: [
@@ -67,12 +70,16 @@ class ProgramInfoPanel extends StatelessWidget {
                 ChannelSwitchPanel(
                   currentChannelId: item.channel.id,
                   onChannelSelected: onChannelSelected,
-                ),
+                )
+              else
+                const SizedBox.shrink(),
               // コメントタブが選択されている間だけ載せる。ソケットは
               // [controller] が保持しているので、ここで外しても接続は切れない
               // (向きが変わるとこのウィジェットは破棄されるため)。
               if (selectedIndex == commentTab)
-                CommentListPanel(controller: controller),
+                CommentListPanel(controller: controller)
+              else
+                const SizedBox.shrink(),
             ],
           ),
         ),
