@@ -20,8 +20,8 @@ KonomiProgramDto _$KonomiProgramDtoFromJson(Map<String, dynamic> json) =>
       eventId: (json['event_id'] as num).toInt(),
       title: json['title'] as String,
       description: json['description'] as String,
-      startTime: DateTime.parse(json['start_time'] as String),
-      endTime: DateTime.parse(json['end_time'] as String),
+      startTime: parseKonomiDateTime(json['start_time'] as String),
+      endTime: parseKonomiDateTime(json['end_time'] as String),
       genres:
           (json['genres'] as List<dynamic>?)
               ?.map((e) => KonomiGenreDto.fromJson(e as Map<String, dynamic>))

@@ -33,15 +33,15 @@ KonomiRecordedVideoDto _$KonomiRecordedVideoDtoFromJson(
 ) => KonomiRecordedVideoDto(
   filePath: json['file_path'] as String? ?? '',
   fileSize: (json['file_size'] as num?)?.toInt() ?? 0,
-  fileModifiedAt: json['file_modified_at'] == null
-      ? null
-      : DateTime.parse(json['file_modified_at'] as String),
-  recordingStartTime: json['recording_start_time'] == null
-      ? null
-      : DateTime.parse(json['recording_start_time'] as String),
-  recordingEndTime: json['recording_end_time'] == null
-      ? null
-      : DateTime.parse(json['recording_end_time'] as String),
+  fileModifiedAt: parseKonomiNullableDateTime(
+    json['file_modified_at'] as String?,
+  ),
+  recordingStartTime: parseKonomiNullableDateTime(
+    json['recording_start_time'] as String?,
+  ),
+  recordingEndTime: parseKonomiNullableDateTime(
+    json['recording_end_time'] as String?,
+  ),
   videoCodec: json['video_codec'] as String?,
   videoResolutionWidth: (json['video_resolution_width'] as num?)?.toInt(),
   videoResolutionHeight: (json['video_resolution_height'] as num?)?.toInt(),
@@ -85,8 +85,8 @@ KonomiRecordedProgramDto _$KonomiRecordedProgramDtoFromJson(
         (k, e) => MapEntry(k, e as String),
       ) ??
       const {},
-  startTime: DateTime.parse(json['start_time'] as String),
-  endTime: DateTime.parse(json['end_time'] as String),
+  startTime: parseKonomiDateTime(json['start_time'] as String),
+  endTime: parseKonomiDateTime(json['end_time'] as String),
   duration: (json['duration'] as num?)?.toDouble() ?? 0,
   genres:
       (json['genres'] as List<dynamic>?)

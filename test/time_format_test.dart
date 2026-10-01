@@ -3,9 +3,9 @@ import 'package:kurumi/src/core/utils/time_format.dart';
 
 void main() {
   test('日時を日本語形式に整形する', () {
-    // 2026/09/29 は火曜日
+    // 2026/09/29 は火曜日。UTCで作った瞬間をJSTの壁時計で表示する。
     expect(
-      formatDateTimeJa(DateTime(2026, 9, 29, 10, 5)),
+      formatDateTimeJa(DateTime.utc(2026, 9, 29, 1, 5)),
       '2026/09/29 (火) 10:05',
     );
   });
@@ -13,8 +13,8 @@ void main() {
   test('番組枠を整形する', () {
     expect(
       formatProgramSlot(
-        DateTime(2026, 9, 29, 10, 5),
-        DateTime(2026, 9, 29, 10, 55),
+        DateTime.utc(2026, 9, 29, 1, 5),
+        DateTime.utc(2026, 9, 29, 1, 55),
       ),
       '2026/09/29 (火) 10:05 〜 10:55 (50分)',
     );
@@ -29,9 +29,9 @@ void main() {
   });
 
   test('時刻だけを整形する', () {
-    // 秒は 0 埋めされる。
-    expect(formatClockJa(DateTime(2026, 9, 29, 10, 5, 3)), '10:05:03');
-    expect(formatClockJa(DateTime(2026, 9, 29, 0, 0, 0)), '00:00:00');
-    expect(formatClockJa(DateTime(2026, 9, 29, 23, 59, 59)), '23:59:59');
+    // 秒は 0 埋めされる。JSTの壁時計で表示する。
+    expect(formatClockJa(DateTime.utc(2026, 9, 29, 1, 5, 3)), '10:05:03');
+    expect(formatClockJa(DateTime.utc(2026, 9, 28, 15, 0, 0)), '00:00:00');
+    expect(formatClockJa(DateTime.utc(2026, 9, 29, 14, 59, 59)), '23:59:59');
   });
 }

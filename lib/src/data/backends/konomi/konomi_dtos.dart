@@ -1,5 +1,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
+import 'konomi_time.dart';
+
 part 'konomi_dtos.g.dart';
 
 /// 番組ジャンル (大分類・中分類は日本語名)。
@@ -38,7 +40,9 @@ class KonomiProgramDto {
   final int eventId;
   final String title;
   final String description;
+  @JsonKey(fromJson: parseKonomiDateTime)
   final DateTime startTime;
+  @JsonKey(fromJson: parseKonomiDateTime)
   final DateTime endTime;
   final List<KonomiGenreDto> genres;
   final Map<String, String> detail;

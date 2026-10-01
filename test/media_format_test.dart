@@ -52,19 +52,20 @@ void main() {
   });
 
   test('録画期間を開始〜終了形式にする', () {
+    // UTCで作った瞬間をJSTの壁時計で表示する。
     expect(
       formatRecordingPeriod(
-        DateTime(2026, 10, 1, 1, 0),
-        DateTime(2026, 10, 1, 1, 48),
+        DateTime.utc(2026, 9, 30, 16, 0),
+        DateTime.utc(2026, 9, 30, 16, 48),
       ),
       '2026/10/01 (木) 01:00 〜 2026/10/01 (木) 01:48',
     );
     expect(
-      formatRecordingPeriod(DateTime(2026, 10, 1, 1, 0), null),
+      formatRecordingPeriod(DateTime.utc(2026, 9, 30, 16, 0), null),
       '2026/10/01 (木) 01:00 〜',
     );
     expect(
-      formatRecordingPeriod(null, DateTime(2026, 10, 1, 1, 48)),
+      formatRecordingPeriod(null, DateTime.utc(2026, 9, 30, 16, 48)),
       '〜 2026/10/01 (木) 01:48',
     );
     expect(formatRecordingPeriod(null, null), '―');
@@ -73,7 +74,7 @@ void main() {
   test('日時と文字列の不明時はダッシュにする', () {
     expect(formatFileDateTime(null), '―');
     expect(
-      formatFileDateTime(DateTime(2026, 10, 1, 2, 0)),
+      formatFileDateTime(DateTime.utc(2026, 9, 30, 17, 0)),
       '2026/10/01 (木) 02:00',
     );
     expect(formatMediaText(null), '―');

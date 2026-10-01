@@ -1,6 +1,7 @@
 import 'package:json_annotation/json_annotation.dart';
 
 import 'konomi_dtos.dart';
+import 'konomi_time.dart';
 
 part 'konomi_video_dtos.g.dart';
 
@@ -53,8 +54,11 @@ class KonomiRecordedVideoDto {
 
   final String filePath;
   final int fileSize;
+  @JsonKey(fromJson: parseKonomiNullableDateTime)
   final DateTime? fileModifiedAt;
+  @JsonKey(fromJson: parseKonomiNullableDateTime)
   final DateTime? recordingStartTime;
+  @JsonKey(fromJson: parseKonomiNullableDateTime)
   final DateTime? recordingEndTime;
   final String? videoCodec;
   final int? videoResolutionWidth;
@@ -97,7 +101,9 @@ class KonomiRecordedProgramDto {
   final String? subtitle;
   final String description;
   final Map<String, String> detail;
+  @JsonKey(fromJson: parseKonomiDateTime)
   final DateTime startTime;
+  @JsonKey(fromJson: parseKonomiDateTime)
   final DateTime endTime;
   final double duration;
   final List<KonomiGenreDto> genres;
