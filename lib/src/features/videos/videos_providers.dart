@@ -1,5 +1,6 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../data/backends/konomi/konomi_video_stream.dart';
 import '../../domain/entities/video_program.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/video_repository.dart';
@@ -155,4 +156,39 @@ Future<VideoProgram> videoDetail(Ref ref, int videoId) async {
   if (cached != null) return cached;
   final repository = ref.watch(videoRepositoryProvider);
   return repository.getVideo(videoId);
+}
+
+/// 録画再生中の画質。永続化しない。既定は `1080p`。
+///
+/// HLSでは `original` を選べないため、選択時はダウンロード再生になる。
+/// 再生画面を離れても保持する (keepAlive)。画質切替でプレイヤーを作り直す
+/// ときに初期値に戻らないようにするため。
+@Riverpod(keepAlive: true)
+class VideoPlayQuality extends _$VideoPlayQuality {
+  @override
+  String build() => defaultKonomiVideoQuality;
+
+  /// 画質を切り替える。不正値は `1080p` に正規化される。
+  void setQuality(String quality) {
+    final normalized = normalizeKonomiVideoQuality(quality);
+    if (state == normalized) return;
+    state = normalized;
+  }
+}
+
+/// 録画再生画面の情報タブ。永続化しない。0=番組情報、1=コメント。
+///
+/// 再生画面の `Row` / `Column` 切り替えの内側にあるため、選択を保つには
+/// この keepAlive provider が持つ必要がある (ライブの
+/// `watchInfoTabProvider` と同様)。
+@Riverpod(keepAlive: true)
+class VideoInfoTab extends _$VideoInfoTab {
+  @override
+  int build() => 0;
+
+  /// タブを切り替える。範囲外の値は無視する。
+  void select(int index) {
+    if (index < 0 || index > 1 || state == index) return;
+    state = index;
+  }
 }

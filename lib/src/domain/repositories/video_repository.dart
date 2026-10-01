@@ -32,6 +32,24 @@ class VideoPage {
   final int total;
 }
 
+/// 録画番組の再生ストリーム情報。
+class VideoStreamInfo {
+  const VideoStreamInfo({
+    required this.url,
+    required this.isHls,
+    required this.deinterlace,
+  });
+
+  /// 再生URL。HLS時はプレイリスト、`original` 時はダウンロードURL。
+  final Uri url;
+
+  /// HLSプレイリストかどうか。真のとき視聴中の keep-alive が必要。
+  final bool isHls;
+
+  /// インターレース解除が必要かどうか (`original` の生TSのみ真)。
+  final bool deinterlace;
+}
+
 /// バックエンド非依存の録画番組 (ビデオ) 操作インターフェース。
 abstract class VideoRepository {
   /// 録画番組一覧を30件ずつ返す。
@@ -46,4 +64,25 @@ abstract class VideoRepository {
 
   /// 録画番組1件を返す。未設定時は [BackendUnconfiguredException]。
   Future<VideoProgram> getVideo(int id);
+
+  /// 再生ストリーム情報を返す。
+  ///
+  /// [quality] は `original` (ダウンロード再生) かHLS画質名。不正値は
+  /// 既定 (`1080p`) に正規化される。[sessionId] はHLS用のセッションID
+  /// (クライアント生成)。未設定時は [BackendUnconfiguredException]。
+  VideoStreamInfo getVideoStream({
+    required int videoId,
+    required String quality,
+    required String sessionId,
+  });
+
+  /// HLS視聴セッションを維持する。再生を続けている間、定期的に呼ぶ。
+  ///
+  /// 呼ばれなくなるとサーバーがセグメント生成を止める。`original`
+  /// (ダウンロード再生) では不要。未設定時は [BackendUnconfiguredException]。
+  Future<void> keepVideoStreamAlive({
+    required int videoId,
+    required String quality,
+    required String sessionId,
+  });
 }

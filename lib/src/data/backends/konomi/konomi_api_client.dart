@@ -56,4 +56,16 @@ class KonomiApiClient {
     );
     return KonomiRecordedProgramDto.fromJson(response.data ?? {});
   }
+
+  /// HLS視聴セッションを維持する。成功時は204で本文なし。
+  Future<void> keepVideoStreamAlive({
+    required int videoId,
+    required String quality,
+    required String sessionId,
+  }) async {
+    await _dio.put<dynamic>(
+      '/api/streams/video/$videoId/$quality/keep-alive',
+      queryParameters: {'session_id': sessionId},
+    );
+  }
 }

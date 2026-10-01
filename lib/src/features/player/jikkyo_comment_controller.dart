@@ -7,6 +7,7 @@ import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_session.dart';
 import '../../data/nx_jikkyo/jikkyo_endpoints.dart';
 import '../../data/nx_jikkyo/jikkyo_watch_session.dart';
+import 'jikkyo_comment_source.dart';
 
 /// 受信したコメントをまとめて反映するまでの待ち時間。
 ///
@@ -25,7 +26,8 @@ const _commentFlushInterval = Duration(milliseconds: 100);
 ///
 /// [channelId] が空文字なら実非対応として扱い、接続しない。
 /// 使用後は必ず [dispose] でソケットを閉じること。
-class JikkyoCommentController extends ChangeNotifier {
+class JikkyoCommentController extends ChangeNotifier
+    implements JikkyoCommentSource {
   JikkyoCommentController({required String channelId})
     : _channelId = channelId,
       _state =
@@ -56,9 +58,11 @@ class JikkyoCommentController extends ChangeNotifier {
   /// バックログとライブコメントの境界コメ番。`null` は未確定。
   int? _backfillBoundary;
   /// 現在の状態。
+  @override
   JikkyoCommentsState get state => _state;
 
   /// 実況チャンネルとして対応しているか。
+  @override
   bool get isSupported => _channelId.isNotEmpty;
 
   /// 弾幕に出す新規コメント。
@@ -66,6 +70,7 @@ class JikkyoCommentController extends ChangeNotifier {
   /// NX-Jikkyo は購読開始時に直近の過去コメントをまとめて送ってくる。その
   /// 一斉表示は弾幕では不自然なため、初回バッチはすべて過去ログ扱いにして
   /// 流向しない。一覧表示は [state] を見ており、バックログも含まれる。
+  @override
   Stream<JikkyoComment> get liveComments => _live.stream;
 
   /// 接続を開始する。実非対応なら何もしない。
@@ -81,6 +86,7 @@ class JikkyoCommentController extends ChangeNotifier {
   }
 
   /// 接続をやり直す。保持済みのコメントは引き継ぐ。
+  @override
   void retry() {
     if (_disposed || _channelId.isEmpty) return;
     _disposeSessions();

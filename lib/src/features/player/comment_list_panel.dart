@@ -4,7 +4,7 @@ import '../../core/utils/time_format.dart';
 import '../../data/nx_jikkyo/jikkyo_comment.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
 import '../../data/nx_jikkyo/jikkyo_endpoints.dart';
-import 'jikkyo_comment_controller.dart';
+import 'jikkyo_comment_source.dart';
 
 /// ニコニコ実況コメントの一覧表示。
 ///
@@ -21,7 +21,7 @@ import 'jikkyo_comment_controller.dart';
 class CommentListPanel extends StatelessWidget {
   const CommentListPanel({super.key, required this.controller});
 
-  final JikkyoCommentController controller;
+  final JikkyoCommentSource controller;
 
   @override
   Widget build(BuildContext context) {

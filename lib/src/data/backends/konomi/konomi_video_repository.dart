@@ -5,6 +5,7 @@ import '../../../domain/repositories/tv_repository.dart';
 import '../../../domain/repositories/video_repository.dart';
 import 'konomi_api_client.dart';
 import 'konomi_video_filter.dart';
+import 'konomi_video_stream.dart';
 
 /// KonomiTV向け [VideoRepository] 実装。
 ///
@@ -47,5 +48,50 @@ class KonomiVideoRepository implements VideoRepository {
     }
     final dto = await _client.getVideo(id);
     return buildVideoProgram(dto: dto, baseUrl: baseUrl);
+  }
+
+  @override
+  VideoStreamInfo getVideoStream({
+    required int videoId,
+    required String quality,
+    required String sessionId,
+  }) {
+    if (baseUrl.isEmpty) {
+      throw const BackendUnconfiguredException();
+    }
+    final normalized = normalizeKonomiVideoQuality(quality);
+    if (isOriginalKonomiVideoQuality(normalized)) {
+      return VideoStreamInfo(
+        url: buildKonomiVideoDownloadUrl(baseUrl: baseUrl, videoId: videoId),
+        isHls: false,
+        deinterlace: true,
+      );
+    }
+    return VideoStreamInfo(
+      url: buildKonomiVideoHlsUrl(
+        baseUrl: baseUrl,
+        videoId: videoId,
+        quality: normalized,
+        sessionId: sessionId,
+      ),
+      isHls: true,
+      deinterlace: false,
+    );
+  }
+
+  @override
+  Future<void> keepVideoStreamAlive({
+    required int videoId,
+    required String quality,
+    required String sessionId,
+  }) async {
+    if (baseUrl.isEmpty) {
+      throw const BackendUnconfiguredException();
+    }
+    await _client.keepVideoStreamAlive(
+      videoId: videoId,
+      quality: normalizeKonomiVideoQuality(quality),
+      sessionId: sessionId,
+    );
   }
 }

@@ -4,6 +4,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../core/settings/app_settings.dart';
 import '../../domain/entities/backend_type.dart';
+import '../../features/player/video_play_screen.dart';
 import '../../features/player/watch_screen.dart';
 import '../../features/reservations/reservations_screen.dart';
 import '../../features/settings/about_screen.dart';
@@ -20,8 +21,9 @@ part 'router.g.dart';
 
 /// 5タブ構成のルーター。テレビ/ビデオ/番組表/録画予約/設定。
 ///
-/// ライブ視聴 (`/watch/:channelId`) だけはシェルの外側・root Navigator上に
-/// 積む。ナビゲーション (Bar/Rail/Drawer) を表示しないため。
+/// ライブ視聴 (`/watch/:channelId`) と録画再生 (`/videos/:videoId/play`) は
+/// シェルの外側・root Navigator上に積む。ナビゲーション (Bar/Rail/Drawer)
+/// を表示しないため。
 ///
 /// Mirakurun 使用時はビデオ・録画予約へ遷移できない。ナビゲーションからは
 /// 非表示にし、直リンク時は `/tv` へ戻す。
@@ -123,6 +125,20 @@ GoRouter appRouter(Ref ref) {
         builder: (context, state) => WatchScreen(
           channelId: state.pathParameters['channelId']!,
         ),
+      ),
+      // 録画再生もシェル外に置く。詳細 (`/videos/:id`) からのpush遷移先。
+      GoRoute(
+        path: '/videos/:videoId/play',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (context, state) {
+          final videoId = int.tryParse(
+            state.pathParameters['videoId'] ?? '',
+          );
+          if (videoId == null) {
+            return const VideosScreen();
+          }
+          return VideoPlayScreen(videoId: videoId);
+        },
       ),
     ],
   );

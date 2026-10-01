@@ -55,3 +55,27 @@ Future<void> applyLiveMpvOptions(
   await platform.setProperty('sub-visibility', 'yes');
   await platform.setProperty('deinterlace', deinterlace ? 'yes' : 'no');
 }
+
+/// 録画再生用のmpvオプションを適用する。
+///
+/// ライブ用 ([applyLiveMpvOptions]) との差分:
+/// - low-latency プロファイルを適用しない。VODはシークするため溜め込み
+///   制限も既定のままにする。
+/// - プローブ短縮をしない。HLS・ダウンロードTSのトラック検出 (字幕含む)
+///   を通常の解析に任せる。
+/// - 字幕の bitmap 描画とデインタレース制御はライブと共通。
+///
+/// [player] の映像を開く前に呼ぶこと。デコーダ生成時に読み込まれる。
+Future<void> applyVideoMpvOptions(
+  Player player, {
+  required bool deinterlace,
+}) async {
+  final platform = player.platform;
+  if (platform is! NativePlayer) {
+    // web版など mpv を直接扱えない環境では何もしない。
+    return;
+  }
+  await platform.setProperty('sub-lavc-o', 'sub_type=bitmap');
+  await platform.setProperty('sub-visibility', 'yes');
+  await platform.setProperty('deinterlace', deinterlace ? 'yes' : 'no');
+}

@@ -4,7 +4,7 @@ import '../../core/widgets/program_detail_body.dart';
 import '../../domain/entities/channel_item.dart';
 import 'channel_switch_panel.dart';
 import 'comment_list_panel.dart';
-import 'jikkyo_comment_controller.dart';
+import 'jikkyo_comment_source.dart';
 
 /// 視聴画面用の番組情報パネル。
 ///
@@ -34,7 +34,7 @@ class ProgramInfoPanel extends StatelessWidget {
   final ChannelItem item;
 
   /// 実況コメントの取得状態。呼び出し側 ([_LivePlayerState]) が所有する。
-  final JikkyoCommentController controller;
+  final JikkyoCommentSource controller;
 
   /// 選択中のタブ。[programTab] / [channelTab] / [commentTab] のいずれか。
   final int selectedIndex;

@@ -17,6 +17,7 @@ import '../tv/tv_providers.dart';
 import 'jikkyo_comment_controller.dart';
 import 'jikkyo_danmaku_overlay.dart';
 import 'mpv_options.dart';
+import 'player_control_buttons.dart';
 import 'player_error.dart';
 import 'program_info_panel.dart';
 import 'watch_providers.dart';
@@ -101,117 +102,10 @@ class _PlaceholderScaffold extends StatelessWidget {
           const Positioned(
             left: 4,
             top: 4,
-            child: SafeArea(child: _BackButton()),
+            child: SafeArea(child: PlayerBackButton()),
           ),
         ],
       ),
-    );
-  }
-}
-
-/// テレビ画面へ戻るボタン。
-class _BackButton extends StatelessWidget {
-  const _BackButton();
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      onPressed: () {
-        if (context.canPop()) {
-          context.pop();
-        } else {
-          context.go('/tv');
-        }
-      },
-      icon: const Icon(Icons.arrow_back),
-      color: Colors.white,
-      tooltip: '戻る',
-    );
-  }
-}
-
-/// 画質切替ボタン (KonomiTVのみ表示)。全17画質から選択できる。
-///
-/// `PopupMenuButton` は使わない。media_kit のコントロールは自動非表示になる
-/// と `mount=false` としてツリーから取り除かれるため、メニュー選択時点で
-/// このウィジェットが破棄されていることがある。その場合 Flutter 内部の
-/// `if (!mounted) return;` により `onSelected` が呼ばれず、画質が切り替わらない。
-/// そのため `showMenu` を直接呼び、`ProviderContainer` 経由で反映する。
-class _QualityMenuButton extends ConsumerWidget {
-  const _QualityMenuButton();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final quality = ref.watch(watchQualityProvider);
-    return IconButton(
-      icon: const Icon(Icons.high_quality_outlined),
-      color: Colors.white,
-      tooltip: '画質切替',
-      onPressed: () => _showQualityMenu(context, quality),
-    );
-  }
-}
-
-/// 画質選択メニューを表示し、選択結果を反映する。
-Future<void> _showQualityMenu(BuildContext context, String current) async {
-  // コントロールが破棄された後でも状態を反映できるよう、コンテナを先に控える。
-  final container = ProviderScope.containerOf(context, listen: false);
-  final anchorBox = context.findRenderObject() as RenderBox?;
-  final overlayBox =
-      Overlay.of(context).context.findRenderObject() as RenderBox?;
-  if (anchorBox == null || !anchorBox.hasSize) return;
-  if (overlayBox == null || !overlayBox.hasSize) return;
-
-  final origin = anchorBox.localToGlobal(Offset.zero, ancestor: overlayBox);
-  final selected = await showMenu<String>(
-    context: context,
-    // `PopupMenuButton` の既定位置指定に合わせる (ボタン直下・左右16px)。
-    position: RelativeRect.fromLTRB(
-      origin.dx + 16,
-      origin.dy + anchorBox.size.height,
-      overlayBox.size.width - origin.dx - anchorBox.size.width - 16,
-      overlayBox.size.height - origin.dy - anchorBox.size.height,
-    ),
-    items: [
-      for (final q in konomiLiveQualities)
-        CheckedPopupMenuItem<String>(
-          value: q,
-          checked: q == current,
-          child: Text(q),
-        ),
-    ],
-  );
-  if (selected == null) return;
-  container.read(watchQualityProvider.notifier).setQuality(selected);
-}
-
-/// 字幕表示のオンオフ切替ボタン (ARIB字幕など)。画質ボタンの左に置く。
-class _SubtitleToggleButton extends StatelessWidget {
-  const _SubtitleToggleButton({required this.player});
-
-  final Player player;
-
-  @override
-  Widget build(BuildContext context) {
-    return StreamBuilder<Track>(
-      stream: player.stream.track,
-      builder: (context, snapshot) {
-        final current =
-            snapshot.data?.subtitle ?? player.state.track.subtitle;
-        final isOff = current.id == SubtitleTrack.no().id;
-        return IconButton(
-          icon: Icon(
-            isOff
-                ? Icons.closed_caption_off_outlined
-                : Icons.closed_caption,
-          ),
-          color: Colors.white,
-          tooltip: isOff ? '字幕を表示' : '字幕を非表示',
-          onPressed: () => player.setSubtitleTrack(
-            isOff ? SubtitleTrack.auto() : SubtitleTrack.no(),
-          ),
-        );
-      },
     );
   }
 }
@@ -559,7 +453,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
   Widget _buildVideo(BuildContext context) {
     // AppBarの代わりに、標準コントロールの上部ボタンバーへ載せる。
     final topButtonBar = <Widget>[
-      const _BackButton(),
+      const PlayerBackButton(),
       const SizedBox(width: 8),
       Expanded(
         child: Text(
@@ -574,14 +468,20 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
         ),
       ),
       // 字幕切替は画質切替の左に置く (両バックエンド共通)。
-      _SubtitleToggleButton(player: _player),
+      SubtitleToggleButton(player: _player),
       // 弾幕切替は字幕切替の右。実況チャンネルが対応している場合のみ出す。
       if (_jikkyo.isSupported)
-        _DanmakuToggleButton(
+        DanmakuToggleButton(
           enabled: _danmakuEnabled,
           onPressed: () => setState(() => _danmakuEnabled = !_danmakuEnabled),
         ),
-      if (widget.showQualityMenu) const _QualityMenuButton(),
+      if (widget.showQualityMenu)
+        QualityMenuButton(
+          current: ref.watch(watchQualityProvider),
+          qualities: konomiLiveQualities,
+          onSelected: (quality) =>
+              ref.read(watchQualityProvider.notifier).setQuality(quality),
+        ),
     ];
 
     // ライブのためシークバー・シーク系操作を無効化する。
@@ -738,31 +638,6 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
             ),
           ),
       ],
-    );
-  }
-}
-
-/// 弾幕表示のオン/オフ切替ボタン。字幕切替ボタンの右に置く。
-///
-/// 弾幕は映像の上に描くため、操作系のボタンに載せる。
-class _DanmakuToggleButton extends StatelessWidget {
-  const _DanmakuToggleButton({
-    required this.enabled,
-    required this.onPressed,
-  });
-
-  final bool enabled;
-  final VoidCallback onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(
-        enabled ? Icons.subtitles : Icons.subtitles_off_outlined,
-      ),
-      color: Colors.white,
-      tooltip: enabled ? '弾幕を非表示' : '弾幕を表示',
-      onPressed: onPressed,
     );
   }
 }

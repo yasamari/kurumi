@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../../core/widgets/program_detail_body.dart';
 import '../../../domain/entities/video_program.dart';
@@ -14,8 +15,8 @@ import 'video_file_info_sheet.dart';
 /// サムネイルはペイン幅いっぱいに広げると 16:9 では縦に長くなりすぎるため、
 /// 高さに上限を設けて上下をクロップする。
 ///
-/// 再生・ダウンロードは今回の対象外のため、再生ボタンは準備中の案内を出す
-/// プレースホルダーにしている。
+/// 再生ボタンは録画再生画面 (`/videos/:id/play`) へ遷移する。
+/// ダウンロード機能は対象外のためボタンは置いていない。
 class VideoDetailPane extends StatelessWidget {
   const VideoDetailPane({super.key, required this.video});
 
@@ -72,15 +73,8 @@ class VideoDetailPane extends StatelessWidget {
                   children: [
                     Expanded(
                       child: FilledButton.icon(
-                        onPressed: () {
-                          ScaffoldMessenger.of(context)
-                            ..hideCurrentSnackBar()
-                            ..showSnackBar(
-                              const SnackBar(
-                                content: Text('再生機能は今後対応予定です'),
-                              ),
-                            );
-                        },
+                        onPressed: () =>
+                            context.push('/videos/${video.id}/play'),
                         icon: const Icon(Icons.play_arrow),
                         label: const Text('再生'),
                       ),

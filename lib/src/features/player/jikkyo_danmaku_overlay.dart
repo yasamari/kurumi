@@ -4,7 +4,7 @@ import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/nx_jikkyo/jikkyo_comment.dart';
-import 'jikkyo_comment_controller.dart';
+import 'jikkyo_comment_source.dart';
 import 'jikkyo_danmaku_item.dart';
 
 /// 映像に重なる弾幕オーバーレイ。
@@ -22,7 +22,7 @@ import 'jikkyo_danmaku_item.dart';
 /// **このウィジェットは映像の `Stack` 内にあるため画面回転で作り直される。**
 /// 参照と購読はこの State が持ち、作り直しのたびに `createdController` で取り
 /// 直す。弾幕は一時的なアニメーションなので作り直しで消えるのは許容する。
-/// 実況の接続自体は [JikkyoCommentController] が別に保持しているため、回転して
+/// 実況の接続自体は [JikkyoCommentSource] が別に保持しているため、回転して
 /// も切れない。
 class JikkyoDanmakuOverlay extends StatefulWidget {
   const JikkyoDanmakuOverlay({
@@ -31,7 +31,7 @@ class JikkyoDanmakuOverlay extends StatefulWidget {
     required this.enabled,
   });
 
-  final JikkyoCommentController controller;
+  final JikkyoCommentSource controller;
   final bool enabled;
 
   @override
