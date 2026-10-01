@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/utils/time_format.dart';
-import '../../core/widgets/channel_logo.dart';
-import '../../core/widgets/program_symbol_text.dart';
+import '../../core/widgets/program_detail_body.dart';
 import '../../domain/entities/channel_item.dart';
 import 'channel_switch_panel.dart';
 import 'comment_list_panel.dart';
@@ -63,7 +61,14 @@ class ProgramInfoPanel extends StatelessWidget {
           child: IndexedStack(
             index: selectedIndex,
             children: [
-              _ProgramInfoBody(item: item),
+              // 番組情報の中身はビデオ詳細と共有する [ProgramDetailBody]。
+              SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: ProgramDetailBody(
+                  channel: item.channel,
+                  program: item.nowOnAir,
+                ),
+              ),
               // チャンネル切替タブは選択されている間だけ載せる。選択中の種別の
               // タブ位置を初期値として持ち直すため、作り直しても問題ない。
               if (selectedIndex == channelTab)
@@ -106,146 +111,6 @@ class ProgramInfoPanel extends StatelessWidget {
             ),
           ],
         ),
-      ],
-    );
-  }
-}
-
-/// 番組情報タブの中身。もとの [ProgramInfoPanel] の内容そのもの。
-class _ProgramInfoBody extends StatelessWidget {
-  const _ProgramInfoBody({required this.item});
-
-  final ChannelItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final program = item.nowOnAir;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _ChannelHeader(item: item),
-          const SizedBox(height: 12),
-          if (program != null) ...[
-            ProgramSymbolText(
-              program.title,
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              formatProgramSlot(program.startAt, program.endAt),
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-            if (program.genres.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  for (final genre in program.genres) Chip(label: Text(genre)),
-                ],
-              ),
-            ],
-            if (program.description.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text(
-                '番組概要',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              ProgramSymbolText(
-                program.description,
-                style: theme.textTheme.bodyMedium,
-              ),
-            ],
-            if (program.detail.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              Text(
-                '番組詳細',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 4),
-              for (final entry in program.detail.entries) ...[
-                _DetailRow(title: entry.key, body: entry.value),
-                const SizedBox(height: 8),
-              ],
-            ],
-          ] else ...[
-            Text('番組情報がありません', style: theme.textTheme.bodyMedium),
-          ],
-        ],
-      ),
-    );
-  }
-}
-
-/// チャンネルロゴ+番号・局名のヘッダー。
-class _ChannelHeader extends StatelessWidget {
-  const _ChannelHeader({required this.item});
-
-  final ChannelItem item;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final channel = item.channel;
-    final logoUrl = channel.logoUrl;
-    final number = channel.channelNumber;
-
-    return Row(
-      children: [
-        if (logoUrl != null) ...[
-          ChannelLogo(channel: channel),
-          const SizedBox(width: 12),
-        ],
-        Expanded(
-          child: Text(
-            number.isEmpty ? channel.name : '$number ${channel.name}',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-/// 番組詳細の1項目 (見出し+本文)。
-class _DetailRow extends StatelessWidget {
-  const _DetailRow({required this.title, required this.body});
-
-  final String title;
-  final String body;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        const SizedBox(height: 2),
-        ProgramSymbolText(body, style: theme.textTheme.bodyMedium),
       ],
     );
   }

@@ -13,6 +13,7 @@ import '../../features/shell/adaptive_scaffold.dart';
 import '../../features/shell/app_destinations.dart';
 import '../../features/timetable/timetable_screen.dart';
 import '../../features/tv/tv_screen.dart';
+import '../../features/videos/video_detail_screen.dart';
 import '../../features/videos/videos_screen.dart';
 
 part 'router.g.dart';
@@ -59,6 +60,22 @@ GoRouter appRouter(Ref ref) {
               GoRoute(
                 path: '/videos',
                 builder: (context, state) => const VideosScreen(),
+                routes: [
+                  // 狭幅時の詳細プッシュ遷移先。広幅2ペイン時は親が詳細まで
+                  // 描くため使わない (`NavigableListDetailPaneScaffold` 相当)。
+                  GoRoute(
+                    path: ':videoId',
+                    builder: (context, state) {
+                      final videoId = int.tryParse(
+                        state.pathParameters['videoId'] ?? '',
+                      );
+                      if (videoId == null) {
+                        return const VideosScreen();
+                      }
+                      return VideoDetailScreen(videoId: videoId);
+                    },
+                  ),
+                ],
               ),
             ],
           ),

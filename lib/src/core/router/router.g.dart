@@ -12,6 +12,9 @@ part of 'router.dart';
 ///
 /// ライブ視聴 (`/watch/:channelId`) だけはシェルの外側・root Navigator上に
 /// 積む。ナビゲーション (Bar/Rail/Drawer) を表示しないため。
+///
+/// Mirakurun 使用時はビデオ・録画予約へ遷移できない。ナビゲーションからは
+/// 非表示にし、直リンク時は `/tv` へ戻す。
 
 @ProviderFor(appRouter)
 final appRouterProvider = AppRouterProvider._();
@@ -20,6 +23,9 @@ final appRouterProvider = AppRouterProvider._();
 ///
 /// ライブ視聴 (`/watch/:channelId`) だけはシェルの外側・root Navigator上に
 /// 積む。ナビゲーション (Bar/Rail/Drawer) を表示しないため。
+///
+/// Mirakurun 使用時はビデオ・録画予約へ遷移できない。ナビゲーションからは
+/// 非表示にし、直リンク時は `/tv` へ戻す。
 
 final class AppRouterProvider
     extends $FunctionalProvider<GoRouter, GoRouter, GoRouter>
@@ -28,6 +34,9 @@ final class AppRouterProvider
   ///
   /// ライブ視聴 (`/watch/:channelId`) だけはシェルの外側・root Navigator上に
   /// 積む。ナビゲーション (Bar/Rail/Drawer) を表示しないため。
+  ///
+  /// Mirakurun 使用時はビデオ・録画予約へ遷移できない。ナビゲーションからは
+  /// 非表示にし、直リンク時は `/tv` へ戻す。
   AppRouterProvider._()
     : super(
         from: null,
@@ -61,4 +70,4 @@ final class AppRouterProvider
   }
 }
 
-String _$appRouterHash() => r'17a03a02975e8e8ef001ad4f7184fc36df74d5b3';
+String _$appRouterHash() => r'31a2e5b40d9763acf30af077a28c5116677fce90';

@@ -115,4 +115,10 @@ class AdaptiveBreakpoints {
 
   /// これ以上: NavigationDrawer (デスクトップ)。間は NavigationRail。
   static const double drawer = 1240;
+
+  /// これ以上: ビデオ画面のリスト+詳細を2ペイン並列にする。
+  ///
+  /// Material 3 のウィンドウサイズクラスで expanded (840以上) に相当する。
+  /// タブレット縦画面 (700〜800px前後) では単ペインにして操作しやすくする。
+  static const double listDetail = 840;
 }

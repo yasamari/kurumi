@@ -59,3 +59,62 @@ final class TvRepositoryProvider
 }
 
 String _$tvRepositoryHash() => r'f0a0b0b298f57c0d00c572032aae6dccd5286f5c';
+
+/// ビデオ (録画番組) 用の [VideoRepository] を返す factory。
+///
+/// 録画番組に対応するのはKonomiTVのみ。Mirakurun選択時は空URLのリポジトリを
+/// 返し、利用時に [BackendUnconfiguredException] として扱う。ビデオ画面自体は
+/// router の redirect で Mirakurun 時に `/tv` へ戻されるため、通常は到達しない。
+
+@ProviderFor(videoRepository)
+final videoRepositoryProvider = VideoRepositoryProvider._();
+
+/// ビデオ (録画番組) 用の [VideoRepository] を返す factory。
+///
+/// 録画番組に対応するのはKonomiTVのみ。Mirakurun選択時は空URLのリポジトリを
+/// 返し、利用時に [BackendUnconfiguredException] として扱う。ビデオ画面自体は
+/// router の redirect で Mirakurun 時に `/tv` へ戻されるため、通常は到達しない。
+
+final class VideoRepositoryProvider
+    extends
+        $FunctionalProvider<VideoRepository, VideoRepository, VideoRepository>
+    with $Provider<VideoRepository> {
+  /// ビデオ (録画番組) 用の [VideoRepository] を返す factory。
+  ///
+  /// 録画番組に対応するのはKonomiTVのみ。Mirakurun選択時は空URLのリポジトリを
+  /// 返し、利用時に [BackendUnconfiguredException] として扱う。ビデオ画面自体は
+  /// router の redirect で Mirakurun 時に `/tv` へ戻されるため、通常は到達しない。
+  VideoRepositoryProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'videoRepositoryProvider',
+        isAutoDispose: true,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$videoRepositoryHash();
+
+  @$internal
+  @override
+  $ProviderElement<VideoRepository> $createElement($ProviderPointer pointer) =>
+      $ProviderElement(pointer);
+
+  @override
+  VideoRepository create(Ref ref) {
+    return videoRepository(ref);
+  }
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(VideoRepository value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<VideoRepository>(value),
+    );
+  }
+}
+
+String _$videoRepositoryHash() => r'3148b2dc92b4a0c0b8efd20c7f07bf7f4cba2bb7';
