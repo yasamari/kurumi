@@ -28,7 +28,7 @@ direnv exec . flutter pub run build_runner build --delete-conflicting-outputs
 
 `lib/src/` is layered, dependencies point inward (`features` → `domain`/`core` → `data`):
 
-- `core/` — router (`go_router`, 5-tab `StatefulShellRoute`), theme (dynamic_color), settings (SharedPreferences-backed `AppSettings` + immutable `AppSettingsState`), shared `Dio`, utils.
+- `core/` — router (`go_router`, 5-tab `StatefulShellRoute`), theme (dynamic_color), settings (SharedPreferences-backed `AppSettings` + immutable `AppSettingsState`), shared `Dio`, utils, `core/widgets/` (画面をまたいで共有するウィジェット: `ChannelCard` / `ChannelLogo` / `ProgramSymbolText`)。チャンネルカードはテレビ画面と視聴画面のチャンネル切替タブの両方で使うため `features/tv/widgets/` ではなく `core/widgets/` に置く。
 - `domain/` — backend-agnostic entities (freezed) and the `TvRepository` interface.
 - `data/backends/{mirakurun,konomi}/` — per-backend API client (dio), DTOs, `*_filter.dart` (pure mapping), repository.
 - `data/nx_jikkyo/` — ニコニコ実況コメント (NX-Jikkyo)。`TvRepository` とは別系統で、`Channel` の network_id/service_id を `jk<N>` に変換する対応表と、2本の WebSocket セッション。
@@ -50,7 +50,9 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 セッションは 2 本: `JikkyoWatchSession` (`/ws/watch`) を張り続け、`room` で得た threadId / yourPostKey から `JikkyoCommentSession` (`/ws/comment`) を起こす。過去ログは「既存より古い」コメントとして届くので `mergeJikkyoComments` (`jikkyo_comment_list.dart`) で常にコメ番順に並べ直すこと。
 
-**実況コメントは Riverpod ではなく `JikkyoCommentController` (`features/player/`, `ChangeNotifier`) が所有する。** 視聴画面は `MediaQuery.orientationOf` で `Row` と `Column` を切り替えるが、ウィジェットの型が変わるとその下の Element が作り直されるため、`Row`/`Column` の内側にある State は画面回転ごとに失われる。タブ選択とコメント接続は回転しても保たれる必要があるため、向きに依存しない `_LivePlayerState` が controller とタブ index を持ち、`dispose` でソケットを閉じる。**ここに `ConsumerWidget` や Riverpod provider を置くと回転のたびにタブが戻り、`connecting` に戻る。**
+**実況コメントは Riverpod ではなく `JikkyoCommentController` (`features/player/`, `ChangeNotifier`) が所有する。** 視聴画面は `MediaQuery.orientationOf` で `Row` と `Column` を切り替えるが、ウィジェットの型が変わるとその下の Element が作り直されるため、`Row`/`Column` の内側にある State は画面回転ごとに失われる。コメント接続は回転しても保たれる必要があるため、向きに依存しない `_LivePlayerState` が controller を持ち、`dispose` でソケットを閉じる。**ここに `ConsumerWidget` や Riverpod provider を置くと回転のたびにタブが戻り、`connecting` に戻る。**
+
+情報パネルのタブは 3 つ (番組情報 / チャンネル / コメント)。選択位置は **`watchInfoTabProvider` (`@Riverpod(keepAlive: true)`) が持つ**。`_LivePlayerState` のフィールドだとチャンネル切替でタブが戻る — 切替は `context.go('/watch/<id>')` で視聴画面ごと置き換えるため、回転と異なり `_LivePlayerState` ごと破棄される。keepAlive provider なら回転・チャンネル切替の両方で保たれる (`watch_screen.dart` の `_LivePlayer` はこのため `ConsumerStatefulWidget`)。なお `ProgramInfoPanel` の `IndexedStack` は `if` で子を落とすとコメント選択時 (index 2) に子が1件只剩って範囲外.Assertion を出すので、未選択タブも `SizedBox.shrink()` で埋めて **3件固定**で渡す。
 
 弾幕 (`canvas_danmaku`) は `Positioned.fill` で描く (`features/player/jikkyo_danmaku_overlay.dart`)。`DanmakuScreen` は `LayoutBuilder` で親の制約からサイズを取るため `Positioned.fill` が必須。**置く場所は外側の `Stack` ではなく `Video` の `controls` ビルダーが返す `Stack` の中**。`Video` は「映像テクスチャ → 字幕 → 標準コントロール」を内側の `Stack` で描画しているため、外側の `Stack` に重ねると (1) コントロールより上になる / (2) 順序を入れ替えると映像テクスチャより下になって見えない、のどちらかで破綻する。controls レイヤーの内側なら「映像の上・操作オーバーレイの下」におさまる (`watch_screen.dart`)。この `Stack` には `StackFit.expand` を指定する。`Video` 側は `Positioned.fill` で tight 制約を渡しており、標準コントロールに loose な制約を渡すとグラデーション等が縮む。コントロール自動非表示時 (`mount=false`) でもビルダーの返り値はツリーに残るので、弾幕だけが消えることはない。**ただし `Video` は `FittedBox(fit: BoxFit.contain)` で描くため、そのまま重ねるとレターボックス (黒帯・柱状) にも弾幕が出る**。映像の**表示**アスペクト比を `videoDisplayAspectOf` (`player_error.dart`) で取り、`Align` + `AspectRatio` で矩形を絞る。`FittedBox(contain)` と同じ矩形になるので幅高を自前で計算しなくてよい。比が確定するまで (`video-params` 未着・音声のみ) 弾幕は描画しない。**`w`/`h` (符号化サイズ) を使ってはいけない**: 日本語デジタル放送には 1440x1080 を 16:9 に引き伸ばすチャンネルが多く mpv が PAR 12:11 として持つため、`w`/`h` は 1.333 になるが**表示は 1.778**。ここを間違えると矩形が縦に伸びて弾幕が黒帯に侵入し、かつ端に届かない。
 

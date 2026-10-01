@@ -316,7 +316,11 @@ class _WatchBody extends ConsumerWidget {
 /// media_kitのPlayer/Controllerを所有するウィジェット。
 ///
 /// 画面離脱・画質切替時に `dispose`/`open` し直すことでチューナーを解放する。
-class _LivePlayer extends StatefulWidget {
+///
+/// 情報パネルの選択中タブは `watchInfoTabProvider` を読むため
+/// `ConsumerStatefulWidget` にする。`ConsumerWidget` ではなく Stateful なのは、
+/// 回転・チャンネル切替で作り直されても Player と実況コメントの接続を保つため。
+class _LivePlayer extends ConsumerStatefulWidget {
   const _LivePlayer({
     super.key,
     required this.url,
@@ -337,19 +341,17 @@ class _LivePlayer extends StatefulWidget {
   final bool deinterlace;
 
   @override
-  State<_LivePlayer> createState() => _LivePlayerState();
+  ConsumerState<_LivePlayer> createState() => _LivePlayerState();
 }
 
-class _LivePlayerState extends State<_LivePlayer> {
+/// [Player] と実況コメントの接続を持つ。向きに依存しない位置なので、画面回転で
+/// 作り直されても続きを保てる。情報パネルの選択中タブだけはチャンネル切替 (`go`
+/// による画面の置き換え) でも保つ必要があるため、この State ではなく
+/// `watchInfoTabProvider` が持つ。
+class _LivePlayerState extends ConsumerState<_LivePlayer> {
   late final Player _player;
   late final VideoController _controller;
   late final JikkyoCommentController _jikkyo;
-
-  /// 情報パネルの選択中タブ。
-  ///
-  /// 画面回転で情報パネルが作り直されても選択を維持するため、向きに依存しない
-  /// 位置 (この State) に保持する。
-  int _infoTabIndex = ProgramInfoPanel.programTab;
 
   /// 実況コメントの弾幕表示の on/off。
   ///
@@ -486,12 +488,11 @@ class _LivePlayerState extends State<_LivePlayer> {
 
   /// 情報パネルのタブを切り替える。
   ///
+  /// 選択位置は `watchInfoTabProvider` が持つ。画面回転でもチャンネル切り替えでも
+  /// outlive するため、ここでは State に持たせない。
+  ///
   /// 実況コメントは弾幕を既定で表示するため、視聴画面を開いた時点で既に接続
   /// 済み。ここでは接続を開始しない。
-  void _selectInfoTab(int index) {
-    if (_infoTabIndex == index) return;
-    setState(() => _infoTabIndex = index);
-  }
 
   @override
   void dispose() {
@@ -516,8 +517,9 @@ class _LivePlayerState extends State<_LivePlayer> {
       child: ProgramInfoPanel(
         item: widget.item,
         controller: _jikkyo,
-        selectedIndex: _infoTabIndex,
-        onDestinationSelected: _selectInfoTab,
+        selectedIndex: ref.watch(watchInfoTabProvider),
+        onDestinationSelected: (index) =>
+            ref.read(watchInfoTabProvider.notifier).select(index),
         // チャンネルの切替は `go` で視聴画面ごと置き換える。旧画面の Player と
         // 実況コメントのソケットはこれで解放される。
         onChannelSelected: (id) => context.go('/watch/$id'),

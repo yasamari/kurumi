@@ -78,6 +78,79 @@ abstract class _$WatchQuality extends $Notifier<String> {
   }
 }
 
+/// 情報パネルの選択中タブ。永続化しない。既定は番組情報。
+///
+/// セッション中は保持する (keepAlive)。情報パネルは画面回転でも選択を保つが、
+/// チャンネル切り替えは `go` で視聴画面ごと置き換えるため State が消える。
+/// ここに残さないとチャンネルを切り替えるたびに番組情報タブに戻ってしまう。
+
+@ProviderFor(WatchInfoTab)
+final watchInfoTabProvider = WatchInfoTabProvider._();
+
+/// 情報パネルの選択中タブ。永続化しない。既定は番組情報。
+///
+/// セッション中は保持する (keepAlive)。情報パネルは画面回転でも選択を保つが、
+/// チャンネル切り替えは `go` で視聴画面ごと置き換えるため State が消える。
+/// ここに残さないとチャンネルを切り替えるたびに番組情報タブに戻ってしまう。
+final class WatchInfoTabProvider extends $NotifierProvider<WatchInfoTab, int> {
+  /// 情報パネルの選択中タブ。永続化しない。既定は番組情報。
+  ///
+  /// セッション中は保持する (keepAlive)。情報パネルは画面回転でも選択を保つが、
+  /// チャンネル切り替えは `go` で視聴画面ごと置き換えるため State が消える。
+  /// ここに残さないとチャンネルを切り替えるたびに番組情報タブに戻ってしまう。
+  WatchInfoTabProvider._()
+    : super(
+        from: null,
+        argument: null,
+        retry: null,
+        name: r'watchInfoTabProvider',
+        isAutoDispose: false,
+        dependencies: null,
+        $allTransitiveDependencies: null,
+      );
+
+  @override
+  String debugGetCreateSourceHash() => _$watchInfoTabHash();
+
+  @$internal
+  @override
+  WatchInfoTab create() => WatchInfoTab();
+
+  /// {@macro riverpod.override_with_value}
+  Override overrideWithValue(int value) {
+    return $ProviderOverride(
+      origin: this,
+      providerOverride: $SyncValueProvider<int>(value),
+    );
+  }
+}
+
+String _$watchInfoTabHash() => r'2bf10ee58c9b61ae9fd5cf78d7d126014721de51';
+
+/// 情報パネルの選択中タブ。永続化しない。既定は番組情報。
+///
+/// セッション中は保持する (keepAlive)。情報パネルは画面回転でも選択を保つが、
+/// チャンネル切り替えは `go` で視聴画面ごと置き換えるため State が消える。
+/// ここに残さないとチャンネルを切り替えるたびに番組情報タブに戻ってしまう。
+
+abstract class _$WatchInfoTab extends $Notifier<int> {
+  int build();
+  @$mustCallSuper
+  @override
+  WhenComplete runBuild() {
+    final ref = this.ref as $Ref<int, int>;
+    final element =
+        ref.element
+            as $ClassProviderElement<
+              AnyNotifier<int, int>,
+              int,
+              Object?,
+              Object?
+            >;
+    return element.handleCreate(ref, build);
+  }
+}
+
 /// 指定チャンネルのライブストリーム情報。画質変更に追従する。
 ///
 /// チャンネル解決は放送中一覧のキャッシュから行う。見つからなければ例外送出し、

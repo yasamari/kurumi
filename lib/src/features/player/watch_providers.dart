@@ -4,6 +4,7 @@ import '../../data/backends/konomi/konomi_live.dart';
 import '../../domain/entities/live_stream.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../tv/tv_providers.dart';
+import 'program_info_panel.dart';
 
 part 'watch_providers.g.dart';
 
@@ -19,6 +20,27 @@ class WatchQuality extends _$WatchQuality {
   /// 画質を切り替える。不正値は `original` に正規化される。
   void setQuality(String quality) {
     state = normalizeKonomiQuality(quality);
+  }
+}
+
+/// 情報パネルの選択中タブ。永続化しない。既定は番組情報。
+///
+/// セッション中は保持する (keepAlive)。情報パネルは画面回転でも選択を保つが、
+/// チャンネル切り替えは `go` で視聴画面ごと置き換えるため State が消える。
+/// ここに残さないとチャンネルを切り替えるたびに番組情報タブに戻ってしまう。
+@Riverpod(keepAlive: true)
+class WatchInfoTab extends _$WatchInfoTab {
+  @override
+  int build() => ProgramInfoPanel.programTab;
+
+  /// タブを切り替える。範囲外の値は無視する。
+  void select(int index) {
+    if (index < ProgramInfoPanel.programTab ||
+        index > ProgramInfoPanel.commentTab) {
+      return;
+    }
+    if (state == index) return;
+    state = index;
   }
 }
 

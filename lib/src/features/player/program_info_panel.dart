@@ -21,8 +21,8 @@ import 'jikkyo_comment_controller.dart';
 ///
 /// **タブの選択状態は持たない** (制御コンポーネント)。このウィジェットは
 /// 視聴画面の `Row` / `Column` 切り替えの内側に置かれるため、画面の向きが変わると
-/// Element ごと作り直されて State を失う。向きが変わっても選択を保つには
-/// 呼び出し側 ([_LivePlayerState]) が保持する必要がある。
+/// Element ごと作り直されて State を失う。選択を保つには呼び出し側が
+/// `watchInfoTabProvider` (keepAlive) を持つ必要がある。
 class ProgramInfoPanel extends StatelessWidget {
   const ProgramInfoPanel({
     super.key,
