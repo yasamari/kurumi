@@ -13,6 +13,7 @@ import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../../domain/repositories/video_repository.dart';
 import '../videos/videos_providers.dart';
+import 'audio_switch.dart';
 import 'comment_list_panel.dart';
 import 'jikkyo_comment_source.dart';
 import 'jikkyo_danmaku_overlay.dart';
@@ -170,6 +171,12 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
 
   /// 実況コメントの弾幕表示の on/off。向きに依存しない State に持たせる。
   bool _danmakuEnabled = true;
+
+  /// 二重モノラルの復号チャンネル。null はステレオ (主＋副)。
+  ///
+  /// 画面回転ではこの State ごと保たれる。画質切替は URL 変更で
+  /// `_VideoPlayer` ごと置き換わるため初期値に戻る。
+  DualMonoChannel? _dualMonoChannel;
 
   StreamSubscription<String>? _errorSub;
   StreamSubscription<bool>? _playingSub;
@@ -331,6 +338,21 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
         hasAudio: _hasAudio,
       );
 
+  /// 音声メニューの選択を反映する。
+  ///
+  /// トラック選択 (二重ステレオ) は mpv にそのまま委ねる。二重モノラルは
+  /// デコーダオプションの切り替えになるため [applyDualMonoChannel] で
+  /// 音声デコーダを作り直す。
+  Future<void> _onAudioSelected(AudioChoice choice) async {
+    switch (choice) {
+      case AudioTrackChoice(:final trackId):
+        await _player.setAudioTrack(AudioTrack(trackId, null, null));
+      case DualMonoChoice(:final channel):
+        setState(() => _dualMonoChannel = channel);
+        await applyDualMonoChannel(_player, channel);
+    }
+  }
+
   @override
   void dispose() {
     _errorTimer?.cancel();
@@ -411,6 +433,11 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
         ),
       ),
       SubtitleToggleButton(player: _player),
+      AudioMenuButton(
+        player: _player,
+        dualMonoChannel: _dualMonoChannel,
+        onSelected: _onAudioSelected,
+      ),
       if (_pastComments.isSupported)
         DanmakuToggleButton(
           enabled: _danmakuEnabled,
