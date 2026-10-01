@@ -18,6 +18,29 @@ void main() {
     expect(isOriginalKonomiVideoQuality('4k'), isFalse);
   });
 
+  test('MPEG-2のoriginalのみデインタレースする', () {
+    expect(
+      needsVideoDeinterlace(isOriginal: true, videoCodec: 'MPEG-2'),
+      isTrue,
+    );
+    expect(
+      needsVideoDeinterlace(isOriginal: true, videoCodec: 'H.264'),
+      isFalse,
+    );
+    expect(
+      needsVideoDeinterlace(isOriginal: true, videoCodec: 'H.265'),
+      isFalse,
+    );
+    // コーデック不明時は生放送TSの可能性があるため解除する
+    expect(needsVideoDeinterlace(isOriginal: true), isTrue);
+    // HLSは再エンコード済みのためコーデックによらず不要
+    expect(
+      needsVideoDeinterlace(isOriginal: false, videoCodec: 'MPEG-2'),
+      isFalse,
+    );
+    expect(needsVideoDeinterlace(isOriginal: false), isFalse);
+  });
+
   test('HLSプレイリストURLを組み立てる', () {
     final url = buildKonomiVideoHlsUrl(
       baseUrl: _baseUrl,

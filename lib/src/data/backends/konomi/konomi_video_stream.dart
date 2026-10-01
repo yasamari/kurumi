@@ -31,6 +31,21 @@ const defaultKonomiVideoQuality = '1080p';
 /// 再エンコード無しの画質指定。ダウンロードAPIで再生する。
 const originalKonomiVideoQuality = 'original';
 
+/// デインタレースが必要かを判定する純粋関数。
+///
+/// `original` (ダウンロード再生) でも既にインターレース解除済みの動画が
+/// 配信されることがあるため、動画コーデックが MPEG-2 の場合にのみ解除する。
+/// HLSはサーバー側でプログレッシブに再エンコード済みのため常時不要。
+/// コーデック不明時は `original` のみ解除する (生放送TSの可能性があるため)。
+bool needsVideoDeinterlace({
+  required bool isOriginal,
+  String? videoCodec,
+}) {
+  if (!isOriginal) return false;
+  if (videoCodec == null) return true;
+  return videoCodec.toUpperCase() == 'MPEG-2';
+}
+
 /// 指定画質が有効か判定する。不正値は [defaultKonomiVideoQuality] に
 /// フォールバックする。`original` はダウンロード再生用として有効。
 String normalizeKonomiVideoQuality(String quality) {

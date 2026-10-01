@@ -64,7 +64,6 @@ class KonomiVideoRepository implements VideoRepository {
       return VideoStreamInfo(
         url: buildKonomiVideoDownloadUrl(baseUrl: baseUrl, videoId: videoId),
         isHls: false,
-        deinterlace: true,
       );
     }
     return VideoStreamInfo(
@@ -75,7 +74,6 @@ class KonomiVideoRepository implements VideoRepository {
         sessionId: sessionId,
       ),
       isHls: true,
-      deinterlace: false,
     );
   }
 

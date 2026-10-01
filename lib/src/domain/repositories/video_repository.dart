@@ -34,20 +34,13 @@ class VideoPage {
 
 /// 録画番組の再生ストリーム情報。
 class VideoStreamInfo {
-  const VideoStreamInfo({
-    required this.url,
-    required this.isHls,
-    required this.deinterlace,
-  });
+  const VideoStreamInfo({required this.url, required this.isHls});
 
   /// 再生URL。HLS時はプレイリスト、`original` 時はダウンロードURL。
   final Uri url;
 
   /// HLSプレイリストかどうか。真のとき視聴中の keep-alive が必要。
   final bool isHls;
-
-  /// インターレース解除が必要かどうか (`original` の生TSのみ真)。
-  final bool deinterlace;
 }
 
 /// バックエンド非依存の録画番組 (ビデオ) 操作インターフェース。

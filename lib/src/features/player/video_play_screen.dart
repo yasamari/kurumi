@@ -268,11 +268,18 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
 
   /// mpvオプションを適用してから映像を開く。
   ///
+  /// デインタレースは `original` かつ動画コーデックが MPEG-2 のときだけ
+  /// 有効化する。解除済みの動画に掛けても mpv は何もしないが、無駄な
+  /// 判定を避けるため事前に絞る。
+  ///
   /// オプションはデコーダ生成時に読まれるため、必ず `open` より前に渡す。
   Future<void> _initialize() async {
     await applyVideoMpvOptions(
       _player,
-      deinterlace: _stream?.deinterlace ?? false,
+      deinterlace: needsVideoDeinterlace(
+        isOriginal: widget.quality == originalKonomiVideoQuality,
+        videoCodec: widget.video.recordedFile?.videoCodec,
+      ),
     );
     if (!mounted) return;
     await _open();
