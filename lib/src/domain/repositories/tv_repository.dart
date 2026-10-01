@@ -10,7 +10,9 @@ class BackendUnconfiguredException implements Exception {
 /// バックエンド非依存のテレビ操作インターフェース。
 ///
 /// 新しいバックエンド (EDCB等) を追加する場合はこのクラスを実装し、
-/// `tvRepositoryProvider` の factory に1行追加するだけでよい。
+/// `tvRepositoryProvider` の factory に1行追加する。あわせて
+/// `BackendType` の能力 getter (`supportsVideos` 等) の switch にも
+/// 1行ずつ追加する (網羅 switch のため書き忘れはコンパイルエラーになる)。
 abstract class TvRepository {
   /// 放送中チャンネル一覧を返す。次番組も可能な範囲で含める。
   Future<List<ChannelItem>> getNowOnAirChannels();

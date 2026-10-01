@@ -34,7 +34,7 @@ direnv exec . flutter pub run build_runner build --delete-conflicting-outputs
 - `data/nx_jikkyo/` — ニコニコ実況コメント (NX-Jikkyo)。`TvRepository` とは別系統で、`Channel` の network_id/service_id を `jk<N>` に変換する対応表と、2本の WebSocket セッション。
 - `features/` — UI per tab, `shell/` holds the adaptive scaffold.
 
-Key invariants when adding a backend (Mirakurun, KonomiTV, EDCB…): implement `TvRepository`, then add one line to the switch in `domain/providers/backend_provider.dart` **plus** the `switch` cases in `BackendType.label` and `AppSettingsState.activeBaseUrl`, and a persisted URL + setter in `core/settings/app_settings.dart`. `TvRepository` doc comments state this explicitly.
+Key invariants when adding a backend (Mirakurun, KonomiTV, EDCB…): implement `TvRepository`, then add one line to the switch in `domain/providers/backend_provider.dart` **plus** the `switch` cases in `BackendType.label`, the capability getters (`supportsVideos`, `supportsRecordingReservations`), and `AppSettingsState.activeBaseUrl`, and a persisted URL + setter in `core/settings/app_settings.dart`. `TvRepository` doc comments state this explicitly. Nav availability follows automatically: `features/shell/app_destinations.dart` maps sections to those capabilities and never names a backend, so no update is needed there.
 
 Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKonomiChannelItems`) with `DateTime now` / `baseUrl` injected — keep it that way so it stays unit-testable.
 
