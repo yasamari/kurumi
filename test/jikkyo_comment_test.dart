@@ -73,6 +73,15 @@ void main() {
       expect(comment.threadId, '1');
     });
 
+    test('過去ログAPIの番組ID形式の thread もパースできる', () {
+      // 新ニコ生時代の過去ログは `lv351438966` のような番組ID形式で来る。
+      final comment = parseJikkyoChat({
+        ...minimal,
+        'thread': 'lv351438966',
+      })!;
+      expect(comment.threadId, 'lv351438966');
+    });
+
     test('必要なキーが欠けていれば null を返す', () {
       for (final key in [
         'thread',

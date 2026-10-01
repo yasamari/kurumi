@@ -4,12 +4,13 @@ part 'jikkyo_comment.freezed.dart';
 
 /// ニコニコ実況コメント1件。
 ///
-/// NX-Jikkyo のコメントセッションが `chat` メッセージとして流す
-/// ニコ生 XML 互換のフィールドを 그대로保持する。
+/// NX-Jikkyo のコメントセッションや過去ログAPIが `chat` メッセージとして流す
+/// ニコ生 XML 互換のフィールドをそのまま保持する。
+/// `threadId` は過去ログAPIでは番組ID形式 (`lv351438966` 等) の文字列が来る。
 @freezed
 abstract class JikkyoComment with _$JikkyoComment {
   const factory JikkyoComment({
-    /// 対象のスレッド ID。NX-Jikkyo は文字列で送ってくる。
+    /// 対象のスレッド ID。数値の文字列表現のほか、過去ログAPIの番組ID形式も入る。
     required String threadId,
 
     /// コメ番。スレッド内で単調増加し、**欠番があり得る**。
@@ -54,9 +55,17 @@ abstract class JikkyoComment with _$JikkyoComment {
 /// ときキーごと欠落する（本家ニコ生の仕様を NX-Jikkyo が模している）ため、
 /// 欠落と 0 を区別せずどちらも false として扱う。
 ///
+/// `thread` は過去ログAPIでは `lv351438966` のような番組ID形式でも来るため、
+/// 数値変換せず文字列のまま保持する (NX-Jikkyo WebSocket時代の数値文字列も
+/// そのまま通る)。
+///
 /// 想定外の構造 (キー不足・型違い) の場合は null を返す。
 JikkyoComment? parseJikkyoChat(Map<String, dynamic> json) {
-  final threadId = _asInt(json['thread'])?.toString();
+  final threadId = switch (json['thread']) {
+    final int v => '$v',
+    final String v when v.isNotEmpty => v,
+    _ => null,
+  };
   final no = _asInt(json['no']);
   final vpos = _asInt(json['vpos']);
   final date = _asInt(json['date']);
