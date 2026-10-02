@@ -378,16 +378,17 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final video = _buildVideo(context);
+    // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。ここで
+    // `ref.watch(videoInfoTabProvider)` するとタブ切替のたびに映像 (`Video`)
+    // まで作り直され、内部の表示パラメータ通知が飛んで映像・弾幕が一瞬止まる
+    // (ライブの `_WatchInfoPanel` と同じ理由)。
     final info = Container(
       color: Theme.of(context).colorScheme.surface,
-      child: _VideoInfoPanel(
+      child: _PlayInfoPanel(
         video: widget.video,
         comments: _pastComments,
         syncStart: _pastComments.syncStart,
         positionStream: _player.stream.position,
-        selectedIndex: ref.watch(videoInfoTabProvider),
-        onDestinationSelected: (index) =>
-            ref.read(videoInfoTabProvider.notifier).select(index),
       ),
     );
     // 映像は黒帯、情報パネルはテーマの地色で描画する。
@@ -544,6 +545,40 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
             ),
           ),
       ],
+    );
+  }
+}
+
+/// 情報パネル側だけがタブ選択を購読する。
+///
+/// タブ切替で作り直されるのはこの子だけになり、映像 (`Video`) は触られない。
+class _PlayInfoPanel extends ConsumerWidget {
+  const _PlayInfoPanel({
+    required this.video,
+    required this.comments,
+    required this.syncStart,
+    required this.positionStream,
+  });
+
+  final VideoProgram video;
+  final JikkyoCommentSource comments;
+
+  /// 再生位置0に対応する録画開始時刻。
+  final DateTime syncStart;
+
+  /// 再生位置のストリーム。
+  final Stream<Duration> positionStream;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return _VideoInfoPanel(
+      video: video,
+      comments: comments,
+      syncStart: syncStart,
+      positionStream: positionStream,
+      selectedIndex: ref.watch(videoInfoTabProvider),
+      onDestinationSelected: (index) =>
+          ref.read(videoInfoTabProvider.notifier).select(index),
     );
   }
 }

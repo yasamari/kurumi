@@ -150,6 +150,57 @@ class _ChannelZapButton extends ConsumerWidget {
   }
 }
 
+/// 情報パネル側だけがタブ選択を購読する。
+///
+/// [_LivePlayerState.build] で購読していたものをここに移した。タブ切替で
+/// 作り直されるのはこの子だけになり、映像 (`Video`) は触られない。
+class _WatchInfoPanel extends ConsumerWidget {
+  const _WatchInfoPanel({
+    required this.item,
+    required this.controller,
+    required this.onChannelSelected,
+  });
+
+  /// 番組情報パネルに表示するチャンネル+番組。
+  final ChannelItem item;
+
+  /// 実況コメントの取得状態。[_LivePlayerState] が所有する。
+  final JikkyoCommentController controller;
+
+  /// チャンネル切替タブでチャンネルを選んだときのコールバック。
+  final ValueChanged<String> onChannelSelected;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return ProgramInfoPanel(
+      item: item,
+      controller: controller,
+      selectedIndex: ref.watch(watchInfoTabProvider),
+      onDestinationSelected: (index) =>
+          ref.read(watchInfoTabProvider.notifier).select(index),
+      onChannelSelected: onChannelSelected,
+    );
+  }
+}
+
+/// 画質切替ボタンだけが画質を購読する。
+///
+/// [_LivePlayerState._buildVideo] で購読していたものをここに移した。
+/// 画質表示の更新で映像まで作り直されないようにするため。
+class _LiveQualityButton extends ConsumerWidget {
+  const _LiveQualityButton();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return QualityMenuButton(
+      current: ref.watch(watchQualityProvider),
+      qualities: konomiLiveQualities,
+      onSelected: (quality) =>
+          ref.read(watchQualityProvider.notifier).setQuality(quality),
+    );
+  }
+}
+
 class _WatchBody extends ConsumerWidget {
   const _WatchBody({
     required this.channelId,
@@ -458,14 +509,16 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final video = _buildVideo(context);
+    // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。以前は
+    // ここで `ref.watch(watchInfoTabProvider)` していたため、タブ切替のたびに
+    // 映像 (`Video`) まで作り直されていた。`Video` は `controls` の
+    // クロージャ同一性で差分判定するので、作り直すたびに内部の表示パラメータ
+    // 通知が飛んで映像・弾幕が一瞬止まる。購読を子に閉じ込めて避ける。
     final info = Container(
       color: Theme.of(context).colorScheme.surface,
-      child: ProgramInfoPanel(
+      child: _WatchInfoPanel(
         item: widget.item,
         controller: _jikkyo,
-        selectedIndex: ref.watch(watchInfoTabProvider),
-        onDestinationSelected: (index) =>
-            ref.read(watchInfoTabProvider.notifier).select(index),
         // チャンネルの切替は `go` で視聴画面ごと置き換える。旧画面の Player と
         // 実況コメントのソケットはこれで解放される。
         onChannelSelected: (id) => context.go('/watch/$id'),
@@ -533,13 +586,10 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
           enabled: _danmakuEnabled,
           onPressed: () => setState(() => _danmakuEnabled = !_danmakuEnabled),
         ),
-      if (widget.showQualityMenu)
-        QualityMenuButton(
-          current: ref.watch(watchQualityProvider),
-          qualities: konomiLiveQualities,
-          onSelected: (quality) =>
-              ref.read(watchQualityProvider.notifier).setQuality(quality),
-        ),
+      // 画質ボタンだけが画質を購読する。ここで `ref.watch` すると画質表示の
+      // 更新のたびに映像まで作り直されるため (画質切替自体は URL 変更で
+      // `_LivePlayer` ごと作り直されるので別経路)。
+      if (widget.showQualityMenu) const _LiveQualityButton(),
     ];
 
     // ライブのためシークバー・シーク系操作を無効化する。

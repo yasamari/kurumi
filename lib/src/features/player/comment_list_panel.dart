@@ -116,6 +116,10 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// プログラム側のスクロール中にスクロール通知を無視するための旗。
   bool _programmatic = false;
 
+  /// 追従スクロールの post-frame 予約があるか。同一フレーム内の複数回の
+  /// コメント到着を1回のスクロールに束ねる。
+  bool _pinScheduled = false;
+
   Duration _position = Duration.zero;
   int _lastDue = 0;
 
@@ -219,11 +223,15 @@ class _CommentListPanelState extends State<CommentListPanel> {
   ///
   /// ライブは新着が来るたび下端 (index 0) に寄せ直し、最新コメントを常に
   /// 一番下に据える。既に下端にいるときは見た目の変化は無い。
+  ///
+  /// スクロール自体は [_schedulePin] で次フレームに寄せる。コントローラーの
+  /// 通知中に `jumpTo` すると `ScrollablePositionedList` の内部 `setState` と
+  /// 再入し、古い可視範囲での不要な移動や通知の誤検出を招くため。
   void _onCommentsChanged() {
     if (!mounted) return;
     if (_isPlayback) _lastDue = _dueCount();
     setState(() {});
-    if (_following) _pinToTarget();
+    if (_following) _schedulePin();
   }
 
   /// 再生位置の進行を反映する。該当コメントが変わったときだけ作り直して
@@ -235,10 +243,27 @@ class _CommentListPanelState extends State<CommentListPanel> {
     if (due == _lastDue) return;
     _lastDue = due;
     setState(() {});
-    if (_following) _pinToTarget();
+    if (_following) _schedulePin();
+  }
+
+  /// 追従スクロールを次フレームに予約する。同一フレーム内の複数回到着は
+  /// 1回に束ね、配置確定後の新しい可視範囲で移動要否を判定する。
+  void _schedulePin() {
+    if (_pinScheduled) return;
+    _pinScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pinScheduled = false;
+      if (!mounted) return;
+      // ボタンで追従を切り直した直後は [_jumpToAnchor] 側が移動するため、
+      // ここでは追従中のまま残っている場合だけ寄せる。
+      if (_following) _pinToTarget();
+    });
   }
 
   /// 追従先を下端に据える。既に見えていれば何もしない。
+  ///
+  /// [_schedulePin] から配置確定後に呼ぶこと。通知中に同期して呼ぶと
+  /// 可視範囲が1フレーム古く、不要な移動で映像・弾幕のフレームを奪う。
   ///
   /// 瞬時に飛ぶ (アニメーションで横切ると通過する行を全て組み立てるため、
   /// コメント数に比例して固まる)。同じ位置への移動は見た目の変化が無い。
@@ -277,7 +302,12 @@ class _CommentListPanelState extends State<CommentListPanel> {
     } else {
       _programmatic = true;
       _items.jumpTo(index: index, alignment: alignment);
-      _programmatic = false;
+      // スクロール通知は配置確定後に届くため、同期して旗を戻すと
+      // プログラム側の移動をユーザー操作と誤検出して追従を切ってしまう
+      // (余計な作り直しで映像・弾幕のフレームを奪う)。次フレームまで保つ。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _programmatic = false;
+      });
     }
   }
 
