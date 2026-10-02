@@ -21,12 +21,19 @@ import 'jikkyo_comment_source.dart';
 /// ([_CommentListPanelState._jumpToAnchor] 参照)。
 const commentListFarItemDistance = 30;
 
-/// ライブの追従を切る下端からのずれ (論理ピクセル)。
+/// ライブの追従を切る末端からの距離 (論理ピクセル)。
 ///
-/// ライブ一覧は `ListView(reverse: true)` で作り、下端 (最新) のオフセットが
-/// 0 になる。プログラム側の移動は `_programmatic` で除外済みのため、ここに
-/// 届く通知はユーザー操作によるものだけになる。わずかなずれでも離脱とみなす。
-const liveFollowEdgeThreshold = 1.0;
+/// ライブ一覧は追記型の通常 `ListView` で作り、新着は末端
+/// (`maxScrollExtent`) に足される。プログラム側の移動は `_programmatic` で
+/// 除外済みのため、ここに届く通知はユーザー操作によるものだけになる。
+/// 末端から少しでも離れたら離脱とみなす。
+const liveFollowEndThreshold = 8.0;
+
+/// ライブの末端移動を省略する誤差 (論理ピクセル)。
+///
+/// 追記で伸びた分だけ飛ぶため、既に末端にいるときの `jumpTo` は何も
+/// 変えない。通知・再配置を走らせないよう、この誤差内なら飛ばさない。
+const livePinEpsilon = 1.0;
 
 /// 録画モードの再生位置に対応する行の表示添字を返す純粋関数。
 ///
@@ -75,14 +82,16 @@ IconData commentJumpIcon({
 ///
 /// リストはモードで使い分ける。
 ///
-/// - ライブモード ([syncStart]/[positionStream] なし): 通常の `ListView`
-///   (`reverse: true`) を使う。下端 (最新) のオフセットは 0 に固定されるため、
-///   新着が先頭に増えてもスクロール移動なしで下へ流れ込む。追従中は一覧の
-///   再構築だけで済み、`ScrollablePositionedList` のような毎回の位置指定
-///   (`jumpTo` による再配置・全要素の計測) が走らない。映像・弾幕と vsync を
-///   争わないための使い分けで、追従中のカクつきが消える。
+/// - ライブモード ([syncStart]/[positionStream] なし): 追記型の通常
+///   `ListView` (非 reverse、古い順) を使う。新着は末端に足すだけなので
+///   既存行の添字と内容がずれず、再構築では新着行だけが配置される
+///   (既存行は同一文字列の更新として配置を省略する)。先頭に足す設計だと
+///   可視行すべてが別内容に入れ替わり、毎回全文を整形し直すため
+///   映像・弾幕と vsync を争ってカクつく。追従中は末端への `jumpTo`
+///   だけで済み、位置指定リストのような再配置・全要素の計測は走らない。
 /// - 録画モード (両方あり): 行高が可変でも遠方へ飛べるよう
 ///   [ScrollablePositionedList] を使う (オフセット計算では届かないため)。
+///   こちらは取得後に内容が変わらないため、添字のずれは起きない。
 ///
 /// - ライブモード ([syncStart]/[positionStream] なし): 下端 (最新) にいるとき
 ///   だけ新着に追従し、最新コメントを常に一番下に据える。一度スクロールして
@@ -125,16 +134,17 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// 録画モード用。追従先の表示判定と戻るボタンの向きに使う。
   late final _positions = ItemPositionsListener.create();
 
-  /// ライブモード用。通常のスクロール位置 (`reverse: true` なので下端が 0)。
+  /// ライブモード用。新着 (末端) への移動と離脱判定に使う。
   ///
-  /// 新着はオフセットアンカーで自動表示されるため、追従中にここを動かす
-  /// 必要はない。動かすのは「最新に戻る」ボタンだけ。
+  /// 一覧は追記型のため、追従中は末端への `jumpTo` だけを走らせる。
+  /// 既存行の再配置は起きない。
   final _liveScroll = ScrollController();
 
   StreamSubscription<Duration>? _positionSub;
 
-  /// 位置通知の前回反映キー (再生位置と可視範囲)。変化時のみ作り直す。
-  Object? _positionsKey;
+  /// 前回表示した戻るボタンの向き。向きが変わるときだけ作り直すための
+  /// 比較対象 (録画・非追従時)。null は未確定。
+  IconData? _jumpIcon;
 
   /// 最新 (ライブ) / 再生位置 (録画) に追従しているか。
   bool _following = true;
@@ -160,6 +170,13 @@ class _CommentListPanelState extends State<CommentListPanel> {
     _positions.itemPositions.addListener(_onPositionsChanged);
     _positionSub = widget.positionStream?.listen(_onPosition);
     _lastDue = _dueCount();
+    // ライブは初回配置の直後に末端 (最新) へ寄せる。通常リストの初期位置は
+    // 先頭 (最古) のため、この1回が無いと新着まで最古が表示され続ける。
+    if (!_isPlayback) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _pinLiveToEnd();
+      });
+    }
   }
 
   @override
@@ -210,17 +227,18 @@ class _CommentListPanelState extends State<CommentListPanel> {
 
   /// スクロール通知による追従解除 (ライブモードのみ)。
   ///
-  /// 一度離れたらボタンで戻るまで復帰しない (手動で下端に戻しても復帰しない)。
+  /// 一度離れたらボタンで戻るまで復帰しない (手動で末端に戻しても復帰しない)。
   /// 録画モードはポインターイベントで判定するためここでは何もしない。
   ///
-  /// ライブ一覧は `reverse: true` のため下端 (最新) のオフセットが 0 になる。
-  /// プログラム側の移動は [_programmatic] で除外済みなので、しきい値を超えた
-  /// らユーザー操作による離脱とみなす。下端に戻っても自動復帰はしない。
+  /// ライブ一覧は追記型のため新着は末端 (`maxScrollExtent`) に足される。
+  /// プログラム側の移動は [_programmatic] で除外済みなので、末端からの
+  /// 距離が開いたらユーザー操作による離脱とみなす。
   bool _onScrollNotification(ScrollNotification notification) {
     if (_isPlayback || notification is! ScrollUpdateNotification) return false;
     if (_programmatic) return false;
-    if (_following &&
-        notification.metrics.pixels > liveFollowEdgeThreshold) {
+    if (!_following) return false;
+    final metrics = notification.metrics;
+    if (metrics.maxScrollExtent - metrics.pixels > liveFollowEndThreshold) {
       setState(() => _following = false);
     }
     return false;
@@ -243,52 +261,127 @@ class _CommentListPanelState extends State<CommentListPanel> {
 
   /// 可視範囲の確定に合わせて戻るボタンの向きを更新する。
   ///
-  /// 位置通知はフレーム確定後に届くため、スクロール通知の時点では可視範囲が
-  /// 1フレーム古い。ボタン表示中だけ変化分を作り直す (毎フレーム通知が来る
-  /// ためキーが変わらなければ何もしない)。
+  /// 向きが変わるときだけ作り直す (スクロール中は毎フレーム通知が来るため、
+  /// 毎回作り直すと映像のフレームを奪う)。
   void _onPositionsChanged() {
     if (!mounted || _following || !_isPlayback) return;
-    final key = (_lastDue, _visibleRange());
-    if (key == _positionsKey) return;
-    _positionsKey = key;
+    _refreshJumpIcon();
+  }
+
+  /// 追従先の行が画面内にあるかを返す。
+  ///
+  /// 録画・追従中の据え置き判定に使う。範囲不明 (配置前) は画面外扱いに
+  /// して移動側に倒す (初回着地など)。
+  bool _isAnchorVisible(int due) {
+    final comments = widget.controller.state.comments;
+    if (comments.isEmpty) return true;
+    final target = playbackBuilderIndex(
+      commentCount: comments.length,
+      dueCount: due,
+    );
+    final range = _visibleRange();
+    return range != null && target >= range.min && target <= range.max;
+  }
+
+  /// 戻るボタンの向きを最新に保つ (録画・非追従時のみ)。
+  ///
+  /// 向きが変わるときだけ作り直す。再生位置の通知は高頻度に届くため、
+  /// 向きに関わらない通知ごとの再構築は映像のフレームを奪う。
+  void _refreshJumpIcon() {
+    if (!mounted || _following || !_isPlayback) return;
+    final comments = widget.controller.state.comments;
+    final icon = commentJumpIcon(
+      isPlayback: true,
+      anchor: playbackBuilderIndex(
+        commentCount: comments.length,
+        dueCount: _lastDue,
+      ),
+      visibleRange: _visibleRange(),
+    );
+    if (icon == _jumpIcon) return;
+    _jumpIcon = icon;
     setState(() {});
   }
 
   /// コメントの増減を反映し、追従中なら表示位置を保つ。
   ///
-  /// ライブは新着が来るたび下端 (index 0) に寄せ直し、最新コメントを常に
-  /// 一番下に据える。既に下端にいるときは見た目の変化は無い。
+  /// ライブは追記で伸びた末端へ寄せ直し、最新コメントを常に一番下に据える。
+  /// 既存行の添字と内容は不変のため、再構築では新着行だけが配置される。
   ///
-  /// ライブの移動は不要 (`reverse: true` の下端アンカーで新着が自動表示
-  /// される)。毎回の `jumpTo` は位置指定リストの再配置・全要素の計測を
-  /// 走らせて映像・弾幕のフレームを奪うため、録画モードでのみ寄せる。
-  ///
-  /// スクロール自体は [_schedulePin] で次フレームに寄せる。コントローラーの
-  /// 通知中に `jumpTo` すると `ScrollablePositionedList` の内部 `setState` と
-  /// 再入し、古い可視範囲での不要な移動や通知の誤検出を招くため。
+  /// スクロール自体は次フレームに寄せる ([_scheduleLivePin]/[_schedulePin])。
+  /// 通知中に同期して動かすと配置確定前の計測で不要な移動を招くため。
   void _onCommentsChanged() {
     if (!mounted) return;
     if (_isPlayback) _lastDue = _dueCount();
     setState(() {});
-    if (_following && _isPlayback) _schedulePin();
+    if (!_following) return;
+    if (_isPlayback) {
+      _schedulePin();
+    } else {
+      _scheduleLivePin();
+    }
   }
 
-  /// 再生位置の進行を反映する。該当コメントが変わったときだけ作り直して
-  /// 追従先に飛ぶ (可視行だけの再構築で済む)。
+  /// 再生位置の進行を反映する。
+  ///
+  /// 位置通知は再生中ずっと高頻度に届く。該当コメントが変わったときだけ
+  /// 扱い、さらに表示に変化がない通知は捨てる:
+  ///
+  /// - 追従中は追従先が画面外に出たときだけ作り直す (スクロール移動を伴う)。
+  ///   画面内なら行の内容も位置も変わらないため、通知ごとの再構築は
+  ///   映像・弾幕のフレームを奪うだけになる。これが録画追従中の
+  ///   カクつきの主因だった。
+  /// - 非追従は戻るボタンの向きが変わるときだけ作り直す。
   void _onPosition(Duration position) {
     if (!mounted || !_isPlayback) return;
     _position = position;
     final due = _dueCount();
     if (due == _lastDue) return;
     _lastDue = due;
-    setState(() {});
-    if (_following) _schedulePin();
+    if (_following) {
+      if (_isAnchorVisible(due)) return;
+      setState(() {});
+      _schedulePin();
+      return;
+    }
+    _refreshJumpIcon();
+  }
+
+  /// ライブ一覧を末端 (最新) へ飛ばす。
+  ///
+  /// 配置確定後 (post-frame) に呼ぶこと。追記で伸びた分だけの移動であり、
+  /// 既存行の再配置は起きない。既に末端にいるときは何もしない。
+  void _pinLiveToEnd() {
+    if (!mounted || !_liveScroll.hasClients) return;
+    final position = _liveScroll.position;
+    if (position.maxScrollExtent - position.pixels <= livePinEpsilon) return;
+    _programmatic = true;
+    _liveScroll.jumpTo(position.maxScrollExtent);
+    // スクロール通知は配置確定後に届くため、同期して旗を戻すと
+    // プログラム側の移動をユーザー操作と誤検出して追従を切ってしまう。
+    // 次フレームまで保つ。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _programmatic = false;
+    });
+  }
+
+  /// ライブの末端への移動を次フレームに予約する (追従中のみ)。
+  ///
+  /// 同一フレーム内の複数回到着は1回に束ねる。
+  void _scheduleLivePin() {
+    if (_pinScheduled) return;
+    _pinScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _pinScheduled = false;
+      if (!mounted || _isPlayback || !_following) return;
+      _pinLiveToEnd();
+    });
   }
 
   /// 追従スクロールを次フレームに予約する。同一フレーム内の複数回到着は
   /// 1回に束ね、配置確定後の新しい可視範囲で移動要否を判定する。
   ///
-  /// 録画モードでのみ使う。ライブは下端アンカーで自動追従するため予約しない。
+  /// 録画モードでのみ使う。ライブは [_scheduleLivePin] で末端へ寄せる。
   void _schedulePin() {
     if (_pinScheduled) return;
     _pinScheduled = true;
@@ -315,15 +408,14 @@ class _CommentListPanelState extends State<CommentListPanel> {
     if (!mounted || !_items.isAttached) return;
     final comments = widget.controller.state.comments;
     if (comments.isEmpty) return;
-    final target = _isPlayback
-        ? playbackBuilderIndex(
-            commentCount: comments.length,
-            dueCount: _lastDue,
-          )
-        : 0;
-    final range = _visibleRange();
-    if (range != null && target >= range.min && target <= range.max) return;
-    _moveTo(index: target, alignment: 0);
+    if (_isAnchorVisible(_lastDue)) return;
+    _moveTo(
+      index: playbackBuilderIndex(
+        commentCount: comments.length,
+        dueCount: _lastDue,
+      ),
+      alignment: 0,
+    );
   }
 
   /// 指定行へ移動する。近傍だけアニメーションし、遠方は瞬時に飛ぶ。
@@ -357,9 +449,9 @@ class _CommentListPanelState extends State<CommentListPanel> {
 
   /// ボタンで追従に復帰する。
   ///
-  /// ライブは下端 (offset 0) へ瞬時に戻す。アニメーションで横切ると通過行を
-  /// 全て組み立てるため、近傍の滑らかさより1フレームで終わる瞬時移動を優先
-  /// する (数行の瞬間移動は視覚的にも問題ない)。
+  /// ライブは末端 (最新) へ瞬時に戻す ([_pinLiveToEnd])。アニメーションで
+  /// 横切ると通過行を全て組み立てるため、近傍の滑らかさより1フレームで
+  /// 終わる瞬時移動を優先する (数行の瞬間移動は視覚的にも問題ない)。
   ///
   /// 録画は近傍だけ滑らかに寄せ、遠方は瞬時に飛ぶ。
   void _jumpToAnchor() {
@@ -368,15 +460,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (!_isPlayback) {
-        if (!_liveScroll.hasClients) return;
-        _programmatic = true;
-        _liveScroll.jumpTo(0);
-        // スクロール通知は配置確定後に届くため、同期して旗を戻すと
-        // プログラム側の移動をユーザー操作と誤検出して追従を切ってしまう。
-        // 次フレームまで保つ。
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          _programmatic = false;
-        });
+        _pinLiveToEnd();
         return;
       }
       if (!_items.isAttached) return;
@@ -476,20 +560,22 @@ class _CommentListPanelState extends State<CommentListPanel> {
                 },
               )
             else
-              // ライブは通常の `ListView` で足りる。可変行高での任意位置
-              // ジャンプはボタン復帰の下端 (offset 0) しか使わないため。
-              // `reverse: true` の下端アンカーで新着が自動表示され、追従中に
-              // 位置指定の移動が一切走らない (カクつきの原因だった毎回の
-              // `jumpTo` が消える)。
+              // ライブは追記型の通常 `ListView` で足りる。可変行高での任意位置
+              // ジャンプは不要で、追従も末端への `jumpTo` だけで済む
+              // ([_pinLiveToEnd])。新着以外の行は添字も内容も不変のため、
+              // 再構築では新着行だけが配置される。
+              //
+              // 行は状態を持たないため KeepAlive 管理は外す (行ごとの購読・
+              // 保持の overhead を避ける)。
               ListView.builder(
                 controller: _liveScroll,
-                reverse: true,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 itemCount: comments.length,
+                addAutomaticKeepAlives: false,
                 itemBuilder: (context, index) {
-                  // `reverse: true` なので index 0 が最新 (下端)。
-                  final ascending = comments.length - 1 - index;
-                  return _CommentRow(comment: comments[ascending]);
+                  // 追記型のため添字は古い順のまま (index 0 が最古・上端、
+                  // 末尾が最新・下端)。
+                  return _CommentRow(comment: comments[index]);
                 },
               ),
             if (!_following)
