@@ -19,6 +19,7 @@ import 'jikkyo_comment_controller.dart';
 import 'jikkyo_danmaku_overlay.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
+import 'player_controls_theme.dart';
 import 'player_error.dart';
 import 'program_info_panel.dart';
 import 'watch_providers.dart';
@@ -508,7 +509,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
   Widget build(BuildContext context) {
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
-    final video = _buildVideo(context);
+    final video = _buildVideo(context, fullBleed: isLandscape);
     // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。以前は
     // ここで `ref.watch(watchInfoTabProvider)` していたため、タブ切替のたびに
     // 映像 (`Video`) まで作り直されていた。`Video` は `controls` の
@@ -548,14 +549,21 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
               Expanded(child: info),
             ],
           );
-    // 横画面はインカメラ等を避けず、画面端まで描画する (フルブリード)。
-    // 縦画面のみ SafeArea でノッチ等を避ける。
+    // 映像は横画面でも画面端まで描画する (フルブリード)。インカメラ等を
+    // 避けるためだけに画面端へ寄せているので、縦画面のみ SafeArea でノッチ等
+    // を避ける。
     if (isLandscape) return content;
     return SafeArea(child: content);
   }
 
   /// 映像+標準コントロール+エラー表示。レイアウトによらず共通。
-  Widget _buildVideo(BuildContext context) {
+  ///
+  /// [fullBleed] は映像が画面端まで描画されているかどうか (横画面) を表す。
+  /// 標準コントロールは映像の `Stack` 内に載るため映像からはみ出すことはない
+  /// が、横画面は外側の `SafeArea` が無いので、コントロール自身がシステム
+  /// インセットを避ける。下端のボタン (フルスクリーン) がシステムナビゲーション
+  /// に重ならないためだが、上端の戻るボタンもノッチを避けることになる。
+  Widget _buildVideo(BuildContext context, {required bool fullBleed}) {
     // AppBarの代わりに、標準コントロールの上部ボタンバーへ載せる。
     final topButtonBar = <Widget>[
       const PlayerBackButton(),
@@ -592,43 +600,69 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       if (widget.showQualityMenu) const _LiveQualityButton(),
     ];
 
+    // シークバーはアプリの Dynamic Color に合わせる (既定は白+赤)。
+    // ライブでは出さないが、録画再生と配色がバラバラにならないよう両方の
+    // テーマデータに入れておく。
+    final seekBar = seekBarColorsFrom(Theme.of(context).colorScheme);
+
     // ライブのためシークバー・シーク系操作を無効化する。
-    final liveMaterialTheme = MaterialVideoControlsThemeData(
-      displaySeekBar: false,
-      seekGesture: false,
-      seekOnDoubleTap: false,
-      automaticallyImplySkipNextButton: false,
-      automaticallyImplySkipPreviousButton: false,
-      // 中央ボタンは既定のプレイリスト送り (単品再生では無動作) の代わりに、
-      // 前/次チャンネル送りを置く。大きさ・間隔は既定の構成を踏襲する。
-      primaryButtonBar: [
-        const Spacer(flex: 2),
-        _ChannelZapButton(
-          channel: widget.item.channel,
-          isNext: false,
-        ),
-        const Spacer(),
-        const MaterialPlayOrPauseButton(iconSize: 56.0),
-        const Spacer(),
-        _ChannelZapButton(
-          channel: widget.item.channel,
-          isNext: true,
-        ),
-        const Spacer(flex: 2),
-      ],
-      // ライブに再生時刻表示は不要のため、時刻表示を外して
-      // フルスクリーンボタンだけ残す。
-      bottomButtonBar: const [
-        Spacer(),
-        MaterialFullscreenButton(),
-      ],
-      // 画面を開いた直後は操作ボタン (戻るボタン等) を表示しておく。
-      visibleOnMount: true,
-      // 既定3秒だと画質メニュー (全17件) を操作する前に消えてしまうため、
-      // 長く表示し続ける。
-      controlsHoverDuration: const Duration(seconds: 15),
-      topButtonBar: topButtonBar,
-    );
+    //
+    // 通常表示とフルスクリーンは余白が違うのでテーマデータを分ける
+    // (縦画面の通常表示は外側の `SafeArea` がインセットを消費済み)。
+    MaterialVideoControlsThemeData liveTheme({required bool fullscreen}) {
+      final insets = playerMobileControlsInsets(
+        fullBleed: fullBleed,
+        fullscreen: fullscreen,
+        systemPadding: MediaQuery.paddingOf(context),
+      );
+      return MaterialVideoControlsThemeData(
+        displaySeekBar: false,
+        seekGesture: false,
+        seekOnDoubleTap: false,
+        automaticallyImplySkipNextButton: false,
+        automaticallyImplySkipPreviousButton: false,
+        // シークバーは出さないが、録画再生と配色がバラバラにならないよう
+        // 入れておく。
+        seekBarColor: seekBar.track,
+        seekBarBufferColor: seekBar.buffer,
+        seekBarPositionColor: seekBar.position,
+        seekBarThumbColor: seekBar.thumb,
+        // 中央ボタンは既定のプレイリスト送り (単品再生では無動作) の代わりに、
+        // 前/次チャンネル送りを置く。大きさ・間隔は既定の構成を踏襲する。
+        primaryButtonBar: [
+          const Spacer(flex: 2),
+          _ChannelZapButton(
+            channel: widget.item.channel,
+            isNext: false,
+          ),
+          const Spacer(),
+          const MaterialPlayOrPauseButton(iconSize: 56.0),
+          const Spacer(),
+          _ChannelZapButton(
+            channel: widget.item.channel,
+            isNext: true,
+          ),
+          const Spacer(flex: 2),
+        ],
+        // ライブに再生時刻表示は不要のため、時刻表示を外して
+        // フルスクリーンボタンだけ残す。
+        bottomButtonBar: const [
+          Spacer(),
+          MaterialFullscreenButton(),
+        ],
+        // 既定 (`padding` が null) では下端のボタンが画面最下端に載り、
+        // 横画面ではシステムナビゲーションに重なる。回避はテーマデータ側でしか
+        // できないので明示する。
+        padding: insets.padding,
+        // 画面を開いた直後は操作ボタン (戻るボタン等) を表示しておく。
+        visibleOnMount: true,
+        // 既定3秒だと画質メニュー (全17件) を操作する前に消えてしまうため、
+        // 長く表示し続ける。
+        controlsHoverDuration: const Duration(seconds: 15),
+        topButtonBar: topButtonBar,
+      );
+    }
+
     final liveDesktopTheme = MaterialDesktopVideoControlsThemeData(
       displaySeekBar: false,
       automaticallyImplySkipNextButton: false,
@@ -649,6 +683,11 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
         const Spacer(),
         const MaterialDesktopFullscreenButton(),
       ],
+      // モバイル側と同じ配色 (ライブではシークバーを出さない)。
+      seekBarColor: seekBar.track,
+      seekBarBufferColor: seekBar.buffer,
+      seekBarPositionColor: seekBar.position,
+      seekBarThumbColor: seekBar.thumb,
       visibleOnMount: true,
       controlsHoverDuration: const Duration(seconds: 15),
       topButtonBar: topButtonBar,
@@ -681,8 +720,8 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     return Stack(
       children: [
         MaterialVideoControlsTheme(
-          normal: liveMaterialTheme,
-          fullscreen: liveMaterialTheme,
+          normal: liveTheme(fullscreen: false),
+          fullscreen: liveTheme(fullscreen: true),
           child: MaterialDesktopVideoControlsTheme(
             normal: liveDesktopTheme,
             fullscreen: liveDesktopTheme,

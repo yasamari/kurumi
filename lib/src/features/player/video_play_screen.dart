@@ -20,6 +20,7 @@ import 'jikkyo_danmaku_overlay.dart';
 import 'jikkyo_past_comment_controller.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
+import 'player_controls_theme.dart';
 import 'player_error.dart';
 
 /// 録画再生画面。録画番組の再生遷移先 (`/videos/:videoId/play`)。
@@ -377,7 +378,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     }
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
-    final video = _buildVideo(context);
+    final video = _buildVideo(context, fullBleed: isLandscape);
     // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。ここで
     // `ref.watch(videoInfoTabProvider)` するとタブ切替のたびに映像 (`Video`)
     // まで作り直され、内部の表示パラメータ通知が飛んで映像・弾幕が一瞬止まる
@@ -411,7 +412,9 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
               Expanded(child: info),
             ],
           );
-    // 横画面は画面端まで描画する (フルブリード)。縦画面のみ SafeArea。
+    // 映像は横画面でも画面端まで描画する (フルブリード)。インカメラ等を
+    // 避けるためだけに画面端へ寄せているので、縦画面のみ SafeArea でノッチ等
+    // を避ける。
     if (isLandscape) return content;
     return SafeArea(child: content);
   }
@@ -419,7 +422,11 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   /// 映像+標準コントロール+エラー表示。レイアウトによらず共通。
   ///
   /// ライブと異なりシークバー・シーク操作は有効のままにする。
-  Widget _buildVideo(BuildContext context) {
+  ///
+  /// [fullBleed] は映像が画面端まで描画されているかどうか (横画面) を表す。
+  /// 横画面は外側の `SafeArea` が無いので、下端のシークバーとボタン行
+  /// (時刻表示・フルスクリーンボタン) は自前でシステムナビゲーションを避ける。
+  Widget _buildVideo(BuildContext context, {required bool fullBleed}) {
     final topButtonBar = <Widget>[
       const PlayerBackButton(fallbackPath: '/videos'),
       const SizedBox(width: 8),
@@ -457,15 +464,45 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
       ),
     ];
 
-    final vodMaterialTheme = MaterialVideoControlsThemeData(
-      topButtonBar: topButtonBar,
-      visibleOnMount: true,
-      controlsHoverDuration: const Duration(seconds: 15),
-    );
+    // シークバーはアプリの Dynamic Color に合わせる (既定は白+赤)。
+    final seekBar = seekBarColorsFrom(Theme.of(context).colorScheme);
+
+    // 通常表示とフルスクリーンは余白が違うのでテーマデータを分ける
+    // (縦画面の通常表示は外側の `SafeArea` がインセットを消費済み。シークバーは
+    // 下端のまま)。
+    MaterialVideoControlsThemeData vodTheme({required bool fullscreen}) {
+      final insets = playerMobileControlsInsets(
+        fullBleed: fullBleed,
+        fullscreen: fullscreen,
+        systemPadding: MediaQuery.paddingOf(context),
+      );
+      return MaterialVideoControlsThemeData(
+        topButtonBar: topButtonBar,
+        visibleOnMount: true,
+        controlsHoverDuration: const Duration(seconds: 15),
+        // 既定 (`padding` が null) では下端のコントロールが画面最下端に載り、
+        // 横画面ではシステムナビゲーションに重なる。回避はテーマデータ側でしか
+        // できないので明示する。
+        padding: insets.padding,
+        // 既定 (`EdgeInsets.zero`) ではシークバーがボタン行の下・画面端に落ち
+        // るので、横画面・フルスクリーンではボタン行の上へ持ち上げる。
+        seekBarMargin: insets.seekBarMargin,
+        seekBarColor: seekBar.track,
+        seekBarBufferColor: seekBar.buffer,
+        seekBarPositionColor: seekBar.position,
+        seekBarThumbColor: seekBar.thumb,
+      );
+    }
+
     final vodDesktopTheme = MaterialDesktopVideoControlsThemeData(
       visibleOnMount: true,
       controlsHoverDuration: const Duration(seconds: 15),
       topButtonBar: topButtonBar,
+      // モバイル側と同じ配色。
+      seekBarColor: seekBar.track,
+      seekBarBufferColor: seekBar.buffer,
+      seekBarPositionColor: seekBar.position,
+      seekBarThumbColor: seekBar.thumb,
     );
     // 弾幕は映像の上・操作オーバーレイの下に重ねる。矩形の絞り方は
     // ライブと同様 (`JikkyoDanmakuOverlay` 参照)。
@@ -485,8 +522,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     return Stack(
       children: [
         MaterialVideoControlsTheme(
-          normal: vodMaterialTheme,
-          fullscreen: vodMaterialTheme,
+          normal: vodTheme(fullscreen: false),
+          fullscreen: vodTheme(fullscreen: true),
           child: MaterialDesktopVideoControlsTheme(
             normal: vodDesktopTheme,
             fullscreen: vodDesktopTheme,
