@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
@@ -12,8 +10,9 @@ import 'video_file_info_sheet.dart';
 /// 構成 (上から): 大サムネイル (上・左右にぴったり付け、上部の角丸なし) /
 /// 再生ボタン+ファイル情報ボタン / 共有の番組情報 ([ProgramDetailBody])。
 ///
-/// サムネイルはペイン幅いっぱいに広げると 16:9 では縦に長くなりすぎるため、
-/// 高さに上限を設けて上下をクロップする。
+/// サムネイルはペイン幅いっぱいに広げ、高さは幅の 0.35 倍 (約 10:3.5) に
+/// する。16:9 のままだと広い画面で縦に長くなりすぎるため、はみ出した
+/// ぶんは [BoxFit.cover] で上下にクロップする。
 ///
 /// 再生ボタンは録画再生画面 (`/videos/:id/play`) へ遷移する。
 /// ダウンロード機能は対象外のためボタンは置いていない。
@@ -22,8 +21,8 @@ class VideoDetailPane extends StatelessWidget {
 
   final VideoProgram video;
 
-  /// 詳細サムネイルの高さの上限。
-  static const double maxThumbnailHeight = 240;
+  /// サムネイルの高さを幅の何倍にするか (0.35 ≒ 10:3.5)。
+  static const double thumbnailHeightFactor = 0.35;
 
   @override
   Widget build(BuildContext context) {
@@ -40,13 +39,9 @@ class VideoDetailPane extends StatelessWidget {
             ),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final height = math.min(
-                  constraints.maxWidth * 9 / 16,
-                  maxThumbnailHeight,
-                );
                 return SizedBox(
                   width: double.infinity,
-                  height: height,
+                  height: constraints.maxWidth * thumbnailHeightFactor,
                   child: Image.network(
                     video.thumbnailUrl,
                     fit: BoxFit.cover,
