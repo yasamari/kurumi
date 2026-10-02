@@ -16,7 +16,17 @@ import 'jikkyo_comment_source.dart';
 /// アニメーションで数千件を横切ると通過する行を全て組み立てるため、
 /// コメント数に比例して重くなる。離れていれば [ItemScrollController.jumpTo]
 /// で目的の窓だけ組み立てる。
+///
+/// 録画モードでのみ使う。ライブは下端への瞬時復帰に統一している
+/// ([_CommentListPanelState._jumpToAnchor] 参照)。
 const commentListFarItemDistance = 30;
+
+/// ライブの追従を切る下端からのずれ (論理ピクセル)。
+///
+/// ライブ一覧は `ListView(reverse: true)` で作り、下端 (最新) のオフセットが
+/// 0 になる。プログラム側の移動は `_programmatic` で除外済みのため、ここに
+/// 届く通知はユーザー操作によるものだけになる。わずかなずれでも離脱とみなす。
+const liveFollowEdgeThreshold = 1.0;
 
 /// 録画モードの再生位置に対応する行の表示添字を返す純粋関数。
 ///
@@ -63,9 +73,16 @@ IconData commentJumpIcon({
 /// 戻ったりコメントを失ったりしない。画面回転で [ProgramInfoPanel] ごと
 /// 作り直される的就是このため (追従状態だけは初期値に戻る)。
 ///
-/// リストは `reverse: true` で最新コメントを下端に据え、スクロール位置を保った
-/// まま新着が下へ流れ込む。行高が可変でも遠方へ飛べるよう
-/// [ScrollablePositionedList] を使う (オフセット計算では届かないため)。
+/// リストはモードで使い分ける。
+///
+/// - ライブモード ([syncStart]/[positionStream] なし): 通常の `ListView`
+///   (`reverse: true`) を使う。下端 (最新) のオフセットは 0 に固定されるため、
+///   新着が先頭に増えてもスクロール移動なしで下へ流れ込む。追従中は一覧の
+///   再構築だけで済み、`ScrollablePositionedList` のような毎回の位置指定
+///   (`jumpTo` による再配置・全要素の計測) が走らない。映像・弾幕と vsync を
+///   争わないための使い分けで、追従中のカクつきが消える。
+/// - 録画モード (両方あり): 行高が可変でも遠方へ飛べるよう
+///   [ScrollablePositionedList] を使う (オフセット計算では届かないため)。
 ///
 /// - ライブモード ([syncStart]/[positionStream] なし): 下端 (最新) にいるとき
 ///   だけ新着に追従し、最新コメントを常に一番下に据える。一度スクロールして
@@ -102,8 +119,17 @@ class CommentListPanel extends StatefulWidget {
 }
 
 class _CommentListPanelState extends State<CommentListPanel> {
+  /// 録画モード用。再生位置の行へ任意ジャンプするために使う。
   final _items = ItemScrollController();
+
+  /// 録画モード用。追従先の表示判定と戻るボタンの向きに使う。
   late final _positions = ItemPositionsListener.create();
+
+  /// ライブモード用。通常のスクロール位置 (`reverse: true` なので下端が 0)。
+  ///
+  /// 新着はオフセットアンカーで自動表示されるため、追従中にここを動かす
+  /// 必要はない。動かすのは「最新に戻る」ボタンだけ。
+  final _liveScroll = ScrollController();
 
   StreamSubscription<Duration>? _positionSub;
 
@@ -153,6 +179,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
   @override
   void dispose() {
     _positionSub?.cancel();
+    _liveScroll.dispose();
     widget.controller.removeListener(_onCommentsChanged);
     _positions.itemPositions.removeListener(_onPositionsChanged);
     super.dispose();
@@ -181,13 +208,21 @@ class _CommentListPanelState extends State<CommentListPanel> {
     return (min: min, max: max);
   }
 
-  /// ライブモードの追従解除。一度離れたらボタンで戻るまで復帰しない。
+  /// スクロール通知による追従解除 (ライブモードのみ)。
   ///
-  /// プログラム側のスクロールは [_programmatic] で除外する。
+  /// 一度離れたらボタンで戻るまで復帰しない (手動で下端に戻しても復帰しない)。
+  /// 録画モードはポインターイベントで判定するためここでは何もしない。
+  ///
+  /// ライブ一覧は `reverse: true` のため下端 (最新) のオフセットが 0 になる。
+  /// プログラム側の移動は [_programmatic] で除外済みなので、しきい値を超えた
+  /// らユーザー操作による離脱とみなす。下端に戻っても自動復帰はしない。
   bool _onScrollNotification(ScrollNotification notification) {
     if (_isPlayback || notification is! ScrollUpdateNotification) return false;
     if (_programmatic) return false;
-    if (_following) setState(() => _following = false);
+    if (_following &&
+        notification.metrics.pixels > liveFollowEdgeThreshold) {
+      setState(() => _following = false);
+    }
     return false;
   }
 
@@ -224,6 +259,10 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// ライブは新着が来るたび下端 (index 0) に寄せ直し、最新コメントを常に
   /// 一番下に据える。既に下端にいるときは見た目の変化は無い。
   ///
+  /// ライブの移動は不要 (`reverse: true` の下端アンカーで新着が自動表示
+  /// される)。毎回の `jumpTo` は位置指定リストの再配置・全要素の計測を
+  /// 走らせて映像・弾幕のフレームを奪うため、録画モードでのみ寄せる。
+  ///
   /// スクロール自体は [_schedulePin] で次フレームに寄せる。コントローラーの
   /// 通知中に `jumpTo` すると `ScrollablePositionedList` の内部 `setState` と
   /// 再入し、古い可視範囲での不要な移動や通知の誤検出を招くため。
@@ -231,7 +270,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
     if (!mounted) return;
     if (_isPlayback) _lastDue = _dueCount();
     setState(() {});
-    if (_following) _schedulePin();
+    if (_following && _isPlayback) _schedulePin();
   }
 
   /// 再生位置の進行を反映する。該当コメントが変わったときだけ作り直して
@@ -248,6 +287,8 @@ class _CommentListPanelState extends State<CommentListPanel> {
 
   /// 追従スクロールを次フレームに予約する。同一フレーム内の複数回到着は
   /// 1回に束ね、配置確定後の新しい可視範囲で移動要否を判定する。
+  ///
+  /// 録画モードでのみ使う。ライブは下端アンカーで自動追従するため予約しない。
   void _schedulePin() {
     if (_pinScheduled) return;
     _pinScheduled = true;
@@ -262,8 +303,9 @@ class _CommentListPanelState extends State<CommentListPanel> {
 
   /// 追従先を下端に据える。既に見えていれば何もしない。
   ///
-  /// [_schedulePin] から配置確定後に呼ぶこと。通知中に同期して呼ぶと
-  /// 可視範囲が1フレーム古く、不要な移動で映像・弾幕のフレームを奪う。
+  /// 録画モードでのみ使う ([_schedulePin] から配置確定後に呼ぶこと)。
+  /// 通知中に同期して呼ぶと可視範囲が1フレーム古く、不要な移動で
+  /// 映像・弾幕のフレームを奪う。
   ///
   /// 瞬時に飛ぶ (アニメーションで横切ると通過する行を全て組み立てるため、
   /// コメント数に比例して固まる)。同じ位置への移動は見た目の変化が無い。
@@ -285,6 +327,8 @@ class _CommentListPanelState extends State<CommentListPanel> {
   }
 
   /// 指定行へ移動する。近傍だけアニメーションし、遠方は瞬時に飛ぶ。
+  ///
+  /// 録画モードでのみ使う (ライブの復帰は `_liveScroll` への瞬時移動)。
   void _moveTo({required int index, required double alignment, bool animate = false}) {
     if (!mounted || !_items.isAttached) return;
     if (animate) {
@@ -311,20 +355,37 @@ class _CommentListPanelState extends State<CommentListPanel> {
     }
   }
 
-  /// ボタンで追従に復帰する。近傍は滑らかに寄せ、遠方は瞬時に飛ぶ。
+  /// ボタンで追従に復帰する。
+  ///
+  /// ライブは下端 (offset 0) へ瞬時に戻す。アニメーションで横切ると通過行を
+  /// 全て組み立てるため、近傍の滑らかさより1フレームで終わる瞬時移動を優先
+  /// する (数行の瞬間移動は視覚的にも問題ない)。
+  ///
+  /// 録画は近傍だけ滑らかに寄せ、遠方は瞬時に飛ぶ。
   void _jumpToAnchor() {
     setState(() => _following = true);
     // 初回組み立て直後など未装着の場合に備えて次フレームで試す。
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_items.isAttached) return;
+      if (!mounted) return;
+      if (!_isPlayback) {
+        if (!_liveScroll.hasClients) return;
+        _programmatic = true;
+        _liveScroll.jumpTo(0);
+        // スクロール通知は配置確定後に届くため、同期して旗を戻すと
+        // プログラム側の移動をユーザー操作と誤検出して追従を切ってしまう。
+        // 次フレームまで保つ。
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _programmatic = false;
+        });
+        return;
+      }
+      if (!_items.isAttached) return;
       final comments = widget.controller.state.comments;
       if (comments.isEmpty) return;
-      final target = _isPlayback
-          ? playbackBuilderIndex(
-              commentCount: comments.length,
-              dueCount: _lastDue,
-            )
-          : 0;
+      final target = playbackBuilderIndex(
+        commentCount: comments.length,
+        dueCount: _lastDue,
+      );
       final range = _visibleRange();
       var distance = -1;
       if (range != null) {
@@ -384,6 +445,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
       );
     }
     // 録画の再生位置に対応する行 (表示添字)。追従先とボタンの向きに使う。
+    // ライブのボタンは常に下向きなので添字は不要。
     final anchor = _isPlayback
         ? playbackBuilderIndex(
             commentCount: comments.length,
@@ -397,21 +459,39 @@ class _CommentListPanelState extends State<CommentListPanel> {
         onNotification: _onScrollNotification,
         child: Stack(
           children: [
-            ScrollablePositionedList.builder(
-              itemScrollController: _items,
-              itemPositionsListener: _positions,
-              reverse: true,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: comments.length,
-              // 録画は初回から再生位置に着地させる (末尾一瞬映りを避ける)。
-              initialScrollIndex: _isPlayback ? anchor : 0,
-              initialAlignment: 0,
-              itemBuilder: (context, index) {
-                // `reverse: true` なので index 0 が最新 (下端)。
-                final ascending = comments.length - 1 - index;
-                return _CommentRow(comment: comments[ascending]);
-              },
-            ),
+            if (_isPlayback)
+              ScrollablePositionedList.builder(
+                itemScrollController: _items,
+                itemPositionsListener: _positions,
+                reverse: true,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: comments.length,
+                // 録画は初回から再生位置に着地させる (末尾一瞬映りを避ける)。
+                initialScrollIndex: anchor,
+                initialAlignment: 0,
+                itemBuilder: (context, index) {
+                  // `reverse: true` なので index 0 が最新 (下端)。
+                  final ascending = comments.length - 1 - index;
+                  return _CommentRow(comment: comments[ascending]);
+                },
+              )
+            else
+              // ライブは通常の `ListView` で足りる。可変行高での任意位置
+              // ジャンプはボタン復帰の下端 (offset 0) しか使わないため。
+              // `reverse: true` の下端アンカーで新着が自動表示され、追従中に
+              // 位置指定の移動が一切走らない (カクつきの原因だった毎回の
+              // `jumpTo` が消える)。
+              ListView.builder(
+                controller: _liveScroll,
+                reverse: true,
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                itemCount: comments.length,
+                itemBuilder: (context, index) {
+                  // `reverse: true` なので index 0 が最新 (下端)。
+                  final ascending = comments.length - 1 - index;
+                  return _CommentRow(comment: comments[ascending]);
+                },
+              ),
             if (!_following)
               Positioned(
                 left: 0,
@@ -426,7 +506,8 @@ class _CommentListPanelState extends State<CommentListPanel> {
                       commentJumpIcon(
                         isPlayback: _isPlayback,
                         anchor: anchor,
-                        visibleRange: _visibleRange(),
+                        // ライブは常に下向きなので可視範囲は不要。
+                        visibleRange: _isPlayback ? _visibleRange() : null,
                       ),
                     ),
                   ),
