@@ -1,24 +1,28 @@
 import 'package:flutter/material.dart';
 
-/// dynamic_color 対応のテーマ生成。
+/// Dynamic Color 非対応 (Android 12 未満、Android 以外、取得失敗) 時のシード色。
+const Color _fallbackSeed = Colors.deepOrange;
+
+/// ライトテーマを生成する。
 ///
-/// dynamic_color 2.x の `DynamicColorBuilder` が返す配色から primary を
-/// シード色として受け取り (`main.dart` で変換)、Material 3 の配色を生成する。
-/// シードが null の場合 (非対応OS等) は既定色にフォールバックする。
-ThemeData buildLightTheme(Color? dynamicSeed) {
+/// [dynamicScheme] が非 null ならそれがそのまま使われる。null のときは
+/// [_fallbackSeed] から Material 3 の配色を作る。
+ThemeData buildLightTheme(ColorScheme? dynamicScheme) {
   return ThemeData(
     colorScheme:
-        ColorScheme.fromSeed(seedColor: dynamicSeed ?? Colors.deepOrange),
+        dynamicScheme ?? ColorScheme.fromSeed(seedColor: _fallbackSeed),
     useMaterial3: true,
   );
 }
 
-ThemeData buildDarkTheme(Color? dynamicSeed) {
+/// ダークテーマを生成する。引数の意味は [buildLightTheme] と同じ。
+ThemeData buildDarkTheme(ColorScheme? dynamicScheme) {
   return ThemeData(
-    colorScheme: ColorScheme.fromSeed(
-      seedColor: dynamicSeed ?? Colors.deepOrange,
-      brightness: Brightness.dark,
-    ),
+    colorScheme: dynamicScheme ??
+        ColorScheme.fromSeed(
+          seedColor: _fallbackSeed,
+          brightness: Brightness.dark,
+        ),
     useMaterial3: true,
   );
 }

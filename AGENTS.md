@@ -28,7 +28,7 @@ direnv exec . flutter pub run build_runner build --delete-conflicting-outputs
 
 `lib/src/` is layered, dependencies point inward (`features` → `domain`/`core` → `data`):
 
-- `core/` — router (`go_router`, 5-tab `StatefulShellRoute`), theme (dynamic_color), settings (SharedPreferences-backed `AppSettings` + immutable `AppSettingsState`), shared `Dio`, utils, `core/widgets/` (画面をまたいで共有するウィジェット: `ChannelCard` / `ChannelLogo` / `ProgramSymbolText`)。チャンネルカードはテレビ画面と視聴画面のチャンネル切替タブの両方で使うため `features/tv/widgets/` ではなく `core/widgets/` に置く。
+- `core/` — router (`go_router`, 5-tab `StatefulShellRoute`), theme (Compose Material 3 の Dynamic Color)、settings (SharedPreferences-backed `AppSettings` + immutable `AppSettingsState`)、shared `Dio`, utils, `core/widgets/` (画面をまたいで共有するウィジェット: `ChannelCard` / `ChannelLogo` / `ProgramSymbolText`)。チャンネルカードはテレビ画面と視聴画面のチャンネル切替タブの両方で使うため `features/tv/widgets/` ではなく `core/widgets/` に置く。
 - `domain/` — backend-agnostic entities (freezed) and the `TvRepository` interface.
 - `data/backends/{mirakurun,konomi}/` — per-backend API client (dio), DTOs, `*_filter.dart` (pure mapping), repository.
 - `data/nx_jikkyo/` — ニコニコ実況コメント (NX-Jikkyo)。`TvRepository` とは別系統で、`Channel` の network_id/service_id を `jk<N>` に変換する対応表と、2本の WebSocket セッション。
@@ -87,6 +87,18 @@ gh release view <tag> --repo yasamari/libmpv-android-video-build
 `features/player/mpv_options.dart` の `sub-lavc-o=sub_type=bitmap` は libaribcaption の bitmap レンダラ (freetype 必須) を使うため、`ARIBCC_NO_RENDERER=ON` でビルドした libmpv では字幕が出ない。
 
 KonomiTV の再エンコード画質では字幕が ID3 timed-metadata (`TIMED_ID3`) で流れ、`mpegts-tsreadex.patch` が ARIB ペイロード (PRIV/aribb24.js) を読んだ時点で初めて字幕ストリームへ追従する。mpv のトラック一覧は `avformat_find_stream_info()` の後にしか構築されないため、`apply-profile low-latency` 由来の `demuxer-lavf-probe-info=nostreams` (MPEG-TS ではプローブ省略が成立する) と `demuxer-lavf-analyzeduration=0.1` をそのまま使うと字幕が一切出ない。同ファイルで両方を上書き (+`demuxer-lavf-probe-info=auto` / `analyzeduration=0`) している。低遅延を諦める `apply-profile` 行を消すのは非推奨。
+
+## Dynamic Color
+
+Compose Material 3 の `dynamicLightColorScheme()` / `dynamicDarkColorScheme()` を **Android 側で直接呼ぶ** (`android/.../DynamicColorBridge.kt`)。返り値をロール単位の ARGB で MethodChannel に送って Flutter 側が割り当てる (`lib/src/core/theme/dynamic_color.dart`)。
+
+**`dynamic_color` パッケージを Android で使ってはいけない。** 同パッケージは `android.R.color.system_accent*` / `system_neutral*_*` を受け取って **Flutter 側で tonal palette を組み立て直す**ため、Compose と複数の role でずれる。特に `surfaceContainer*` / `surfaceBright` / `surfaceDim` が `ColorScheme.fromSeed(primary)` 由来になり、`surface` / `onSurface` / `inverseSurface` が neutral1 基準 (Compose は neutralVariant 基準) になる。Compose 側の実装 (`DynamicTonalPalette.android.kt`) も API で分岐しており、**34+ は `system_*_light/dark` の role resource を直接読むが、31-33 は neutralVariant 基準の tone にマップし、`system_*` に無い tone (light の 98/96/94/92/87、dark の 24/22/17/12/6/4) だけを CAM16 + HctSolver で合成する**。Flutter 側で再実装しても一致しない。
+
+- `android/app/build.gradle.kts` の `androidx.compose.material3:material3:1.3.1` が要る。UI 部品は参照しないので R8 が落とし、release APK への寄与は **約 +110KB**。`1.5.0-alpha` は compileSdk 37 を要求するので使えない (SDK は android-36 まで)。
+- 1.3.1 の `ColorScheme` に `primaryFixed` などの fixed role が無い。Flutter 側の既定値に委ねている (本アプリでは未使用)。
+- `background` / `onBackground` / `surfaceVariant` は Compose にはあるが Flutter では非推奨なので意図的に転送していない (Flutter のフォールバックは `surface` / `onSurface`)。
+- ロール名は Kotlin の `toRoleMap()` と Dart の `composeDynamicColorRoles` で 1 対 1 に保つこと。片方だけ増やすと Dart 側で例外になる。
+- `dynamic_color` は Android 以外 (macOS / Windows / GTK 系 Linux の accent color) のためだけに依存を残してある。Linux 版が `nix build` 対象なので消すと挙動が変わる。
 
 ## Gotchas
 

@@ -47,3 +47,21 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Dynamic Color を Jetpack Compose Material 3 と完全に一致させるため、
+    // Compose 本体の `dynamicLightColorScheme()` / `dynamicDarkColorScheme()` を
+    // MainActivity から直接呼ぶ (DynamicColorBridge.kt)。
+    //
+    // dynamic_color パッケージ経由では Android の system color resource を
+    // Flutter 側で tone 変換し直しているため、role ごとの mapping が Compose と
+    // ずれる (特に surfaceContainer* 系)。
+    //
+    // Compose の UI 部品は一切参照しないので、R8 が unreachable なコードを落とし、
+    // release APK への寄与は約 +110KB にとどまる。
+    //
+    // compileSdk 36 で動く最新の安定版は 1.3.1。1.5.0-alpha は compileSdk 37 を要求する。
+    // 1.3.1 の ColorScheme には primaryFixed などの fixed role がないため、
+    // それらは Flutter 側の既定値に委ねている (本アプリでは未使用)。
+    implementation("androidx.compose.material3:material3:1.3.1")
+}
