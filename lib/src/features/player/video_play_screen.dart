@@ -383,6 +383,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
       child: _VideoInfoPanel(
         video: widget.video,
         comments: _pastComments,
+        syncStart: _pastComments.syncStart,
+        positionStream: _player.stream.position,
         selectedIndex: ref.watch(videoInfoTabProvider),
         onDestinationSelected: (index) =>
             ref.read(videoInfoTabProvider.notifier).select(index),
@@ -550,16 +552,25 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
 ///
 /// チャンネル切替タブは無い (録画はチャンネル送りしない)。
 /// 選択位置は `videoInfoTabProvider` (keepAlive) が持つ。
+/// コメント一覧は再生位置に追従する ([CommentListPanel] の録画モード)。
 class _VideoInfoPanel extends StatelessWidget {
   const _VideoInfoPanel({
     required this.video,
     required this.comments,
+    required this.syncStart,
+    required this.positionStream,
     required this.selectedIndex,
     required this.onDestinationSelected,
   });
 
   final VideoProgram video;
   final JikkyoCommentSource comments;
+
+  /// 再生位置0に対応する録画開始時刻。
+  final DateTime syncStart;
+
+  /// 再生位置のストリーム。
+  final Stream<Duration> positionStream;
   final int selectedIndex;
   final ValueChanged<int> onDestinationSelected;
 
@@ -579,7 +590,11 @@ class _VideoInfoPanel extends StatelessWidget {
                   subtitle: video.subtitle,
                 ),
               ),
-              CommentListPanel(controller: comments),
+              CommentListPanel(
+                controller: comments,
+                syncStart: syncStart,
+                positionStream: positionStream,
+              ),
             ],
           ),
         ),

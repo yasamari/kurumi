@@ -89,6 +89,9 @@ class JikkyoPastCommentController extends ChangeNotifier
   @override
   bool get isSupported => _jkId != null;
 
+  /// 再生位置0に対応する録画開始時刻。コメント一覧の再生位置追従に使う。
+  DateTime get syncStart => _syncStart;
+
   /// 再生位置に追従して弾幕に出すコメント。
   ///
   /// 一括取得のため「新規」の概念はなく、再生位置を過ぎた未送出分を流す。
