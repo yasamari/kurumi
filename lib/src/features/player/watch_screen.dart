@@ -267,6 +267,14 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
   Timer? _errorTimer;
   String? _pendingError;
   bool _isPlaying = false;
+
+  /// 一度再生したうえで停止し、その後再開したかどうか。
+  ///
+  /// ライブ配信では再開しただけでは放送に追いつかないため、再開のたびに
+  /// [seekToLiveEdge] で溜まった過去データを捨てる必要がある。
+  /// 初回再生 (接続した時点で既にライブエッジにいる) や画質切替・再試行での
+  /// `_open` では追いかけ不要なので [_open] でリセットする。
+  bool _pausedAfterStart = false;
   bool _hasVideo = false;
   bool _hasAudio = false;
   String? _errorMessage;
@@ -299,10 +307,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     // など) でも届く。再生状態と組み合わせて判定し、再生できている場合は
     // エラー表示しない (`player_error.dart` 参照)。
     _errorSub = _player.stream.error.listen(_onPlayerError);
-    _playingSub = _player.stream.playing.listen((playing) {
-      _isPlaying = playing;
-      _clearErrorIfRecovered();
-    });
+    _playingSub = _player.stream.playing.listen(_onPlayingChanged);
     _videoParamsSub = _player.stream.videoParams.listen((params) {
       if (hasValidVideoSize(dw: params.dw, dh: params.dh, w: params.w, h: params.h)) {
         _hasVideo = true;
@@ -348,10 +353,35 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     _isPlaying = false;
     _hasVideo = false;
     _hasAudio = false;
+    // 開き直した時点がライブエッジなので、停止からの再開として扱わない。
+    _pausedAfterStart = false;
     if (mounted) {
       setState(() => _errorMessage = null);
     }
     await _player.open(Media(widget.url.toString()));
+  }
+
+  /// 再生状態の変化を反映する。
+  ///
+  /// 停止 (`pause` プロパティが立った状態) してから再開したらライブエッジへ
+  /// 戻す。停止中は Demuxer キャッシュとソケットバッファに過去データが溜まる
+  /// ため、これでは放送に追いつかない。
+  ///
+  /// `playing` は mpv の `pause` プロパティの変化で通知されるので停止→再開の
+  /// 判別に使える。一時的なバッファ停滞は `paused-for-cache` なので混同しない。
+  void _onPlayingChanged(bool playing) {
+    if (playing) {
+      if (_pausedAfterStart) {
+        _pausedAfterStart = false;
+        // 溜まった過去データを捨てるだけなので、失敗しても再生自体には
+        // 影響しない。
+        unawaited(seekToLiveEdge(_player));
+      }
+    } else if (_isPlaying) {
+      _pausedAfterStart = true;
+    }
+    _isPlaying = playing;
+    _clearErrorIfRecovered();
   }
 
   /// `error` 受信時の処理。再生中の一過性エラーは無視し、それ以外は猶予時間

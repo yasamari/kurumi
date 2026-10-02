@@ -56,6 +56,31 @@ Future<void> applyLiveMpvOptions(
   await platform.setProperty('deinterlace', deinterlace ? 'yes' : 'no');
 }
 
+/// ライブ配信の再生位置をライブエッジ (最新データ) に戻す。
+///
+/// ライブ配信では停止している間も Demuxer キャッシュとソケットバッファに
+/// 過去的数据が溜まる。読み込み速度と再生速度が同じなので、再開してもその続き
+/// から再生されるだけで、停止した時間だけ放送に遅れたままになる。
+///
+/// 前方向のシークでは追いつけない。`time-pos` の行先はキャッシュ内で頭打ちに
+/// なるため、リモートTSでは無意味になるだけ (`relative` で
+/// `demuxer-cache-time` ちょうどまでシークしても動かないことに実機確認済み)。
+/// 溜まった過去データそのものを捨てる `drop-buffers` を使う。
+///
+/// デコード済みの映像/音声バッファも捨てるため映像が一瞬飛ぶが、トラック選択や
+/// 音量などの状態は保たれる。
+///
+/// 古い mpv でコマンドが無い場合も、media_kit の command はエラーログのみで
+/// 例外にならない。
+Future<void> seekToLiveEdge(Player player) async {
+  final platform = player.platform;
+  if (platform is! NativePlayer) {
+    // web版など mpv を直接扱えない環境では何もしない。
+    return;
+  }
+  await platform.command(['drop-buffers']);
+}
+
 /// 録画再生用のmpvオプションを適用する。
 ///
 /// ライブ用 ([applyLiveMpvOptions]) との差分:
