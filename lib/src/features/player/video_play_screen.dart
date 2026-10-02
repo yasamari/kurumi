@@ -588,6 +588,10 @@ class _PlayInfoPanel extends ConsumerWidget {
 /// チャンネル切替タブは無い (録画はチャンネル送りしない)。
 /// 選択位置は `videoInfoTabProvider` (keepAlive) が持つ。
 /// コメント一覧は再生位置に追従する ([CommentListPanel] の録画モード)。
+/// コメントタブは選択されている間だけ載せる。不可視のまま載せると再生位置
+/// 通知のたびに作り直し・移動を続けて映像のフレームを奪う (ライブの
+/// [ProgramInfoPanel] と同じ)。番組情報は静的なので載せたままにする
+/// (スクロール位置の保持のため。ライブと同じ)。
 class _VideoInfoPanel extends StatelessWidget {
   const _VideoInfoPanel({
     required this.video,
@@ -614,9 +618,16 @@ class _VideoInfoPanel extends StatelessWidget {
     return Column(
       children: [
         Expanded(
+          // `IndexedStack` は `index` が子の範囲外だと例外を投げるため、
+          // 選択されていないタブもダミーで埋めて **2件を必ず**渡す。
+          // コメント一覧は選択中だけ載せる: 載せたままだと不可視の一覧が
+          // 毎回の再生位置通知で作り直し・移動を続け、映像のフレームを奪う。
+          // 戻ったときは追従ON・再生位置着地で作り直される (ライブと同じ)。
           child: IndexedStack(
             index: selectedIndex,
             children: [
+              // 番組情報の中身はビデオ詳細と共有する [ProgramDetailBody]。
+              // 静的なので載せたままにし、スクロール位置を保つ (ライブと同じ)。
               SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: ProgramDetailBody(
@@ -625,11 +636,14 @@ class _VideoInfoPanel extends StatelessWidget {
                   subtitle: video.subtitle,
                 ),
               ),
-              CommentListPanel(
-                controller: comments,
-                syncStart: syncStart,
-                positionStream: positionStream,
-              ),
+              if (selectedIndex == 1)
+                CommentListPanel(
+                  controller: comments,
+                  syncStart: syncStart,
+                  positionStream: positionStream,
+                )
+              else
+                const SizedBox.shrink(),
             ],
           ),
         ),

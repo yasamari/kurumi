@@ -17,9 +17,15 @@ import 'jikkyo_comment_source.dart';
 /// コメント数に比例して重くなる。離れていれば [ItemScrollController.jumpTo]
 /// で目的の窓だけ組み立てる。
 ///
-/// 録画モードでのみ使う。ライブは下端への瞬時復帰に統一している
-/// ([_CommentListPanelState._jumpToAnchor] 参照)。
+/// 録画モードの自動追従でのみ使う。ボタンでの復帰は距離にかかわらず
+/// 常にアニメーションする ([_CommentListPanelState._jumpToAnchor] 参照)。
 const commentListFarItemDistance = 30;
+
+/// 追従・復帰のスクロールアニメーションの時間。
+///
+/// 録画の近傍移動 ([ItemScrollController.scrollTo]) とライブの末端への移動
+/// (`ScrollController.animateTo`) で共有する。
+const commentFollowAnimateDuration = Duration(milliseconds: 250);
 
 /// ライブの追従を切る末端からの距離 (論理ピクセル)。
 ///
@@ -87,23 +93,29 @@ IconData commentJumpIcon({
 ///   既存行の添字と内容がずれず、再構築では新着行だけが配置される
 ///   (既存行は同一文字列の更新として配置を省略する)。先頭に足す設計だと
 ///   可視行すべてが別内容に入れ替わり、毎回全文を整形し直すため
-///   映像・弾幕と vsync を争ってカクつく。追従中は末端への `jumpTo`
-///   だけで済み、位置指定リストのような再配置・全要素の計測は走らない。
+///   映像・弾幕と vsync を争ってカクつく。追従中は末端への移動だけで済み、
+///   位置指定リストのような再配置・全要素の計測は走らない。
 /// - 録画モード (両方あり): 行高が可変でも遠方へ飛べるよう
 ///   [ScrollablePositionedList] を使う (オフセット計算では届かないため)。
 ///   こちらは取得後に内容が変わらないため、添字のずれは起きない。
 ///
 /// - ライブモード ([syncStart]/[positionStream] なし): 下端 (最新) にいるとき
-///   だけ新着に追従し、最新コメントを常に一番下に据える。一度スクロールして
-///   離れたら、下向きの「最新に戻る」ボタンで戻るまで追従しない
-///   (手動で下端に戻しても復帰しない)。
+///   だけ新着に追従し、最新コメントを常に一番下に据える。新着の移動は
+///   [commentFollowAnimateDuration] で滑らかに寄せるが、初回着地だけは映像の
+///   読み込みと重なるため瞬時に寄せる ([_CommentListPanelState._pinLiveToEnd]
+///   参照)。一度スクロールして離れたら、下向きの「最新に戻る」ボタンで戻るまで
+///   追従しない (手動で下端に戻しても復帰しない)。
 /// - 録画モード (両方あり): [positionStream] の再生位置に対応するコメントに
-///   追従する。見えている間は据え置き、外れたら下端へ飛ぶ。ユーザー操作
-///   (ドラッグ・ホイール) で離れると追従を切り、再生位置への向き (より先へ
-///   進んでいれば上、前に戻っていれば下) の「再生位置に戻る」ボタンを出す。
-///   復帰はボタンのみ。離脱判定はポインターイベントで行う。スクロール通知では
-///   初回着地や移動の整定とユーザー操作を区別できないため (該当コメントの無い
-///   冒頭で追従が外れる原因になる)。
+///   追従する。見えている間は据え置き、外れたら追従先を下端へ寄せる。
+///   近傍の移動はオフセットの滑らかなスクロールだけで済ませ、Sliver の
+///   組み直しを走らせない ([_pinToTarget] 参照)。遠方 (シーク直後・初回着地
+///   など) だけ瞬時に飛ぶ (1回きりの組み直しで済む)。ボタンでの復帰は距離に
+///   かかわらず常に滑らかに寄せる ([_jumpToAnchor] 参照)。
+///   ユーザー操作 (ドラッグ・ホイール) で離れると追従を切り、再生位置への向き
+///   (より先へ進んでいれば上、前に戻っていれば下) の「再生位置に戻る」ボタンを
+///   出す。復帰はボタンのみ。離脱判定はポインターイベントで行う。
+///   スクロール通知では初回着地や移動の整定とユーザー操作を区別できないため
+///   (該当コメントの無い冒頭で追従が外れる原因になる)。
 class CommentListPanel extends StatefulWidget {
   const CommentListPanel({
     super.key,
@@ -136,7 +148,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
 
   /// ライブモード用。新着 (末端) への移動と離脱判定に使う。
   ///
-  /// 一覧は追記型のため、追従中は末端への `jumpTo` だけを走らせる。
+  /// 一覧は追記型のため、追従中は末端への移動だけを走らせる。
   /// 既存行の再配置は起きない。
   final _liveScroll = ScrollController();
 
@@ -151,6 +163,10 @@ class _CommentListPanelState extends State<CommentListPanel> {
 
   /// プログラム側のスクロール中にスクロール通知を無視するための旗。
   bool _programmatic = false;
+
+  /// ライブの末端へのアニメーション移動の世代。連続する新着で前のアニメーション
+  /// が残っている間に次が始まるため、古い完了で旗を戻さないよう数える。
+  int _livePinGeneration = 0;
 
   /// 追従スクロールの post-frame 予約があるか。同一フレーム内の複数回の
   /// コメント到着を1回のスクロールに束ねる。
@@ -172,9 +188,10 @@ class _CommentListPanelState extends State<CommentListPanel> {
     _lastDue = _dueCount();
     // ライブは初回配置の直後に末端 (最新) へ寄せる。通常リストの初期位置は
     // 先頭 (最古) のため、この1回が無いと新着まで最古が表示され続ける。
+    // 初回は映像の読み込みと重なるためアニメーションせず瞬時に寄せる。
     if (!_isPlayback) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _pinLiveToEnd();
+        if (mounted) _pinLiveToEnd(animate: false);
       });
     }
   }
@@ -310,6 +327,8 @@ class _CommentListPanelState extends State<CommentListPanel> {
   ///
   /// スクロール自体は次フレームに寄せる ([_scheduleLivePin]/[_schedulePin])。
   /// 通知中に同期して動かすと配置確定前の計測で不要な移動を招くため。
+  /// 新着がアニメーションの待ち時間中に重なっても [_livePinGeneration] が
+  /// 古い完了を無効化するため、旗を戻し損ねて追従が切れない。
   void _onCommentsChanged() {
     if (!mounted) return;
     if (_isPlayback) _lastDue = _dueCount();
@@ -327,10 +346,11 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// 位置通知は再生中ずっと高頻度に届く。該当コメントが変わったときだけ
   /// 扱い、さらに表示に変化がない通知は捨てる:
   ///
-  /// - 追従中は追従先が画面外に出たときだけ作り直す (スクロール移動を伴う)。
-  ///   画面内なら行の内容も位置も変わらないため、通知ごとの再構築は
-  ///   映像・弾幕のフレームを奪うだけになる。これが録画追従中の
-  ///   カクつきの主因だった。
+  /// - 追従中は追従先が画面外に出たときだけ子の一覧を移動させる。行の内容は
+  ///   変わらないため親の作り直しは要らず、ここで `setState` すると
+  ///   `ScrollablePositionedList` の Sliver 組み直しと `jumpTo` の組み直しが
+  ///   二重に走って映像・弾幕のフレームを奪う (録画追従中のカクつきの主因)。
+  ///   画面内なら行の内容も位置も変わらないため何もしない。
   /// - 非追従は戻るボタンの向きが変わるときだけ作り直す。
   void _onPosition(Duration position) {
     if (!mounted || !_isPlayback) return;
@@ -340,29 +360,48 @@ class _CommentListPanelState extends State<CommentListPanel> {
     _lastDue = due;
     if (_following) {
       if (_isAnchorVisible(due)) return;
-      setState(() {});
       _schedulePin();
       return;
     }
     _refreshJumpIcon();
   }
 
-  /// ライブ一覧を末端 (最新) へ飛ばす。
+  /// ライブ一覧を末端 (最新) へ寄せる。
   ///
   /// 配置確定後 (post-frame) に呼ぶこと。追記で伸びた分だけの移動であり、
   /// 既存行の再配置は起きない。既に末端にいるときは何もしない。
-  void _pinLiveToEnd() {
+  /// 既定では滑らかに寄せる。初回配置の直後だけは映像の読み込みと重なるため
+  /// 瞬時に寄せる (`animate: false`)。
+  void _pinLiveToEnd({bool animate = true}) {
     if (!mounted || !_liveScroll.hasClients) return;
     final position = _liveScroll.position;
     if (position.maxScrollExtent - position.pixels <= livePinEpsilon) return;
+    if (!animate) {
+      _programmatic = true;
+      _liveScroll.jumpTo(position.maxScrollExtent);
+      // スクロール通知は配置確定後に届くため、同期して旗を戻すと
+      // プログラム側の移動をユーザー操作と誤検出して追従を切ってしまう。
+      // 次フレームまで保つ。
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _programmatic = false;
+      });
+      return;
+    }
+    final generation = ++_livePinGeneration;
     _programmatic = true;
-    _liveScroll.jumpTo(position.maxScrollExtent);
-    // スクロール通知は配置確定後に届くため、同期して旗を戻すと
-    // プログラム側の移動をユーザー操作と誤検出して追従を切ってしまう。
-    // 次フレームまで保つ。
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _programmatic = false;
-    });
+    unawaited(
+      _liveScroll
+          .animateTo(
+            position.maxScrollExtent,
+            duration: commentFollowAnimateDuration,
+            curve: Curves.easeOut,
+          )
+          .then((_) {
+        // 連続する新着で次の移動が始まっていたら旗を保つ。古い完了で戻すと
+        // 移動中の通知をユーザー操作と誤検出して追従を切ってしまう。
+        if (generation == _livePinGeneration) _programmatic = false;
+      }),
+    );
   }
 
   /// ライブの末端への移動を次フレームに予約する (追従中のみ)。
@@ -394,14 +433,20 @@ class _CommentListPanelState extends State<CommentListPanel> {
     });
   }
 
-  /// 追従先を下端に据える。既に見えていれば何もしない。
+  /// 追従先を下端に寄せる。既に見えていれば何もしない。
   ///
   /// 録画モードでのみ使う ([_schedulePin] から配置確定後に呼ぶこと)。
   /// 通知中に同期して呼ぶと可視範囲が1フレーム古く、不要な移動で
   /// 映像・弾幕のフレームを奪う。
   ///
-  /// 瞬時に飛ぶ (アニメーションで横切ると通過する行を全て組み立てるため、
-  /// コメント数に比例して固まる)。同じ位置への移動は見た目の変化が無い。
+  /// 近傍 (表示範囲のすぐ外) への移動は `scrollTo` によるオフセットの
+  /// アニメーションだけで済ませる。対象はキャッシュ内に配置済みのため
+  /// Sliver の組み直しが走らず、新しく見える1〜2行の配置だけで済む
+  /// (ライブの末端への移動と同じ軽さ)。毎回 `jumpTo` で組み直すと
+  /// コメントごとに全可視行を作り直して映像・弾幕と vsync を争う。
+  /// 遠方 (シーク直後・初回着地など、可視範囲が無い場合を含む) だけ
+  /// `jumpTo` で瞬時に飛ぶ (1回きりの組み直し)。
+  ///
   /// 一覧の端 (録画の冒頭など) では可視範囲に収まっている間は飛ばず、
   /// 初回着地のまま再生位置を迎える。
   void _pinToTarget() {
@@ -409,18 +454,33 @@ class _CommentListPanelState extends State<CommentListPanel> {
     final comments = widget.controller.state.comments;
     if (comments.isEmpty) return;
     if (_isAnchorVisible(_lastDue)) return;
-    _moveTo(
-      index: playbackBuilderIndex(
-        commentCount: comments.length,
-        dueCount: _lastDue,
-      ),
-      alignment: 0,
+    final target = playbackBuilderIndex(
+      commentCount: comments.length,
+      dueCount: _lastDue,
     );
+    final range = _visibleRange();
+    // 可視範囲が無い初回着地や大きく離れたシーク直後は瞬時に飛ぶ。
+    if (range == null) {
+      _moveTo(index: target, alignment: 0);
+      return;
+    }
+    final distance = target < range.min
+        ? range.min - target
+        : target - range.max;
+    if (distance > 0 && distance <= commentListFarItemDistance) {
+      _moveTo(index: target, alignment: 0, animate: true);
+    } else {
+      _moveTo(index: target, alignment: 0);
+    }
   }
 
   /// 指定行へ移動する。近傍だけアニメーションし、遠方は瞬時に飛ぶ。
   ///
-  /// 録画モードでのみ使う (ライブの復帰は `_liveScroll` への瞬時移動)。
+  /// 自動追従 ([_pinToTarget]) でのみ使う。ボタンでの復帰は距離にかかわらず
+  /// 常にアニメーションする ([_jumpToAnchor] 参照)。
+  /// 近傍のアニメーション (`scrollTo`) は対象がキャッシュ内に配置済みのため
+  /// オフセットの移動だけで済み、Sliver の組み直しが走らない。遠方の瞬時移動
+  /// (`jumpTo`) は Sliver を組み直すが1回きりなので、連続する追従では使わない。
   void _moveTo({required int index, required double alignment, bool animate = false}) {
     if (!mounted || !_items.isAttached) return;
     if (animate) {
@@ -430,7 +490,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
             .scrollTo(
               index: index,
               alignment: alignment,
-              duration: const Duration(milliseconds: 250),
+              duration: commentFollowAnimateDuration,
               curve: Curves.easeOut,
             )
             .then((_) => _programmatic = false),
@@ -449,11 +509,10 @@ class _CommentListPanelState extends State<CommentListPanel> {
 
   /// ボタンで追従に復帰する。
   ///
-  /// ライブは末端 (最新) へ瞬時に戻す ([_pinLiveToEnd])。アニメーションで
-  /// 横切ると通過行を全て組み立てるため、近傍の滑らかさより1フレームで
-  /// 終わる瞬時移動を優先する (数行の瞬間移動は視覚的にも問題ない)。
-  ///
-  /// 録画は近傍だけ滑らかに寄せ、遠方は瞬時に飛ぶ。
+  /// ライブ・録画いずれも距離にかかわらず滑らかに寄せる。録画の遠方は
+  /// `scrollTo` の2画面ごとの継ぎ足しになるため、通過行を全て組み立てる
+  /// 通常リストの `animateTo` のようなコメント数比例の重さにはならない。
+  /// ライブの遠方は通過行を組み立てるが、ボタン操作の1回きりで済む。
   void _jumpToAnchor() {
     setState(() => _following = true);
     // 初回組み立て直後など未装着の場合に備えて次フレームで試す。
@@ -470,18 +529,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
         commentCount: comments.length,
         dueCount: _lastDue,
       );
-      final range = _visibleRange();
-      var distance = -1;
-      if (range != null) {
-        distance = target < range.min
-            ? range.min - target
-            : target - range.max;
-      }
-      if (distance > 0 && distance <= commentListFarItemDistance) {
-        _moveTo(index: target, alignment: 0, animate: true);
-      } else {
-        _moveTo(index: target, alignment: 0);
-      }
+      _moveTo(index: target, alignment: 0, animate: true);
     });
   }
 
@@ -553,6 +601,10 @@ class _CommentListPanelState extends State<CommentListPanel> {
                 // 録画は初回から再生位置に着地させる (末尾一瞬映りを避ける)。
                 initialScrollIndex: anchor,
                 initialAlignment: 0,
+                // ライブの `ListView` と同様、行の保持は外す。既定 (true) だと
+                // 訪れた行を全て生かし続け、長時間の追従でツリーが膨らんで
+                // 映像・弾幕のフレームを奪う。
+                addAutomaticKeepAlives: false,
                 itemBuilder: (context, index) {
                   // `reverse: true` なので index 0 が最新 (下端)。
                   final ascending = comments.length - 1 - index;
