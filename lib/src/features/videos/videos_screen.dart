@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -45,6 +46,13 @@ class _VideosScreenState extends ConsumerState<VideosScreen> {
   /// 検索入力のデバウンス時間。決定打ではなく入力確定待ちのため短めにする。
   static const _debounceDuration = Duration(milliseconds: 400);
 
+  /// 広幅時のリストペイン:詳細ペインの比率。
+  static const _listPaneFlex = 40;
+  static const _detailPaneFlex = 60;
+
+  /// リストペインの最小幅。これ未満ではリストが潰れる。
+  static const _listPaneMinWidth = 480.0;
+
   @override
   void initState() {
     super.initState();
@@ -80,11 +88,19 @@ class _VideosScreenState extends ConsumerState<VideosScreen> {
             );
             // 広幅: リスト+詳細を並列表示する。検索バーはリストペイン内に置く。
             if (constraints.maxWidth >= AdaptiveBreakpoints.listDetail) {
+              // リストは 40%、下限 480px。Row の Expanded は tight 制約を
+              // 渡すため minWidth は効かない。幅はここで計算して固定する。
+              final listWidth = math.max(
+                constraints.maxWidth *
+                    _listPaneFlex /
+                    (_listPaneFlex + _detailPaneFlex),
+                _listPaneMinWidth,
+              );
               return Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   SizedBox(
-                    width: 480,
+                    width: listWidth,
                     child: Column(
                       children: [
                         searchRow,
