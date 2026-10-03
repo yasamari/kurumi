@@ -13,6 +13,7 @@ import '../../core/network/dio_provider.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
+import '../../domain/entities/live_stream.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
 import 'audio_switch.dart';
@@ -169,10 +170,10 @@ class _WatchInfoPanel extends ConsumerWidget {
   /// 番組情報パネルに表示するチャンネル+番組。
   final ChannelItem item;
 
-  /// 実況コメントの取得状態。[_LivePlayerState] が所有する。
+  /// 実況コメントの取得状態。[_WatchLayoutState] が所有する。
   final JikkyoCommentController controller;
 
-  /// EIT[p/f] の取得状態。KonomiTV時のみ非null。[_LivePlayerState] が所有する。
+  /// EIT[p/f] の取得状態。KonomiTV時のみ非null。[_LivePlayerState] が更新する。
   final LivePsiController? psi;
 
   /// チャンネル切替タブでチャンネルを選んだときのコールバック。
@@ -253,8 +254,17 @@ class _WatchBody extends ConsumerWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       body: stream.when(
-        loading: () => const _PlaceholderScaffold(
-          child: Center(child: CircularProgressIndicator()),
+        // 読み込み中でも情報パネルは消さず、映像側だけ読み込み表示にする
+        // (チャンネル切り替え中にパネルが点滅しないように)。
+        loading: () => _WatchLayout(
+          // channelId をキーにする。`go` による画面置き換えでも
+          // Element の位置・型が同じだと State が残るが、実況コメントの
+          // 接続はチャンネルごと作り直す必要があるため。
+          key: ValueKey(channelId),
+          stream: stream,
+          item: item,
+          title: title,
+          showQualityMenu: showQualityMenu,
         ),
         error: (error, _) {
           final message = error is ChannelNotFoundException
@@ -267,28 +277,221 @@ class _WatchBody extends ConsumerWidget {
             ),
           );
         },
-        data: (live) => _LivePlayer(
-          // URLが変わったらPlayerを作り直す (画質切替対応)。
-          key: ValueKey(live.url.toString()),
-          sessionFactory: (player) => _liveSessionFactory(
-            ref,
-            player: player,
-            showQualityMenu: showQualityMenu,
-            item: item,
-            liveUrl: live.url,
-            quality: live.qualityLabel,
-          ),
+        data: (live) => _WatchLayout(
+          // channelId をキーにする (loading 側と同じ理由)。
+          key: ValueKey(channelId),
+          stream: stream,
           item: item,
           title: title,
           showQualityMenu: showQualityMenu,
-          // KonomiTVは `original` (生放送TS) のときだけデインタレースする。
-          // Mirakurun (`decode=1` 固定) も生放送TSのためデインタレースする。
-          // トランスコード済み画質はプログレッシブのため不要。
-          deinterlace: showQualityMenu
-              ? isOriginalKonomiQuality(live.qualityLabel)
-              : true,
         ),
       ),
+    );
+  }
+}
+
+/// 映像スロットと情報パネルの配置を組み立てる。
+///
+/// 実況コメントの接続 ([JikkyoCommentController]) はこの State が所有する。
+/// `Row`/`Column` を向きで切り替える [_LivePlayerState] の内側に置くと
+/// 画面回転のたびに State が消えるため、切り替えの外側で持つ必要がある。
+/// チャンネル切り替えは `go` で視聴画面ごと置き換わるため、切り替われば
+/// 破棄されて作り直される。
+///
+/// `stream` をこの State 経由で下に渡すのは、`loading` → `data` の
+/// 遷移でこの State を保ったまま映像側だけを差し替えるため
+/// (実況コメントの接続をパネルごと切り離さない)。
+class _WatchLayout extends ConsumerStatefulWidget {
+  const _WatchLayout({
+    super.key,
+    required this.stream,
+    required this.item,
+    required this.title,
+    required this.showQualityMenu,
+  });
+
+  final AsyncValue<LiveStream> stream;
+  final ChannelItem item;
+  final String title;
+  final bool showQualityMenu;
+
+  @override
+  ConsumerState<_WatchLayout> createState() => _WatchLayoutState();
+}
+
+class _WatchLayoutState extends ConsumerState<_WatchLayout> {
+  late final JikkyoCommentController _jikkyo;
+
+  /// 最新の EIT[p/f] 取得状態。`_LivePlayerState` が開設のたびに更新する。
+  final ValueNotifier<LivePsiController?> _psiNotifier = ValueNotifier(null);
+
+  @override
+  void initState() {
+    super.initState();
+    // 実況コメントの接続は実況チャンネルが取得できている場合に即開始する。
+    // 弾幕を既定で表示するため、コメントタブを開くまで待たない。
+    _jikkyo = JikkyoCommentController(
+      channelId: jikkyoChannelIdFor(widget.item.channel) ?? '',
+    );
+    _jikkyo.start();
+  }
+
+  @override
+  void dispose() {
+    _jikkyo.dispose();
+    _psiNotifier.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    // セッション開設 (tap起動) 中は映像側だけ読み込み表示にし、
+    // 情報パネルは出したままにする。
+    final video = widget.stream.when(
+      loading: () => const _LoadingStatus(),
+      error: (error, _) => _RetryStatus(
+        message: '$error',
+        onRetry: () =>
+            ref.invalidate(liveStreamProvider(widget.item.channel.id)),
+      ),
+      data: (live) => _LivePlayer(
+        // URLが変わったらPlayerを作り直す (画質切替対応)。
+        key: ValueKey(live.url.toString()),
+        sessionFactory: (player) => _liveSessionFactory(
+          ref,
+          player: player,
+          showQualityMenu: widget.showQualityMenu,
+          item: widget.item,
+          liveUrl: live.url,
+          quality: live.qualityLabel,
+        ),
+        item: widget.item,
+        title: widget.title,
+        showQualityMenu: widget.showQualityMenu,
+        controller: _jikkyo,
+        psiNotifier: _psiNotifier,
+        // KonomiTVは `original` (生放送TS) のときだけデインタレースする。
+        // Mirakurun (`decode=1` 固定) も生放送TSのためデインタレースする。
+        // トランスコード済み画質はプログレッシブのため不要。
+        deinterlace: widget.showQualityMenu
+            ? isOriginalKonomiQuality(live.qualityLabel)
+            : true,
+      ),
+    );
+    final info = Container(
+      color: Theme.of(context).colorScheme.surface,
+      child: ValueListenableBuilder<LivePsiController?>(
+        valueListenable: _psiNotifier,
+        builder: (context, psi, _) {
+          return _WatchInfoPanel(
+            item: widget.item,
+            controller: _jikkyo,
+            psi: psi,
+            // チャンネルの切替は `go` で視聴画面ごと置き換える。旧画面の Player と
+            // 実況コメント・番組情報のソケットはこれで解放される。
+            onChannelSelected: (id) => context.go('/watch/$id'),
+          );
+        },
+      ),
+    );
+    // 映像は黒帯、情報パネルはテーマの地色で描画する。
+    final content = isLandscape
+        // 横画面: 映像の右に情報パネルを置く。
+        ? Row(
+            // パネルを画面の高さいっぱいに広げる (既定のcenterだと
+            // 内容量に応じた高さに縮んでしまうため)。
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Container(color: Colors.black, child: video),
+              ),
+              SizedBox(width: 400, child: info),
+            ],
+          )
+        // 縦画面など: 映像の下に情報パネルを置く。
+        : Column(
+            children: [
+              Container(
+                color: Colors.black,
+                child: AspectRatio(aspectRatio: 16 / 9, child: video),
+              ),
+              Expanded(child: info),
+            ],
+          );
+    // 映像は横画面でも画面端まで描画する (フルブリード)。インカメラ等を
+    // 避けるためだけに画面端へ寄せているので、縦画面のみ SafeArea でノッチ等
+    // を避ける。
+    if (isLandscape) return content;
+    return SafeArea(child: content);
+  }
+}
+
+/// 映像スロットの読み込み表示。戻るボタンだけ重ねる。
+class _LoadingStatus extends StatelessWidget {
+  const _LoadingStatus();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Stack(
+      children: [
+        Center(child: CircularProgressIndicator()),
+        Positioned(
+          left: 4,
+          top: 4,
+          child: SafeArea(child: PlayerBackButton()),
+        ),
+      ],
+    );
+  }
+}
+
+/// 映像スロットのエラー表示。戻るボタンだけ重ねる。
+class _RetryStatus extends StatelessWidget {
+  const _RetryStatus({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.error_outline,
+                  color: Colors.white,
+                  size: 64,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '取得に失敗しました',
+                  style: TextStyle(color: Colors.white, fontSize: 16),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  message,
+                  style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                FilledButton(onPressed: onRetry, child: const Text('再試行')),
+              ],
+            ),
+          ),
+        ),
+        const Positioned(
+          left: 4,
+          top: 4,
+          child: SafeArea(child: PlayerBackButton()),
+        ),
+      ],
     );
   }
 }
@@ -335,6 +538,8 @@ class _LivePlayer extends ConsumerStatefulWidget {
     required this.title,
     required this.showQualityMenu,
     required this.deinterlace,
+    required this.controller,
+    required this.psiNotifier,
   });
 
   /// 再生セッション (mpvが開くURL+EIT用パケット列) を開く。
@@ -348,18 +553,25 @@ class _LivePlayer extends ConsumerStatefulWidget {
   /// 生放送TS (インターレース) のとき真。mpvの自動デインタレースに使う。
   final bool deinterlace;
 
+  /// 実況コメントの取得状態。[_WatchLayoutState] が所有する。
+  final JikkyoCommentController controller;
+
+  /// 最新の EIT[p/f] 取得状態の通知先。[_WatchLayoutState] が持つ。
+  final ValueNotifier<LivePsiController?> psiNotifier;
+
   @override
   ConsumerState<_LivePlayer> createState() => _LivePlayerState();
 }
 
-/// [Player] と実況コメント・番組情報の接続を持つ。向きに依存しない位置なので、
-/// 画面回転で作り直されても続きを保てる。情報パネルの選択中タブだけは
-/// チャンネル切替 (`go` による画面の置き換え) でも保つ必要があるため、
-/// この State ではなく `watchInfoTabProvider` が持つ。
+/// [Player] の所有者。向きに依存しない位置なので、画面回転で作り直されても
+/// 続きを保てる。実況コメントの接続は外側 ([_WatchLayoutState]) が持つ。
+/// 情報パネルの選択中タブだけはチャンネル切替 (`go` による画面の置き換え)
+/// でも保つ必要があるため、この State ではなく `watchInfoTabProvider` が持つ。
 class _LivePlayerState extends ConsumerState<_LivePlayer> {
   late final Player _player;
   late final VideoController _controller;
-  late final JikkyoCommentController _jikkyo;
+
+  JikkyoCommentController get _jikkyo => widget.controller;
 
   /// EIT[p/f] の接続。セッション確立後に作る。
   LivePsiController? _psi;
@@ -421,12 +633,6 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     super.initState();
     _player = Player();
     _controller = VideoController(_player);
-    // 実況コメントの接続は実況チャンネルが取得できている場合に即開始する。
-    // 弾幕を既定で表示するため、コメントタブを開くまで待たない。
-    _jikkyo = JikkyoCommentController(
-      channelId: jikkyoChannelIdFor(widget.item.channel) ?? '',
-    );
-    _jikkyo.start();
     // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
     // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`
     // など) でも届く。再生状態と組み合わせて判定し、再生できている場合は
@@ -483,6 +689,8 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     // 旧セッション (tap・PSI取得) を閉じてから開き直す。
     _psi?.dispose();
     _psi = null;
+    // 情報パネルの「取得中」表示に戻す。新しいPSIは下で通知する。
+    widget.psiNotifier.value = null;
     final oldSession = _session;
     _session = null;
     if (oldSession != null) {
@@ -517,6 +725,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       serviceId: widget.item.channel.serviceId,
       packets: session.packets,
     )..start();
+    widget.psiNotifier.value = _psi;
     if (mounted) {
       setState(() => _sessionLoading = false);
     }
@@ -620,8 +829,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     _playingSub?.cancel();
     _videoParamsSub?.cancel();
     _audioParamsSub?.cancel();
-    // 視聴画面を離れたときにソケットを閉じる。
-    _jikkyo.dispose();
+    // 視聴画面を離れたときにソケットを閉じる (_jikkyo は外側が所有する)。
     _psi?.dispose();
     _psi = null;
     final session = _session;
@@ -637,66 +845,18 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
   @override
   Widget build(BuildContext context) {
     // セッション開設中は映像の代わりに読み込み表示する (tap起動待ち等)。
+    // 情報パネルは外側の `_WatchLayout` が描くので、ここでは映像スロット分だけ返す。
     if (_sessionLoading) {
-      return const _PlaceholderScaffold(
-        child: Center(child: CircularProgressIndicator()),
-      );
+      return const _LoadingStatus();
     }
     // セッション開設失敗は再試行表示する。
     final sessionError = _sessionError;
     if (sessionError != null) {
-      return _PlaceholderScaffold(
-        child: _RetryError(message: sessionError, onRetry: _open),
-      );
+      return _RetryStatus(message: sessionError, onRetry: _open);
     }
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
-    final video = _buildVideo(context, fullBleed: isLandscape);
-    // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。以前は
-    // ここで `ref.watch(watchInfoTabProvider)` していたため、タブ切替のたびに
-    // 映像 (`Video`) まで作り直されていた。`Video` は `controls` の
-    // クロージャ同一性で差分判定するので、作り直すたびに内部の表示パラメータ
-    // 通知が飛んで映像・弾幕が一瞬止まる。購読を子に閉じ込めて避ける。
-    final info = Container(
-      color: Theme.of(context).colorScheme.surface,
-      child: _WatchInfoPanel(
-        item: widget.item,
-        controller: _jikkyo,
-        psi: _psi,
-        // チャンネルの切替は `go` で視聴画面ごと置き換える。旧画面の Player と
-        // 実況コメント・番組情報のソケットはこれで解放される。
-        onChannelSelected: (id) => context.go('/watch/$id'),
-      ),
-    );
-    // 映像は黒帯、情報パネルはテーマの地色で描画する。
-    final content = isLandscape
-        // 横画面: 映像の右に情報パネルを置く。
-        ? Row(
-            // パネルを画面の高さいっぱいに広げる (既定のcenterだと
-            // 内容量に応じた高さに縮んでしまうため)。
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: Container(color: Colors.black, child: video),
-              ),
-              SizedBox(width: 400, child: info),
-            ],
-          )
-        // 縦画面など: 映像の下に情報パネルを置く。
-        : Column(
-            children: [
-              Container(
-                color: Colors.black,
-                child: AspectRatio(aspectRatio: 16 / 9, child: video),
-              ),
-              Expanded(child: info),
-            ],
-          );
-    // 映像は横画面でも画面端まで描画する (フルブリード)。インカメラ等を
-    // 避けるためだけに画面端へ寄せているので、縦画面のみ SafeArea でノッチ等
-    // を避ける。
-    if (isLandscape) return content;
-    return SafeArea(child: content);
+    return _buildVideo(context, fullBleed: isLandscape);
   }
 
   /// 映像+標準コントロール+エラー表示。レイアウトによらず共通。

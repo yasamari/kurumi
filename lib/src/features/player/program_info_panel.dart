@@ -41,7 +41,7 @@ class ProgramInfoPanel extends StatelessWidget {
 
   final ChannelItem item;
 
-  /// 実況コメントの取得状態。呼び出し側 ([_LivePlayerState]) が所有する。
+  /// 実況コメントの取得状態。呼び出し側 ([_WatchLayoutState]) が所有する。
   final JikkyoCommentSource controller;
 
   /// 選択中のタブ。[programTab] / [channelTab] / [commentTab] のいずれか。
