@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kurumi/src/data/backends/konomi/arib_tables.dart';
-import 'package:kurumi/src/data/backends/konomi/arib_text.dart';
+import 'package:kurumi/src/data/ts/arib_tables.dart';
+import 'package:kurumi/src/data/ts/arib_text.dart';
 
 void main() {
   group('ARIB文字列デコード', () {

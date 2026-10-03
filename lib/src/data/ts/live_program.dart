@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import '../../../core/utils/program_text.dart';
-import '../../../domain/entities/tv_program.dart';
+import '../../core/utils/program_text.dart';
+import '../../domain/entities/tv_program.dart';
 import 'arib_text.dart';
 import 'eit.dart';
 

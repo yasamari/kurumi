@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kurumi/src/data/backends/konomi/eit.dart';
+import 'package:kurumi/src/data/ts/eit.dart';
 
 /// 最小のEIT[p/f]セクションを組み立てる (イベント1件+短形式記述子)。
 Uint8List _buildEitSection({
@@ -112,17 +112,11 @@ void main() {
         decodeEitStartTime(Uint8List.fromList([0xFF, 0xFF, 0xFF, 0xFF, 0xFF])),
         isNull,
       );
-      expect(
-        decodeEitDuration(Uint8List.fromList([0xFF, 0xFF, 0xFF])),
-        isNull,
-      );
+      expect(decodeEitDuration(Uint8List.fromList([0xFF, 0xFF, 0xFF])), isNull);
     });
 
     test('継続時間を秒に変換する', () {
-      expect(
-        decodeEitDuration(Uint8List.fromList([0x01, 0x30, 0x00])),
-        5400,
-      );
+      expect(decodeEitDuration(Uint8List.fromList([0x01, 0x30, 0x00])), 5400);
     });
   });
 
@@ -241,6 +235,73 @@ void main() {
       final eit = parseEitSection(sections.single.section);
       expect(eit!.sectionNumber, 1);
       expect(eit.events.single.eventId, 456);
+    });
+
+    test('長いセクションの直後に短いセクションが来ても両方を復元する', () {
+      // 実TSではセクションが詰めて置かれるため、長いセクションの
+      // 末尾と次のセクションの開始が同一パケットに入る。そのパケットは
+      // PUSI=1 + pointer_field>0 になる。
+      final long = _buildEitSection(
+        serviceId: 7,
+        sectionNumber: 0,
+        eventId: 111,
+        shortEventDescriptor: _shortEventDescriptor(
+          List.filled(100, 0x41),
+          List.filled(160, 0x42),
+        ),
+      );
+      final short = _buildEitSection(
+        serviceId: 7,
+        sectionNumber: 1,
+        eventId: 222,
+        shortEventDescriptor: _shortEventDescriptor(
+          List.filled(10, 0x43),
+          List.filled(10, 0x44),
+        ),
+      );
+      // 1パケット目のペイロードは pointer_field(1) + 183バイト。
+      // 残りは2パケット目の pointer_field の後ろに入る。
+      final firstRoom = 183;
+      final rest = long.length - firstRoom;
+      expect(rest, greaterThan(0));
+      expect(1 + rest + short.length, lessThanOrEqualTo(184));
+
+      // 実TSと同じ並び方にする。
+      // 1パケット目: PUSI=1 / pointer_field=0 / 長いセクションの先頭183バイト
+      // 2パケット目: PUSI=1 / pointer_field=長いセクションの残り /
+      //               長いセクションの残り + 短いセクション全体
+      final packets = <Uint8List>[];
+      final head = Uint8List(188)..fillRange(0, 188, 0xFF);
+      head[0] = 0x47;
+      head[1] = 0x40 | 0x12;
+      head[2] = 0x12;
+      head[3] = 0x10;
+      head[4] = 0x00;
+      head.setRange(5, 188, long.sublist(0, firstRoom));
+      packets.add(head);
+
+      final restBytes = long.sublist(firstRoom);
+      final tail = Uint8List(188)..fillRange(0, 188, 0xFF);
+      tail[0] = 0x47;
+      tail[1] = 0x40 | 0x12;
+      tail[2] = 0x12;
+      tail[3] = 0x11;
+      tail[4] = restBytes.length;
+      var at = 5;
+      tail.setRange(at, at + restBytes.length, restBytes);
+      at += restBytes.length;
+      tail.setRange(at, at + short.length, short);
+      packets.add(tail);
+
+      final assembler = TsSectionAssembler();
+      final raw = BytesBuilder();
+      for (final packet in packets) {
+        raw.add(packet);
+      }
+      final sections = assembler.addPackets(raw.toBytes());
+      expect(sections, hasLength(2));
+      expect(sections[0].section, long);
+      expect(sections[1].section, short);
     });
   });
 }

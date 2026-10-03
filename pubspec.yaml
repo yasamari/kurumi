@@ -58,6 +58,10 @@ dependencies:
   # node-aribtsのTsCharはSJIS経由でデコードするため、純Dartの変換器が必要。
   jis0208: ^1.0.1
 
+  # stream tap (native/stream_tap) の呼び出しに使う。ネイティブ側とは
+  # アドレス受け渡しのみで、Dart 製コールバックは作らない。
+  ffi: ^2.1.4
+
 # Android の libmpv を自前のビルドに差し替える。
 # media_kit_libs_android_video は Android プラットフォームのみの対象で、
 # .jar を Gradle 時に GitHub Releases から取得する。同梱版は upstream の

@@ -58,6 +58,19 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 **弾幕の on/off と参照は映像の `Stack` 内にあり回転で作り直される**が、弾幕は一時アニメーションなので消えても問題ない。ソケットは `JikkyoCommentController` が別に持つため回転しても切れない。`controller.liveComments` は購読直後のバックログ (直近100件) を除外した新規コメントだけを送る。`DanmakuOption.fontSize` は画面全体で1つなので `mail` のサイズコマンド (`small`/`big`) は弾幕では表現できない。
 
+## ライブEIT (番組情報)
+
+視聴画面の番組情報はライブEIT[p/f]からのみ取得する (`/api/channels` 由来の番組表示はしない)。EIT未受信時は「番組情報を取得中」と出す。TVタブの一覧・チャンネル切替は従来通り API 由来 (`nowOnAirChannelsProvider`)。
+
+- EITパイプラインはバックエンド非依存で `data/ts/` に置く (`eit.dart` セクション再構成+記述子パース / `arib_text.dart` + `arib_tables.dart` ARIB文字列 / `live_program.dart` `TvProgram` 組み立て / `ts_sync.dart` 188B整列 / `stream_tap_*.dart` ネイティブ tap 連携)。node-aribts と KonomiTV `ProgramUtils` / `LivePSIArchivedDataDecoder` の移植。文字列整形は `core/utils/program_text.dart` の `formatProgramText` を使い回すこと (二重実装しない)。
+- パケット源はバックエンド別: KonomiTV は PSIアーカイブAPI→ `KonomiTsPackets` (`data/backends/konomi/`)、Mirakurun等は stream tap (`kurumi-ts://`)。どちらも `LiveSession` (`features/player/live_session.dart`: mpvが開くURL + 188Bパケット列 + close) に包んで `_LivePlayerState` が所有し、`_open` でセッション確立→ `LivePsiController` 起動→ `player.open` の順に開く。開設中は読み込み表示、失敗は再試行表示。
+- **mpv の `stream_cb` コールバック自体は Dart で書かない。** コールバックはmpv側スレッドから呼ばれるが、pure Dart の `isolateLocal` / `Pointer.fromFunction` は作成スレッド以外から呼ぶとプロセスごと abort し、`listener` は戻り値を返せない (`read_fn` はバイト数を返す必要がある)。ブロッキングする read は `native/stream_tap/` の C (`kurumi_tap_*` リング+同期プリミティブ) が持ち、HTTP 取得と EIT 解析は Dart のまま。Dart→mpv 方向の呼び出しは `mpv_stream_cb_add_ro` の1回だけで、`features/player/mpv_stream_tap.dart` に集約する。同一ハンドルへの再登録は mpv が -4 で拒否するため正常扱いにする。
+- media_kit は temp playlist 経由 (`loadlist`) で開くため、tap (`kurumi-ts://`) の再生には `load-unsafe-playlists=yes` が要る。無いとプレイリスト由来の origin ゲートで UNSAFE 拒否され、後続ハンドラの NO_MATCH に上書きされて見かけ上 protocol unsupported 相当のエラーになる (`_open` で tap 時のみ設定)。
+- ネイティブ tap の対応は Linux (`linux/CMakeLists.txt` でバンドル `lib/` へ)・Android (`android/app/src/main/cpp/CMakeLists.txt` + `externalNativeBuild`)・Windows (`windows/CMakeLists.txt` で実行ファイルと同階層へ)。同期プリミティブの差異 (pthread / SRWLOCK+CONDITION_VARIABLE) は `stream_tap.c` 内の `#ifdef _WIN32` で吸収し、API は共通。`flake.nix` の fileset に `native/` を入れること (抜くと `nix build` 成果物に `.so` が入らない)。nix 成果物はラッパー起動でバンドル相対が外れうるため、tap 用 `.so` は別 derivation (`stream-tap-lib`) でも作り `runtimeDependencies` に載せて soname 解決の保険にしている。macOS/iOS は未対応で、Mirakurun等はセッション開設失敗 (再試行表示) になる。
+- **取得ポンプは worker isolate で回す** (`StreamTapSession` が `Isolate.spawn` し、`StreamTapPump` を走らせる)。フルTS (15〜24Mbps) の受取・188B整列・リングへの push をUI isolate で行うとイベントループが圧迫され、mpv への供給が途切れ途切れになって**映像が僅かに遅くなり音声が途切れる** (Mirakurun等だけ 발생。KonomiTV は mpegts を mpv が直接開くため無関係)。worker →メインisolate は `TapWorker*` メッセージで、**EITバッチ (PID 0x12 のみ) しか運ばない**。`LivePsiController` は受け取った 188B バッチを自前でさらに PID フィルタする (二重化しても無害だが、Konomi 経路はフルTS がそのまま流れるので必要)。ポンプは isolate 非依存な `StreamTapPump` に分けてあり、`test/stream_tap_session_test.dart` は `_FakeTapNative` を直接注入して単体テストする。
+- `TsSectionAssembler` は PUSI=1 のとき、**pointer_field が示すバイト数を前セクションの続きとしてバッファへ足してから**新セクションに切り替える。実TSはセクションが詰めて置かれるため「長いセクションの末尾 + 次のセクションの開始」が同一パケットに入り、そのパケットは PUSI=1 + pointer_field>0 になる。これを捨てると複数パケットにまたがるセクションが丸ごと失われる (node-aribts `ariblib/packet.py` `sections()` の `buffer.extend(prev)` に相当)。`afc` は 0b01 が adaptation 無し、0b11 が adaptation あり、0b10 はペイロード無し。stuffing (先頭 0xFF) で打ち切る。
+- `LivePsiController` は PID 0x12 を組み立て**前**に抜く。フルTS (映像PES含む) をそのまま組み立てると他PIDの断片がバッファに溜まり続ける。
+
 ## Conventions
 
 - **Doc comments, test names, and user-facing strings are in Japanese.** Match this.

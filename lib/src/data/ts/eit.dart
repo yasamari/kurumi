@@ -96,8 +96,8 @@ int mpeg2CrcRemainder(Uint8List section) {
   for (final byte in section) {
     crc =
         (((crc << 8) & 0xFFFFFFFF) ^
-                _mpeg2CrcTable[((crc >> 24) ^ byte) & 0xFF]) &
-            0xFFFFFFFF;
+            _mpeg2CrcTable[((crc >> 24) ^ byte) & 0xFF]) &
+        0xFFFFFFFF;
   }
   return crc;
 }
@@ -110,8 +110,8 @@ int _mpeg2CrcRaw(Uint8List data) {
   for (final byte in data) {
     crc =
         (((crc << 8) & 0xFFFFFFFF) ^
-                _mpeg2CrcTable[((crc >> 24) ^ byte) & 0xFF]) &
-            0xFFFFFFFF;
+            _mpeg2CrcTable[((crc >> 24) ^ byte) & 0xFF]) &
+        0xFFFFFFFF;
   }
   return crc;
 }
@@ -124,13 +124,10 @@ DateTime? decodeEitStartTime(Uint8List bytes) {
   if (bytes.every((b) => b == 0xFF)) return null;
   final mjd = (bytes[0] << 8) | bytes[1];
   final year0 = ((mjd - 15078.2) / 365.25).truncate();
-  final month0 =
-      ((mjd - 14956.1 - (year0 * 365.25).truncate()) / 30.6001).truncate();
+  final month0 = ((mjd - 14956.1 - (year0 * 365.25).truncate()) / 30.6001)
+      .truncate();
   final day =
-      mjd -
-      14956 -
-      (year0 * 365.25).truncate() -
-      (month0 * 30.6001).truncate();
+      mjd - 14956 - (year0 * 365.25).truncate() - (month0 * 30.6001).truncate();
   final k = (month0 == 14 || month0 == 15) ? 1 : 0;
   final year = year0 + k + 1900;
   final month = month0 - 1 - k * 12;
@@ -138,9 +135,14 @@ DateTime? decodeEitStartTime(Uint8List bytes) {
   final minute = (bytes[3] >> 4) * 10 + (bytes[3] & 0x0F);
   final second = (bytes[4] >> 4) * 10 + (bytes[4] & 0x0F);
   // JSTの壁時計として解釈し、絶対時刻に直す。
-  return DateTime.utc(year, month, day, hour, minute, second).subtract(
-    const Duration(hours: 9),
-  );
+  return DateTime.utc(
+    year,
+    month,
+    day,
+    hour,
+    minute,
+    second,
+  ).subtract(const Duration(hours: 9));
 }
 
 /// EIT継続時間 (3バイトBCD) を秒数に変換する。全ビット1は null。
@@ -175,10 +177,7 @@ class ShortEventDescriptor extends EitDescriptor {
 
 /// 拡張形式イベントの1項目。
 class ExtendedEventItem {
-  const ExtendedEventItem({
-    required this.description,
-    required this.item,
-  });
+  const ExtendedEventItem({required this.description, required this.item});
 
   final Uint8List description;
   final Uint8List item;
@@ -284,10 +283,7 @@ EitDescriptor? _parseOne(int tag, Uint8List payload) {
       final name = payload.sublist(4, 4 + nameLen);
       final textLen = payload[4 + nameLen];
       if (4 + nameLen + 1 + textLen > payload.length) return null;
-      final text = payload.sublist(
-        4 + nameLen + 1,
-        4 + nameLen + 1 + textLen,
-      );
+      final text = payload.sublist(4 + nameLen + 1, 4 + nameLen + 1 + textLen);
       return ShortEventDescriptor(
         language: language,
         eventName: name,
@@ -476,38 +472,68 @@ class TsSectionAssembler {
       final pusi = (packets[offset + 1] & 0x40) != 0;
       final pid = ((packets[offset + 1] & 0x1F) << 8) | packets[offset + 2];
       final afc = (packets[offset + 3] >> 4) & 0x03;
-      if (afc == 0 || afc == 2) continue;
+      // ペイロード無し (afc=0 は予約値) は無視する。
+      if ((afc & 0x01) == 0) continue;
       var payloadStart = offset + 4;
-      if (afc == 3) {
+      if ((afc & 0x02) != 0) {
         final adaptationLen = packets[offset + 4];
         payloadStart += 1 + adaptationLen;
       }
       if (payloadStart >= offset + 188) continue;
       final payload = packets.sublist(payloadStart, offset + 188);
       final buffer = _buffers.putIfAbsent(pid, () => <int>[]);
-      if (pusi) {
-        if (payload.isEmpty) continue;
-        final pointer = payload[0];
-        buffer.clear();
-        final start = 1 + pointer;
-        if (start < payload.length) {
-          buffer.addAll(payload.sublist(start));
-        }
-      } else {
+      if (!pusi) {
         buffer.addAll(payload);
+        _emitCompleted(out, buffer, pid);
+        continue;
       }
-      while (buffer.length >= 3) {
-        final sectionLength = ((buffer[1] & 0x0F) << 8) | buffer[2];
-        final total = 3 + sectionLength;
-        if (buffer.length < total) break;
-        out.add((
-          pid: pid,
-          section: Uint8List.fromList(buffer.sublist(0, total)),
-        ));
-        buffer.removeRange(0, total);
+      if (payload.isEmpty) continue;
+      final pointer = payload[0];
+      final nextStart = 1 + pointer;
+      if (nextStart > payload.length) continue;
+      if (pointer > 0) {
+        // pointer_field が示すバイト数は「前セクションの続き」。
+        // これを足さないと、複数パケットにまたがるセクションが
+        // 次のセクションの開始と同一パケットに入った時点で破棄される。
+        // 概要・詳細が長いNHK総合の現在番組がこれで取れなくなる。
+        buffer.addAll(payload.sublist(1, nextStart));
+        _emitCompleted(out, buffer, pid);
+      }
+      buffer.clear();
+      if (nextStart < payload.length) {
+        buffer.addAll(payload.sublist(nextStart));
+        _emitCompleted(out, buffer, pid);
       }
     }
     return out;
+  }
+
+  /// [buffer] 先頭から完成セクションを取り出す。
+  ///
+  /// 末尾の 0xFF 詰め (stuffing) はここで打ち切る。
+  void _emitCompleted(
+    List<({int pid, Uint8List section})> out,
+    List<int> buffer,
+    int pid,
+  ) {
+    while (buffer.length >= 3) {
+      // table_id 0xFF は stuffing。ariblib `packet.py` と同じくここで打ち切る。
+      // 実TSには 0xFF が混ざるので、ここをガードしないと
+      // section_length=0xFFF のデジャグセクション诞生して
+      // 次のセクションの解析がずれる。
+      if (buffer[0] == 0xFF) {
+        buffer.clear();
+        return;
+      }
+      final sectionLength = ((buffer[1] & 0x0F) << 8) | buffer[2];
+      final total = 3 + sectionLength;
+      if (buffer.length < total) break;
+      out.add((
+        pid: pid,
+        section: Uint8List.fromList(buffer.sublist(0, total)),
+      ));
+      buffer.removeRange(0, total);
+    }
   }
 
   /// 内部バッファを破棄する。

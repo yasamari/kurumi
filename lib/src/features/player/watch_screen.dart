@@ -7,7 +7,6 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/settings/app_settings.dart';
-import '../../data/backends/konomi/konomi_api_client.dart';
 import '../../data/backends/konomi/konomi_live.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
 import '../../core/network/dio_provider.dart';
@@ -20,6 +19,7 @@ import 'audio_switch.dart';
 import 'jikkyo_comment_controller.dart';
 import 'jikkyo_danmaku_overlay.dart';
 import 'live_psi_controller.dart';
+import 'live_session.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
 import 'player_controls_theme.dart';
@@ -270,7 +270,14 @@ class _WatchBody extends ConsumerWidget {
         data: (live) => _LivePlayer(
           // URLが変わったらPlayerを作り直す (画質切替対応)。
           key: ValueKey(live.url.toString()),
-          url: live.url,
+          sessionFactory: (player) => _liveSessionFactory(
+            ref,
+            player: player,
+            showQualityMenu: showQualityMenu,
+            item: item,
+            liveUrl: live.url,
+            quality: live.qualityLabel,
+          ),
           item: item,
           title: title,
           showQualityMenu: showQualityMenu,
@@ -280,31 +287,37 @@ class _WatchBody extends ConsumerWidget {
           deinterlace: showQualityMenu
               ? isOriginalKonomiQuality(live.qualityLabel)
               : true,
-          // PSIアーカイブはKonomiTVのみ。Mirakurun時はnullのままにする。
-          psiStreamFactory: showQualityMenu
-              ? _psiStreamFactory(ref, item, live.qualityLabel)
-              : null,
         ),
       ),
     );
   }
 }
 
-/// PSIアーカイブのストリーム取得口を作る。画質ごとに接続し直す。
-PsiStreamFactory _psiStreamFactory(
-  WidgetRef ref,
-  ChannelItem item,
-  String quality,
-) {
-  final dio = ref.watch(backendDioProvider);
-  final displayChannelId = item.channel.id;
-  return (cancelToken) => KonomiApiClient(
-    dio,
-  ).streamPsiArchivedData(
-    displayChannelId: displayChannelId,
-    quality: quality,
-    cancelToken: cancelToken,
-  );
+/// ライブセッションを開く。KonomiTVはmpegts直結、他はtap。
+///
+/// Mirakurun等は stream tap (`kurumi-ts://`) を使う。tap 未対応OS
+/// (macOS/iOS) ではセッション開設に失敗し、再試行表示になる。
+/// 画質・チャンネルが変わると `_LivePlayer` ごと作り直され、
+/// 旧セッションは閉じられる。
+Future<LiveSession> _liveSessionFactory(
+  WidgetRef ref, {
+  required Player player,
+  required bool showQualityMenu,
+  required ChannelItem item,
+  required Uri liveUrl,
+  required String quality,
+}) {
+  if (showQualityMenu) {
+    return Future.value(
+      buildKonomiLiveSession(
+        dio: ref.watch(backendDioProvider),
+        displayChannelId: item.channel.id,
+        quality: quality,
+        mpegtsUrl: liveUrl,
+      ),
+    );
+  }
+  return startStreamTapLiveSession(upstreamUrl: liveUrl, player: player);
 }
 
 /// media_kitのPlayer/Controllerを所有するウィジェット。
@@ -317,15 +330,15 @@ PsiStreamFactory _psiStreamFactory(
 class _LivePlayer extends ConsumerStatefulWidget {
   const _LivePlayer({
     super.key,
-    required this.url,
+    required this.sessionFactory,
     required this.item,
     required this.title,
     required this.showQualityMenu,
     required this.deinterlace,
-    this.psiStreamFactory,
   });
 
-  final Uri url;
+  /// 再生セッション (mpvが開くURL+EIT用パケット列) を開く。
+  final LiveSessionFactory sessionFactory;
 
   /// 番組情報パネルに表示するチャンネル+番組。
   final ChannelItem item;
@@ -334,9 +347,6 @@ class _LivePlayer extends ConsumerStatefulWidget {
 
   /// 生放送TS (インターレース) のとき真。mpvの自動デインタレースに使う。
   final bool deinterlace;
-
-  /// EIT[p/f] 取得口。KonomiTV時のみ非null (MirakurunはPSI取得不可)。
-  final PsiStreamFactory? psiStreamFactory;
 
   @override
   ConsumerState<_LivePlayer> createState() => _LivePlayerState();
@@ -351,8 +361,17 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
   late final VideoController _controller;
   late final JikkyoCommentController _jikkyo;
 
-  /// EIT[p/f] の接続。KonomiTV時のみ作成する。
+  /// EIT[p/f] の接続。セッション確立後に作る。
   LivePsiController? _psi;
+
+  /// 再生セッション (mpvが開くURL+EIT用パケット列)。
+  LiveSession? _session;
+
+  /// セッション開設中かどうか。開設完了まで映像の代わりに読み込み表示する。
+  bool _sessionLoading = true;
+
+  /// セッション開設の失敗内容。null以外は再試行表示する。
+  String? _sessionError;
 
   /// 実況コメントの弾幕表示の on/off。
   ///
@@ -408,16 +427,6 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       channelId: jikkyoChannelIdFor(widget.item.channel) ?? '',
     );
     _jikkyo.start();
-    // 番組情報 (EIT[p/f]) の接続はKonomiTV時のみ即開始する。
-    // 情報パネルを開くまで待たず、受信次第パネルに反映する。
-    final psiStreamFactory = widget.psiStreamFactory;
-    if (psiStreamFactory != null) {
-      _psi = LivePsiController(
-        networkId: widget.item.channel.networkId,
-        serviceId: widget.item.channel.serviceId,
-        streamFactory: psiStreamFactory,
-      )..start();
-    }
     // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
     // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`
     // など) でも届く。再生状態と組み合わせて判定し、再生できている場合は
@@ -471,10 +480,58 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     _hasAudio = false;
     // 開き直した時点がライブエッジなので、停止からの再開として扱わない。
     _pausedAfterStart = false;
-    if (mounted) {
-      setState(() => _errorMessage = null);
+    // 旧セッション (tap・PSI取得) を閉じてから開き直す。
+    _psi?.dispose();
+    _psi = null;
+    final oldSession = _session;
+    _session = null;
+    if (oldSession != null) {
+      await oldSession.close();
     }
-    await _player.open(Media(widget.url.toString()));
+    if (mounted) {
+      setState(() {
+        _errorMessage = null;
+        _sessionLoading = true;
+        _sessionError = null;
+      });
+    }
+    LiveSession session;
+    try {
+      session = await widget.sessionFactory(_player);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _sessionLoading = false;
+        _sessionError = '$error';
+      });
+      return;
+    }
+    if (!mounted) {
+      await session.close();
+      return;
+    }
+    _session = session;
+    // 番組情報 (EIT[p/f]) は情報パネルを開くまで待たず、受信次第反映する。
+    _psi = LivePsiController(
+      networkId: widget.item.channel.networkId,
+      serviceId: widget.item.channel.serviceId,
+      packets: session.packets,
+    )..start();
+    if (mounted) {
+      setState(() => _sessionLoading = false);
+    }
+    // stream tap (`kurumi-ts://`) は media_kit が temp playlist 経由
+    // (loadlist) で開く。プレイリスト由来の origin ゲート
+    // (`STREAM_ORIGIN_UNSAFE` 拒否) を通すため、開く前に許可する。
+    // 無いと UNSAFE が後続の NO_MATCH で上書きされ、見かけ上
+    // protocol unsupported 相当のエラーになる。
+    if (session.playUrl.scheme == 'kurumi-ts') {
+      final platform = _player.platform;
+      if (platform is NativePlayer) {
+        await platform.setProperty('load-unsafe-playlists', 'yes');
+      }
+    }
+    await _player.open(Media(session.playUrl.toString()));
   }
 
   /// 再生状態の変化を反映する。
@@ -566,12 +623,32 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     // 視聴画面を離れたときにソケットを閉じる。
     _jikkyo.dispose();
     _psi?.dispose();
+    _psi = null;
+    final session = _session;
+    _session = null;
+    if (session != null) {
+      // セッションの停止を待たずに抜ける。
+      unawaited(session.close());
+    }
     _player.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // セッション開設中は映像の代わりに読み込み表示する (tap起動待ち等)。
+    if (_sessionLoading) {
+      return const _PlaceholderScaffold(
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    // セッション開設失敗は再試行表示する。
+    final sessionError = _sessionError;
+    if (sessionError != null) {
+      return _PlaceholderScaffold(
+        child: _RetryError(message: sessionError, onRetry: _open),
+      );
+    }
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final video = _buildVideo(context, fullBleed: isLandscape);

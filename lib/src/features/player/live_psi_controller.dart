@@ -1,31 +1,30 @@
 import 'dart:async';
+import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 
-import '../../data/backends/konomi/eit.dart';
-import '../../data/backends/konomi/live_program.dart';
-import '../../data/backends/konomi/psi_archived_data.dart';
+import '../../data/ts/eit.dart';
+import '../../data/ts/live_program.dart';
 import '../../domain/entities/tv_program.dart';
 
-/// PSIアーカイブストリームを開く関数。キャンセル用トークンを受け取る。
-typedef PsiStreamFactory = Future<Stream<List<int>>> Function(
-  CancelToken cancelToken,
-);
-
-/// KonomiTVのPSIアーカイブからEIT[p/f]を追うコントローラー。
+/// 再生中TSのEIT[p/f]を追うコントローラー。
 ///
 /// 視聴画面の `_LivePlayerState` が所有する (回転で作り直されない位置のため、
 /// 回転しても接続を保てる。チャンネル切替・画質切替では画面ごと作り直され
 /// るため接続し直す)。実況コメントの [JikkyoCommentController] と同じ持ち方。
 ///
+/// TSパケット源はバックエンドごとに差し替える:
+/// - KonomiTV: PSIアーカイブAPIの展開結果 (188バイトTSパケット列)
+/// - Mirakurun等: 再生中TSのタップ (188バイト境界に整列済み)
+///
 /// EIT[p/f] をデコードし、現在・次番組 ([present]/[following]) を
-/// [TvProgram] で公開する。更新のたびに通知する。Mirakurun時は作らない。
+/// [TvProgram] で公開する。更新のたびに通知する。再生中の番組情報は
+/// ライブEIT[p/f]からのみ取得し、`/api/channels` 等の情報は使わない。
 class LivePsiController extends ChangeNotifier {
   LivePsiController({
     required this.networkId,
     required this.serviceId,
-    required this.streamFactory,
+    required this.packets,
   });
 
   /// フィルタ対象の network_id。
@@ -34,8 +33,8 @@ class LivePsiController extends ChangeNotifier {
   /// フィルタ対象の service_id。
   final int serviceId;
 
-  /// テスト時は差し替え可能にするためのストリーム取得口。
-  final PsiStreamFactory streamFactory;
+  /// 188バイト境界に整列したTSパケット列 (ヘッダー付き)。
+  final Stream<Uint8List> packets;
 
   /// EIT[p/f] の現在番組。未受信時は null。
   TvProgram? present;
@@ -43,47 +42,41 @@ class LivePsiController extends ChangeNotifier {
   /// EIT[p/f] の次番組。未受信時は null。
   TvProgram? following;
 
-  CancelToken? _cancelToken;
-  Future<void>? _run;
+  StreamSubscription<Uint8List>? _subscription;
   bool _disposed = false;
 
   /// いずれかを受信済みかどうか。
   bool get hasLive => present != null || following != null;
 
-  /// 接続を開始する。多重呼び出しは無視する。
+  /// 購読を開始する。多重呼び出しは無視する。
   void start() {
-    if (_run != null) return;
-    _cancelToken = CancelToken();
-    _run = _runLoop(_cancelToken!);
-  }
-
-  Future<void> _runLoop(CancelToken cancelToken) async {
-    final parser = PsiArchivedDataParser();
+    if (_subscription != null) return;
     final assembler = TsSectionAssembler();
-    try {
-      final stream = await streamFactory(cancelToken);
-      await for (final chunk in stream) {
-        if (_disposed || cancelToken.isCancelled) break;
-        final bytes = chunk is Uint8List
-            ? chunk
-            : Uint8List.fromList(chunk);
-        for (final psi in parser.addBytes(bytes)) {
-          if (psi.pid != 0x12) continue;
-          for (final section in assembler.addPackets(psi.packets)) {
-            if (section.pid != 0x12) continue;
-            handleSection(section.section);
-          }
+    final kept = BytesBuilder();
+    _subscription = packets.listen(
+      (batch) {
+        if (_disposed) return;
+        // 映像等のPESを含むフルTSが来るため、EIT (PID 0x12) だけ抜き出す。
+        // 組み立て前に落とさないと、他PIDの断片が組み立てバッファに溜まる。
+        kept.clear();
+        for (var offset = 0; offset + 188 <= batch.length; offset += 188) {
+          if (batch[offset] != 0x47) continue;
+          final pid =
+              ((batch[offset + 1] & 0x1F) << 8) | batch[offset + 2];
+          if (pid != 0x12) continue;
+          kept.add(batch.sublist(offset, offset + 188));
         }
-      }
-    } on DioException {
-      // キャンセル・切断時は黙って止める。
-    } on StateError {
-      // アーカイブ破綻時も黙って止める (再試行は画面の再試行に任せる)。
-    } finally {
-      if (!_disposed) {
-        // 正常終了・異常終了いずれも購読だけ終える。
-      }
-    }
+        final filtered = kept.toBytes();
+        if (filtered.isEmpty) return;
+        for (final section in assembler.addPackets(filtered)) {
+          if (section.pid != 0x12) continue;
+          handleSection(section.section);
+        }
+      },
+      onError: (_) {
+        // 源の異常終了時は黙って止める (再試行は画面の再試行に任せる)。
+      },
+    );
   }
 
   /// 完成セクション1件を処理する。更新があれば真を返す (テスト用に公開)。
@@ -117,7 +110,7 @@ class LivePsiController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    _cancelToken?.cancel();
+    _subscription?.cancel();
     super.dispose();
   }
 }

@@ -26,6 +26,26 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // stream tap (mpv stream_cb の受け側) の ABI 別ビルド。
+        // C ソースは native/stream_tap/ にあり Linux と共有。
+        externalNativeBuild {
+            cmake {
+                // 16KB ページ対応端末向け。NDK r27 以降の既定だが明示する。
+                arguments("-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON")
+                // 小規模な C ファイルのため -O2 で十分。LTO 等はしない。
+                cFlags("-O2", "-Wall", "-Wextra")
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            // nix store の SDK 同梱版に固定。未指定だと AGP が別版を
+            // 取得しようとして read-only な SDK への書き込みで落ちる。
+            version = "4.1.2"
+        }
     }
 
     buildTypes {

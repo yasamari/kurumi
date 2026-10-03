@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../../core/widgets/channel_logo.dart';
 import '../../core/widgets/program_detail_body.dart';
+import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
 import '../../domain/entities/tv_program.dart';
 import 'channel_switch_panel.dart';
@@ -13,9 +15,9 @@ import 'jikkyo_comment_source.dart';
 /// (タイトル・放送時間・ジャンル) / 次の番組 (タイトルと放送時間のみ) /
 /// 番組概要 / 番組詳細。
 ///
-/// 現在・次番組はPSIアーカイブのEIT[p/f]で上書きできる
-/// ([livePresent]/[liveFollowing])。未受信時は [item] の `/api/channels`
-/// 由来の番組を使う。
+/// 現在・次番組はライブEIT[p/f]からのみ取得する ([livePresent] /
+/// [liveFollowing])。`/api/channels` 由来の番組は使わない。未受信時は
+/// 「番組情報を取得中」と出す。
 ///
 /// 自身でスクロールする (`SingleChildScrollView`)。呼び出し側は縦画面なら
 /// 映像の下の `Expanded` に、横画面なら映像の右の固定幅ボックスに置く。
@@ -53,10 +55,10 @@ class ProgramInfoPanel extends StatelessWidget {
   /// チャンネル切替タブでチャンネルを選んだときのコールバック。
   final ValueChanged<String> onChannelSelected;
 
-  /// EIT[p/f] 由来の現在番組。null時は [item.nowOnAir] を使う。
+  /// ライブEIT[p/f] 由来の現在番組。未受信時は取得中表示になる。
   final TvProgram? livePresent;
 
-  /// EIT[p/f] 由来の次番組。null時は [item.nextUp] を使う。
+  /// ライブEIT[p/f] 由来の次番組。未受信時は出さない。
   final TvProgram? liveFollowing;
 
   /// タブのインデックス定数。
@@ -66,8 +68,6 @@ class ProgramInfoPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final present = livePresent ?? item.nowOnAir;
-    final following = liveFollowing ?? item.nextUp;
     return Column(
       children: [
         Expanded(
@@ -79,13 +79,16 @@ class ProgramInfoPanel extends StatelessWidget {
             children: [
               // 番組情報の中身はビデオ詳細と共有する [ProgramDetailBody]。
               // 次番組はジャンルと番組概要の間にタイトルと放送時間だけ出す。
+              // EIT未受信時は取得中表示になる (`/api/channels` は使わない)。
               SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
-                child: ProgramDetailBody(
-                  channel: item.channel,
-                  program: present,
-                  following: following,
-                ),
+                child: livePresent == null && liveFollowing == null
+                    ? _LoadingProgram(channel: item.channel)
+                    : ProgramDetailBody(
+                        channel: item.channel,
+                        program: livePresent,
+                        following: liveFollowing,
+                      ),
               ),
               // チャンネル切替タブは選択されている間だけ載せる。選択中の種別の
               // タブ位置を初期値として持ち直すため、作り直しても問題ない。
@@ -127,6 +130,54 @@ class ProgramInfoPanel extends StatelessWidget {
               selectedIcon: Icon(Icons.chat_bubble),
               label: 'コメント',
             ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+/// EIT未受信時の取得中表示。チャンネルヘッダーは出して待つ。
+class _LoadingProgram extends StatelessWidget {
+  const _LoadingProgram({required this.channel});
+
+  final Channel channel;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final number = channel.channelNumber;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            if (channel.logoUrl != null) ...[
+              ChannelLogo(channel: channel),
+              const SizedBox(width: 12),
+            ],
+            Expanded(
+              child: Text(
+                number.isEmpty ? channel.name : '$number ${channel.name}',
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 8),
+            Text('番組情報を取得中…', style: theme.textTheme.bodyMedium),
           ],
         ),
       ],

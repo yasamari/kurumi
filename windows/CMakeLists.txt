@@ -1,6 +1,7 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.14)
-project(kurumi LANGUAGES CXX)
+# stream tap が C のため C を有効化する。
+project(kurumi LANGUAGES C CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
@@ -49,6 +50,13 @@ endfunction()
 set(FLUTTER_MANAGED_DIR "${CMAKE_CURRENT_SOURCE_DIR}/flutter")
 add_subdirectory(${FLUTTER_MANAGED_DIR})
 
+# stream tap (mpv stream_cb の受け側)。Dart から FFI で呼ぶ小規模な共有
+# ライブラリで、mpv 本体には一切手を入れない。実行ファイルと同じフォルダに
+# 入れ、絶対パスで読み込む。C ソースは native/stream_tap/ で Linux と共有
+# (同期プリミティブの差異は #ifdef _WIN32 で吸収)。
+add_library(kurumi_stream_tap SHARED
+  "${CMAKE_CURRENT_SOURCE_DIR}/../native/stream_tap/stream_tap.c")
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
@@ -79,6 +87,11 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
   COMPONENT Runtime)
 
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
+# stream tap の DLL は実行ファイルと同じフォルダ (INSTALL_BUNDLE_LIB_DIR は
+# Windows ではルートと同義)。DLL 探査順で見つかるが、Dart 側は絶対パスで開く。
+install(TARGETS kurumi_stream_tap RUNTIME DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
 if(PLUGIN_BUNDLED_LIBRARIES)

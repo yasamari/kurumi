@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kurumi/src/data/backends/konomi/eit.dart';
-import 'package:kurumi/src/data/backends/konomi/live_program.dart';
+import 'package:kurumi/src/data/ts/eit.dart';
+import 'package:kurumi/src/data/ts/live_program.dart';
 
 EitSection _section({
   required int sectionNumber,

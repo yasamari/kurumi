@@ -110,6 +110,23 @@
           rubberbandSupport = false;
           zimgSupport = false;
         };
+        # stream tap (mpv stream_cb の受け側) の単体ビルド。
+        # linux/CMakeLists.txt でも同じソースからバンドル用に作るが、
+        # `nix build` 成果物はラッパー経由で起動されるため、バンドル相対では
+        # 見つからない場合がある。こちらを runtimeDependencies に載せ、
+        # soname (`libkurumi_stream_tap.so`) 解決の保険にする。
+        stream-tap-lib = pkgs.stdenv.mkDerivation {
+          name = "kurumi-stream-tap";
+          src = ./native/stream_tap;
+          buildPhase = ''
+            $CC -std=c11 -O2 -fPIC -shared -Wall -Wextra \
+              stream_tap.c -o libkurumi_stream_tap.so
+          '';
+          installPhase = ''
+            mkdir -p $out/lib
+            cp libkurumi_stream_tap.so $out/lib/
+          '';
+        };
         mpv-minimal = pkgs.mpv.override {
           mpv-unwrapped = mpv-unwrapped-minimal;
         };
@@ -172,6 +189,10 @@
             ./analysis_options.yaml
             ./lib
             ./linux
+            # stream tap の C ソース。linux/CMakeLists.txt から参照される。
+            # ここを抜くと `nix build` の成果物に libkurumi_stream_tap.so が
+            # 入らない。
+            ./native
             # dependency_overrides の path 依存。Android ビルド以外では
             # 参照されないが、pub get 解決時に必ず実在が要求される。
             ./packages
@@ -199,7 +220,8 @@
           # media_kit は Linux ではシステムの libmpv を dlopen する。
           # dart:ffi の DynamicLibrary.open() は RUNPATH を見ないため、
           # builder 標準の runtimeDependencies で LD_LIBRARY_PATH に載せる。
-          runtimeDependencies = [ mpv-unwrapped-minimal ];
+          # stream-tap-lib も同様 (バンドル相対が外れた場合の保険)。
+          runtimeDependencies = [ mpv-unwrapped-minimal stream-tap-lib ];
 
           postFixup = ''
             mkdir -p $out/share/icons/hicolor/192x192/apps

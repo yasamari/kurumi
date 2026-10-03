@@ -1,8 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:kurumi/src/data/backends/konomi/eit.dart';
+import 'package:kurumi/src/data/ts/eit.dart';
 import 'package:kurumi/src/features/player/live_psi_controller.dart';
 
 Uint8List _aribAscii(String text) {
@@ -54,13 +53,44 @@ Uint8List _sectionBytes({required int sectionNumber, required int eventId}) {
   return out.toBytes();
 }
 
+/// セクションを184バイトずつに区切り、TSヘッダー付きパケット列にする。
+Uint8List _toTsPackets(Uint8List section, int pid) {
+  final out = BytesBuilder();
+  var offset = 0;
+  var first = true;
+  var continuity = 0;
+  while (offset < section.length) {
+    final packet = Uint8List(188);
+    var payloadStart = 4;
+    if (first) {
+      packet[4] = 0x00; // pointer_field
+      payloadStart = 5;
+      first = false;
+    }
+    final room = 188 - payloadStart;
+    final end = (offset + room).clamp(0, section.length);
+    final chunk = section.sublist(offset, end);
+    packet.setRange(payloadStart, payloadStart + chunk.length, chunk);
+    for (var i = payloadStart + chunk.length; i < 188; i++) {
+      packet[i] = 0xFF;
+    }
+    packet[0] = 0x47;
+    packet[1] = (offset == 0 ? 0x40 : 0x00) | ((pid >> 8) & 0x1F);
+    packet[2] = pid & 0xFF;
+    packet[3] = 0x10 | (continuity++ & 0x0F);
+    out.add(packet);
+    offset = end;
+  }
+  return out.toBytes();
+}
+
 void main() {
   group('番組情報コントローラー', () {
     test('初期状態は未受信', () {
       final controller = LivePsiController(
         networkId: 1,
         serviceId: 7,
-        streamFactory: (_) async => const Stream.empty(),
+        packets: const Stream.empty(),
       );
       expect(controller.present, isNull);
       expect(controller.following, isNull);
@@ -72,7 +102,7 @@ void main() {
       final controller = LivePsiController(
         networkId: 1,
         serviceId: 7,
-        streamFactory: (_) async => const Stream.empty(),
+        packets: const Stream.empty(),
       );
       // serviceId不一致のセクションは無視される
       final other = _sectionBytes(sectionNumber: 0, eventId: 1);
@@ -82,16 +112,6 @@ void main() {
 
       // 正規のPresentを受信する
       final presentBytes = _sectionBytes(sectionNumber: 0, eventId: 10);
-      // serviceIdを7に合わせて組み立て直す
-      presentBytes[3] = 0x00;
-      presentBytes[4] = 0x07;
-      final crc = mpeg2CrcOf(
-        presentBytes.sublist(0, presentBytes.length - 4),
-      );
-      presentBytes[presentBytes.length - 4] = (crc >> 24) & 0xFF;
-      presentBytes[presentBytes.length - 3] = (crc >> 16) & 0xFF;
-      presentBytes[presentBytes.length - 2] = (crc >> 8) & 0xFF;
-      presentBytes[presentBytes.length - 1] = crc & 0xFF;
       expect(controller.handleSection(presentBytes), isTrue);
       expect(controller.present, isNotNull);
       expect(controller.present!.title, 'AB');
@@ -103,11 +123,30 @@ void main() {
       controller.dispose();
     });
 
+    test('TSパケット列からEITだけ抜き出して反映する', () async {
+      final section = _sectionBytes(sectionNumber: 1, eventId: 20);
+      // 映像PIDのダミーと混ぜてもEITだけ処理する
+      final mixed = BytesBuilder()
+        ..add(_toTsPackets(Uint8List.fromList(List.filled(300, 0xAA)), 0x100))
+        ..add(_toTsPackets(section, 0x12));
+      final controller = LivePsiController(
+        networkId: 1,
+        serviceId: 7,
+        packets: Stream.value(mixed.toBytes()),
+      );
+      controller.start();
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(controller.present, isNull);
+      expect(controller.following, isNotNull);
+      expect(controller.following!.title, 'AB');
+      controller.dispose();
+    });
+
     test('空ストリームでも落ちない', () async {
       final controller = LivePsiController(
         networkId: 1,
         serviceId: 7,
-        streamFactory: (_) async => const Stream.empty(),
+        packets: const Stream.empty(),
       );
       controller.start();
       await Future<void>.delayed(const Duration(milliseconds: 50));
@@ -115,13 +154,11 @@ void main() {
       controller.dispose();
     });
 
-    test('取得失敗でも落ちない', () async {
+    test('異常ストリームでも落ちない', () async {
       final controller = LivePsiController(
         networkId: 1,
         serviceId: 7,
-        streamFactory: (_) async {
-          throw DioException(requestOptions: RequestOptions(path: '/'));
-        },
+        packets: Stream.error(StateError('切断')),
       );
       controller.start();
       await Future<void>.delayed(const Duration(milliseconds: 50));

@@ -1,6 +1,7 @@
 # Project-level configuration.
 cmake_minimum_required(VERSION 3.13)
-project(runner LANGUAGES CXX)
+# stream tap が C のため C を有効化する。
+project(runner LANGUAGES C CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
@@ -54,6 +55,14 @@ add_subdirectory(${FLUTTER_MANAGED_DIR})
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK REQUIRED IMPORTED_TARGET gtk+-3.0)
 
+# stream tap (mpv stream_cb の受け側)。Dart から FFI で呼ぶ小規模な共有
+# ライブラリで、mpv 本体には一切手を入れない。再生バンドルの lib/ に入れ、
+# 実行ファイル相対 (`$ORIGIN/lib`) で読み込む。dev/`nix build`/AppImage 共通。
+add_library(kurumi_stream_tap SHARED
+  "${CMAKE_CURRENT_SOURCE_DIR}/../native/stream_tap/stream_tap.c")
+target_compile_options(kurumi_stream_tap PRIVATE -Wall -Wextra)
+target_link_libraries(kurumi_stream_tap PRIVATE pthread)
+
 # Application build; see runner/CMakeLists.txt.
 add_subdirectory("runner")
 
@@ -98,6 +107,9 @@ install(FILES "${FLUTTER_ICU_DATA_FILE}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}
   COMPONENT Runtime)
 
 install(FILES "${FLUTTER_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
+  COMPONENT Runtime)
+
+install(TARGETS kurumi_stream_tap LIBRARY DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
   COMPONENT Runtime)
 
 foreach(bundled_library ${PLUGIN_BUNDLED_LIBRARIES})
