@@ -7,8 +7,10 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/settings/app_settings.dart';
+import '../../data/backends/konomi/konomi_api_client.dart';
 import '../../data/backends/konomi/konomi_live.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
+import '../../core/network/dio_provider.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
@@ -17,6 +19,7 @@ import '../tv/tv_providers.dart';
 import 'audio_switch.dart';
 import 'jikkyo_comment_controller.dart';
 import 'jikkyo_danmaku_overlay.dart';
+import 'live_psi_controller.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
 import 'player_controls_theme.dart';
@@ -160,6 +163,7 @@ class _WatchInfoPanel extends ConsumerWidget {
     required this.item,
     required this.controller,
     required this.onChannelSelected,
+    this.psi,
   });
 
   /// 番組情報パネルに表示するチャンネル+番組。
@@ -168,18 +172,40 @@ class _WatchInfoPanel extends ConsumerWidget {
   /// 実況コメントの取得状態。[_LivePlayerState] が所有する。
   final JikkyoCommentController controller;
 
+  /// EIT[p/f] の取得状態。KonomiTV時のみ非null。[_LivePlayerState] が所有する。
+  final LivePsiController? psi;
+
   /// チャンネル切替タブでチャンネルを選んだときのコールバック。
   final ValueChanged<String> onChannelSelected;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return ProgramInfoPanel(
-      item: item,
-      controller: controller,
-      selectedIndex: ref.watch(watchInfoTabProvider),
-      onDestinationSelected: (index) =>
-          ref.read(watchInfoTabProvider.notifier).select(index),
-      onChannelSelected: onChannelSelected,
+    final psi = this.psi;
+    if (psi == null) {
+      return ProgramInfoPanel(
+        item: item,
+        controller: controller,
+        selectedIndex: ref.watch(watchInfoTabProvider),
+        onDestinationSelected: (index) =>
+            ref.read(watchInfoTabProvider.notifier).select(index),
+        onChannelSelected: onChannelSelected,
+      );
+    }
+    // PSIの更新で情報パネルだけ作り直す。映像には触らない。
+    return ListenableBuilder(
+      listenable: psi,
+      builder: (context, _) {
+        return ProgramInfoPanel(
+          item: item,
+          controller: controller,
+          selectedIndex: ref.watch(watchInfoTabProvider),
+          onDestinationSelected: (index) =>
+              ref.read(watchInfoTabProvider.notifier).select(index),
+          onChannelSelected: onChannelSelected,
+          livePresent: psi.present,
+          liveFollowing: psi.following,
+        );
+      },
     );
   }
 }
@@ -254,10 +280,31 @@ class _WatchBody extends ConsumerWidget {
           deinterlace: showQualityMenu
               ? isOriginalKonomiQuality(live.qualityLabel)
               : true,
+          // PSIアーカイブはKonomiTVのみ。Mirakurun時はnullのままにする。
+          psiStreamFactory: showQualityMenu
+              ? _psiStreamFactory(ref, item, live.qualityLabel)
+              : null,
         ),
       ),
     );
   }
+}
+
+/// PSIアーカイブのストリーム取得口を作る。画質ごとに接続し直す。
+PsiStreamFactory _psiStreamFactory(
+  WidgetRef ref,
+  ChannelItem item,
+  String quality,
+) {
+  final dio = ref.watch(backendDioProvider);
+  final displayChannelId = item.channel.id;
+  return (cancelToken) => KonomiApiClient(
+    dio,
+  ).streamPsiArchivedData(
+    displayChannelId: displayChannelId,
+    quality: quality,
+    cancelToken: cancelToken,
+  );
 }
 
 /// media_kitのPlayer/Controllerを所有するウィジェット。
@@ -275,6 +322,7 @@ class _LivePlayer extends ConsumerStatefulWidget {
     required this.title,
     required this.showQualityMenu,
     required this.deinterlace,
+    this.psiStreamFactory,
   });
 
   final Uri url;
@@ -287,18 +335,24 @@ class _LivePlayer extends ConsumerStatefulWidget {
   /// 生放送TS (インターレース) のとき真。mpvの自動デインタレースに使う。
   final bool deinterlace;
 
+  /// EIT[p/f] 取得口。KonomiTV時のみ非null (MirakurunはPSI取得不可)。
+  final PsiStreamFactory? psiStreamFactory;
+
   @override
   ConsumerState<_LivePlayer> createState() => _LivePlayerState();
 }
 
-/// [Player] と実況コメントの接続を持つ。向きに依存しない位置なので、画面回転で
-/// 作り直されても続きを保てる。情報パネルの選択中タブだけはチャンネル切替 (`go`
-/// による画面の置き換え) でも保つ必要があるため、この State ではなく
-/// `watchInfoTabProvider` が持つ。
+/// [Player] と実況コメント・番組情報の接続を持つ。向きに依存しない位置なので、
+/// 画面回転で作り直されても続きを保てる。情報パネルの選択中タブだけは
+/// チャンネル切替 (`go` による画面の置き換え) でも保つ必要があるため、
+/// この State ではなく `watchInfoTabProvider` が持つ。
 class _LivePlayerState extends ConsumerState<_LivePlayer> {
   late final Player _player;
   late final VideoController _controller;
   late final JikkyoCommentController _jikkyo;
+
+  /// EIT[p/f] の接続。KonomiTV時のみ作成する。
+  LivePsiController? _psi;
 
   /// 実況コメントの弾幕表示の on/off。
   ///
@@ -354,6 +408,16 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       channelId: jikkyoChannelIdFor(widget.item.channel) ?? '',
     );
     _jikkyo.start();
+    // 番組情報 (EIT[p/f]) の接続はKonomiTV時のみ即開始する。
+    // 情報パネルを開くまで待たず、受信次第パネルに反映する。
+    final psiStreamFactory = widget.psiStreamFactory;
+    if (psiStreamFactory != null) {
+      _psi = LivePsiController(
+        networkId: widget.item.channel.networkId,
+        serviceId: widget.item.channel.serviceId,
+        streamFactory: psiStreamFactory,
+      )..start();
+    }
     // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
     // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`
     // など) でも届く。再生状態と組み合わせて判定し、再生できている場合は
@@ -501,6 +565,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     _audioParamsSub?.cancel();
     // 視聴画面を離れたときにソケットを閉じる。
     _jikkyo.dispose();
+    _psi?.dispose();
     _player.dispose();
     super.dispose();
   }
@@ -520,8 +585,9 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       child: _WatchInfoPanel(
         item: widget.item,
         controller: _jikkyo,
+        psi: _psi,
         // チャンネルの切替は `go` で視聴画面ごと置き換える。旧画面の Player と
-        // 実況コメントのソケットはこれで解放される。
+        // 実況コメント・番組情報のソケットはこれで解放される。
         onChannelSelected: (id) => context.go('/watch/$id'),
       ),
     );

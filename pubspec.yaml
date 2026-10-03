@@ -54,6 +54,10 @@ dependencies:
   canvas_danmaku: ^0.3.3
   scrollable_positioned_list: ^0.3.8
 
+  # ARIB STD-B24文字列 (EIT) のShift_JISバイト列をUnicodeに直すために使う。
+  # node-aribtsのTsCharはSJIS経由でデコードするため、純Dartの変換器が必要。
+  jis0208: ^1.0.1
+
 # Android の libmpv を自前のビルドに差し替える。
 # media_kit_libs_android_video は Android プラットフォームのみの対象で、
 # .jar を Gradle 時に GitHub Releases から取得する。同梱版は upstream の

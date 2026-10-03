@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import 'konomi_dtos.dart';
+import 'konomi_live.dart';
 import 'konomi_video_dtos.dart';
 
 /// KonomiTV RESTクライアント。`dio.options.baseUrl` は正規化済み前提。
@@ -67,5 +68,24 @@ class KonomiApiClient {
       '/api/streams/video/$videoId/$quality/keep-alive',
       queryParameters: {'session_id': sessionId},
     );
+  }
+
+  /// ライブPSI/SIアーカイブデータのストリームを開く。
+  ///
+  /// EIT[p/f] をリアルタイムに得るためのエンドレスなストリーム
+  /// (`server/app/routers/LiveStreamsRouter.py`)。呼び出し側で購読を
+  /// やめるときは [cancelToken] をキャンセルすること。
+  Future<Stream<List<int>>> streamPsiArchivedData({
+    required String displayChannelId,
+    required String quality,
+    required CancelToken cancelToken,
+  }) async {
+    final q = normalizeKonomiQuality(quality);
+    final response = await _dio.get<ResponseBody>(
+      '/api/streams/live/$displayChannelId/$q/psi-archived-data',
+      options: Options(responseType: ResponseType.stream),
+      cancelToken: cancelToken,
+    );
+    return response.data!.stream;
   }
 }

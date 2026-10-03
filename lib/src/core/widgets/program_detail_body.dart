@@ -9,8 +9,8 @@ import 'program_symbol_text.dart';
 /// 番組情報の表示ブロック。ライブ視聴の情報タブとビデオ詳細で共有する。
 ///
 /// 表示内容 (上から): チャンネルヘッダー (ロゴ+番号・局名) / 番組タイトル /
-/// 放送時間 / サブタイトル (録画番組のみ) / ジャンル / 番組概要 (説明) /
-/// 番組詳細。
+/// 放送時間 / サブタイトル (録画番組のみ) / ジャンル / 次の番組
+/// (タイトルと放送時間のみ、あれば) / 番組概要 (説明) / 番組詳細。
 ///
 /// 自身ではスクロールしない。呼び出し側で `SingleChildScrollView` 等に載せる。
 class ProgramDetailBody extends StatelessWidget {
@@ -19,6 +19,7 @@ class ProgramDetailBody extends StatelessWidget {
     this.channel,
     required this.program,
     this.subtitle,
+    this.following,
   });
 
   /// チャンネル情報。なければヘッダーを出さない。
@@ -29,6 +30,10 @@ class ProgramDetailBody extends StatelessWidget {
 
   /// 録画番組のサブタイトル。ライブ視聴では使わないため通常は null。
   final String? subtitle;
+
+  /// 次の番組。ライブ視聴の情報タブでのみ使い、ビデオ詳細では null のまま。
+  /// ジャンルと番組概要の間にタイトルと放送時間だけ出す。
+  final TvProgram? following;
 
   @override
   Widget build(BuildContext context) {
@@ -68,6 +73,7 @@ class ProgramDetailBody extends StatelessWidget {
               ],
             ),
           ],
+          if (following != null) _FollowingProgram(program: following!),
           if (program.description.isNotEmpty) ...[
             const SizedBox(height: 16),
             Text(
@@ -99,7 +105,50 @@ class ProgramDetailBody extends StatelessWidget {
         ] else ...[
           if (channel != null) const SizedBox(height: 12),
           Text('番組情報がありません', style: theme.textTheme.bodyMedium),
+          if (following != null) _FollowingProgram(program: following!),
         ],
+      ],
+    );
+  }
+}
+
+/// 次の番組の簡易表示 (タイトルと放送時間のみ)。
+///
+/// 現在の番組のジャンルと番組概要の間に置く。見出しは他の節
+/// (`番組概要` / `番組詳細`) と同じ体裁にし、タイトルは現在の番組より
+/// 一回り小さく出す。
+class _FollowingProgram extends StatelessWidget {
+  const _FollowingProgram({required this.program});
+
+  final TvProgram program;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        Text(
+          '次の番組',
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        ProgramSymbolText(
+          program.title,
+          style: theme.textTheme.titleMedium?.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          formatProgramSlot(program.startAt, program.endAt),
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
       ],
     );
   }
