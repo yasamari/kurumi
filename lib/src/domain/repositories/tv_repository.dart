@@ -25,4 +25,22 @@ abstract class TvRepository {
   /// [quality] はKonomiTVの画質指定 (例: `original`)。Mirakurunでは無視され、
   /// `decode=1` 固定のストリームを返す。未設定時は [BackendUnconfiguredException]。
   Future<LiveStream> getLiveStream(Channel channel, {String quality = 'original'});
+
+  /// ライブ視聴で選択可能な画質一覧。
+  ///
+  /// Mirakurunでは画質選択をサポートしないため空リストを返す。
+  /// KonomiTVでは `original` + 16種の再エンコード画質を返す。
+  List<String> getLiveQualities();
+
+  /// ライブ視聴の既定画質。
+  String getDefaultLiveQuality();
+
+  /// 画質を正規化する。不正値は既定画質にフォールバックする。
+  String normalizeLiveQuality(String quality);
+
+  /// 再エンコード無しの画質 (生放送TS) かを判定する。
+  ///
+  /// `original` はインターレース放送のMPEG-2 TS直接出力のため、mpv側で
+  /// デインタレースする。トランスコード済み画質はプログレッシブのため不要。
+  bool isOriginalLiveQuality(String quality);
 }

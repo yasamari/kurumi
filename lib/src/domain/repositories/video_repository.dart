@@ -78,4 +78,29 @@ abstract class VideoRepository {
     required String quality,
     required String sessionId,
   });
+
+  /// 録画再生で選択可能な画質一覧。
+  ///
+  /// `original` (ダウンロード再生) を含まない。HLSで配信できないため。
+  List<String> getVideoQualities();
+
+  /// 録画再生の既定画質。
+  String getDefaultVideoQuality();
+
+  /// 画質を正規化する。不正値は既定画質にフォールバックする。
+  /// `original` はダウンロード再生用として有効。
+  String normalizeVideoQuality(String quality);
+
+  /// 再エンコード無し (`original`・ダウンロード再生) かを判定する。
+  bool isOriginalVideoQuality(String quality);
+
+  /// デインタレースが必要かを判定する。
+  ///
+  /// `original` (ダウンロード再生) でも既にインターレース解除済みの動画が
+  /// 配信されることがあるため、動画コーデックが MPEG-2 の場合にのみ解除する。
+  /// HLSはサーバー側でプログレッシブに再エンコード済みのため常時不要。
+  bool needsVideoDeinterlace({
+    required bool isOriginal,
+    String? videoCodec,
+  });
 }

@@ -7,13 +7,13 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/settings/app_settings.dart';
-import '../../data/backends/konomi/konomi_live.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
 import '../../core/network/dio_provider.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
 import '../../domain/entities/live_stream.dart';
+import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
 import 'audio_switch.dart';
@@ -85,7 +85,7 @@ class WatchScreen extends ConsumerWidget {
           channelId: channelId,
           item: item,
           title: title,
-          showQualityMenu: backendType == BackendType.konomiTv,
+          showQualityMenu: backendType.supportsLiveQualitySelection,
         );
       },
     );
@@ -221,9 +221,10 @@ class _LiveQualityButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final repository = ref.watch(tvRepositoryProvider);
     return QualityMenuButton(
       current: ref.watch(watchQualityProvider),
-      qualities: konomiLiveQualities,
+      qualities: repository.getLiveQualities(),
       onSelected: (quality) =>
           ref.read(watchQualityProvider.notifier).setQuality(quality),
     );
@@ -377,7 +378,7 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
         // Mirakurun (`decode=1` 固定) も生放送TSのためデインタレースする。
         // トランスコード済み画質はプログレッシブのため不要。
         deinterlace: widget.showQualityMenu
-            ? isOriginalKonomiQuality(live.qualityLabel)
+            ? ref.read(tvRepositoryProvider).isOriginalLiveQuality(live.qualityLabel)
             : true,
       ),
     );

@@ -92,4 +92,27 @@ class KonomiVideoRepository implements VideoRepository {
       sessionId: sessionId,
     );
   }
+
+  @override
+  List<String> getVideoQualities() => konomiVideoQualities;
+
+  @override
+  String getDefaultVideoQuality() => defaultKonomiVideoQuality;
+
+  @override
+  String normalizeVideoQuality(String quality) => normalizeKonomiVideoQuality(quality);
+
+  @override
+  bool isOriginalVideoQuality(String quality) => isOriginalKonomiVideoQuality(quality);
+
+  @override
+  bool needsVideoDeinterlace({
+    required bool isOriginal,
+    String? videoCodec,
+  }) {
+    return needsVideoDeinterlace(
+      isOriginal: isOriginal,
+      videoCodec: videoCodec,
+    );
+  }
 }

@@ -23,6 +23,18 @@ enum BackendType {
         BackendType.konomiTv => true,
       };
 
+  /// ライブ視聴で画質選択を利用できるかどうか。
+  bool get supportsLiveQualitySelection => switch (this) {
+        BackendType.mirakurun => false,
+        BackendType.konomiTv => true,
+      };
+
+  /// 録画再生で画質選択を利用できるかどうか。
+  bool get supportsVideoQualitySelection => switch (this) {
+        BackendType.mirakurun => false,
+        BackendType.konomiTv => true,
+      };
+
   static BackendType fromName(String? name) => values.firstWhere(
         (type) => type.name == name,
         orElse: () => BackendType.mirakurun,

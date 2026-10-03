@@ -1,6 +1,5 @@
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
-import '../../data/backends/konomi/konomi_live.dart';
 import '../../domain/entities/live_stream.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../tv/tv_providers.dart';
@@ -8,18 +7,22 @@ import 'program_info_panel.dart';
 
 part 'watch_providers.g.dart';
 
-/// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
+/// 視聴中の画質。永続化しない。
 ///
 /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
 /// 破棄・再生成で状態が初期値に戻らないようにするため。
 @Riverpod(keepAlive: true)
 class WatchQuality extends _$WatchQuality {
   @override
-  String build() => defaultKonomiQuality;
+  String build() {
+    final repository = ref.watch(tvRepositoryProvider);
+    return repository.getDefaultLiveQuality();
+  }
 
-  /// 画質を切り替える。不正値は `original` に正規化される。
+  /// 画質を切り替える。不正値は既定画質に正規化される。
   void setQuality(String quality) {
-    state = normalizeKonomiQuality(quality);
+    final repository = ref.read(tvRepositoryProvider);
+    state = repository.normalizeLiveQuality(quality);
   }
 }
 

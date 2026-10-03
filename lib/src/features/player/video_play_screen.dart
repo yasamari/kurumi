@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,7 +8,6 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/widgets/program_detail_body.dart';
-import '../../data/backends/konomi/konomi_video_stream.dart';
 import '../../domain/entities/video_program.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
@@ -23,6 +23,14 @@ import 'player_control_buttons.dart';
 import 'player_controls_theme.dart';
 import 'player_error.dart';
 import 'player_split_layout.dart';
+
+/// HLS視聴セッション ID を生成する。クライアント側で適宜生成した
+/// ランダム値でよく、衝突しなければ形式は問わない (32桁hex)。
+String generateVideoSessionId() {
+  final random = Random.secure();
+  final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+  return bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+}
 
 /// 録画再生画面。録画番組の再生遷移先 (`/videos/:videoId/play`)。
 ///
@@ -285,10 +293,11 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   ///
   /// オプションはデコーダ生成時に読まれるため、必ず `open` より前に渡す。
   Future<void> _initialize() async {
+    final repository = ref.read(videoRepositoryProvider);
     await applyVideoMpvOptions(
       _player,
-      deinterlace: needsVideoDeinterlace(
-        isOriginal: widget.quality == originalKonomiVideoQuality,
+      deinterlace: repository.needsVideoDeinterlace(
+        isOriginal: repository.isOriginalVideoQuality(widget.quality),
         videoCodec: widget.video.recordedFile?.videoCodec,
       ),
     );
@@ -438,10 +447,12 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
         ),
       QualityMenuButton(
         current: widget.quality,
-        qualities: const [
-          originalKonomiVideoQuality,
-          ...konomiVideoQualities,
-        ],
+        qualities: [
+          ref.read(videoRepositoryProvider).isOriginalVideoQuality('original')
+              ? 'original'
+              : '',
+          ...ref.read(videoRepositoryProvider).getVideoQualities(),
+        ].where((q) => q.isNotEmpty).toList(),
         onSelected: (quality) =>
             ref.read(videoPlayQualityProvider.notifier).setQuality(quality),
       ),

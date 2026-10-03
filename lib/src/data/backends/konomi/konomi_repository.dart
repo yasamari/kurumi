@@ -46,4 +46,16 @@ class KonomiTvRepository implements TvRepository {
     );
     return LiveStream(url: url, qualityLabel: normalized);
   }
+
+  @override
+  List<String> getLiveQualities() => konomiLiveQualities;
+
+  @override
+  String getDefaultLiveQuality() => defaultKonomiQuality;
+
+  @override
+  String normalizeLiveQuality(String quality) => normalizeKonomiQuality(quality);
+
+  @override
+  bool isOriginalLiveQuality(String quality) => isOriginalKonomiQuality(quality);
 }

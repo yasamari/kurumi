@@ -51,4 +51,16 @@ class MirakurunTvRepository implements TvRepository {
     );
     return LiveStream(url: url);
   }
+
+  @override
+  List<String> getLiveQualities() => const [];
+
+  @override
+  String getDefaultLiveQuality() => 'original';
+
+  @override
+  String normalizeLiveQuality(String quality) => 'original';
+
+  @override
+  bool isOriginalLiveQuality(String quality) => true;
 }
