@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 
-import '../../core/widgets/channel_logo.dart';
 import '../../core/widgets/program_detail_body.dart';
-import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
 import '../../domain/entities/tv_program.dart';
 import 'channel_switch_panel.dart';
@@ -17,7 +15,7 @@ import 'jikkyo_comment_source.dart';
 ///
 /// 現在・次番組はライブEIT[p/f]からのみ取得する ([livePresent] /
 /// [liveFollowing])。`/api/channels` 由来の番組は使わない。未受信時は
-/// 「番組情報を取得中」と出す。
+/// パネルの中央に `CircularProgressIndicator` だけを出す。
 ///
 /// 自身でスクロールする (`SingleChildScrollView`)。呼び出し側は縦画面なら
 /// 映像の下の `Expanded` に、横画面なら映像の右の固定幅ボックスに置く。
@@ -79,17 +77,19 @@ class ProgramInfoPanel extends StatelessWidget {
             children: [
               // 番組情報の中身はビデオ詳細と共有する [ProgramDetailBody]。
               // 次番組はジャンルと番組概要の間にタイトルと放送時間だけ出す。
-              // EIT未受信時は取得中表示になる (`/api/channels` は使わない)。
-              SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: livePresent == null && liveFollowing == null
-                    ? _LoadingProgram(channel: item.channel)
-                    : ProgramDetailBody(
-                        channel: item.channel,
-                        program: livePresent,
-                        following: liveFollowing,
-                      ),
-              ),
+              // EIT未受信時はスクロールせず、パネル中央にインジケータだけを出す
+              // (`/api/channels` 由来の番組は使わない)。
+              if (livePresent == null && liveFollowing == null)
+                const _LoadingProgram()
+              else
+                SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: ProgramDetailBody(
+                    channel: item.channel,
+                    program: livePresent,
+                    following: liveFollowing,
+                  ),
+                ),
               // チャンネル切替タブは選択されている間だけ載せる。選択中の種別の
               // タブ位置を初期値として持ち直すため、作り直しても問題ない。
               if (selectedIndex == channelTab)
@@ -137,50 +137,12 @@ class ProgramInfoPanel extends StatelessWidget {
   }
 }
 
-/// EIT未受信時の取得中表示。チャンネルヘッダーは出して待つ。
+/// EIT未受信時の取得中表示。パネル中央にインジケータだけを出す。
 class _LoadingProgram extends StatelessWidget {
-  const _LoadingProgram({required this.channel});
-
-  final Channel channel;
+  const _LoadingProgram();
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final number = channel.channelNumber;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            if (channel.logoUrl != null) ...[
-              ChannelLogo(channel: channel),
-              const SizedBox(width: 12),
-            ],
-            Expanded(
-              child: Text(
-                number.isEmpty ? channel.name : '$number ${channel.name}',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        Row(
-          children: [
-            const SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-            const SizedBox(width: 8),
-            Text('番組情報を取得中…', style: theme.textTheme.bodyMedium),
-          ],
-        ),
-      ],
-    );
+    return const Center(child: CircularProgressIndicator());
   }
 }
