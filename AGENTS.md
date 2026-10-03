@@ -71,6 +71,16 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 - `TsSectionAssembler` は PUSI=1 のとき、**pointer_field が示すバイト数を前セクションの続きとしてバッファへ足してから**新セクションに切り替える。実TSはセクションが詰めて置かれるため「長いセクションの末尾 + 次のセクションの開始」が同一パケットに入り、そのパケットは PUSI=1 + pointer_field>0 になる。これを捨てると複数パケットにまたがるセクションが丸ごと失われる (node-aribts `ariblib/packet.py` `sections()` の `buffer.extend(prev)` に相当)。`afc` は 0b01 が adaptation 無し、0b11 が adaptation あり、0b10 はペイロード無し。stuffing (先頭 0xFF) で打ち切る。
 - `LivePsiController` は PID 0x12 を組み立て**前**に抜く。フルTS (映像PES含む) をそのまま組み立てると他PIDの断片がバッファに溜まり続ける。
 
+## プレイヤー画面のレイアウト
+
+映像と情報パネルの配置は `features/player/player_split_layout.dart` の `PlayerSplitLayout` に集約する (矩形計算は純関数 `playerSplitRects`)。
+
+**向きで `Row`/`Column` を出し分けない。** ウィジェットの型が変わるとその下の Element がすべて作り直され、**`_LivePlayer` / `_VideoPlayer` の State ごと破棄される**。State が持つ `Player` と `LiveSession` が解放され、PSI 取得とライブ追従が中断する。
+
+これが **media_kit のフルスクリーンで映像が黒く止まる (音は出続ける) 直接の原因**になる。フルスクリーンは先に `Navigator` へ*同じ `VideoController` を使う新しい `Video`* を積む (`enterFullscreen`)。その後に向きが変わると (デスクトップは GTK/ネイティブフルスクリーンでウィンドウサイズが変わる → `MediaQuery` 更新、Android は `setPreferredOrientations` で回転)、通常側は破棄されて新しい `Player` で開き直すが、**フルスクリーン側は破棄済みの `VideoController` を参照したまま**になる。音声だけは作り直された `Player` から出て、結果として映像が黒いまま止まる。フルスクリーンから戻るとルートの pop で通常側の新しい `Player` が見えるので「復活」したように見える。画面回転だけでも同じ作り直しが起きる。
+
+`SafeArea` で囲む場合も `isLandscape ? content : SafeArea(child: content)` と**戻り値の型を変えない**。有効辺 (`left`/`top`/…) を切り替えるだけにする。
+
 ## Conventions
 
 - **Doc comments, test names, and user-facing strings are in Japanese.** Match this.

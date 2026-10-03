@@ -25,6 +25,7 @@ import 'mpv_options.dart';
 import 'player_control_buttons.dart';
 import 'player_controls_theme.dart';
 import 'player_error.dart';
+import 'player_split_layout.dart';
 import 'program_info_panel.dart';
 import 'watch_providers.dart';
 
@@ -293,10 +294,12 @@ class _WatchBody extends ConsumerWidget {
 /// 映像スロットと情報パネルの配置を組み立てる。
 ///
 /// 実況コメントの接続 ([JikkyoCommentController]) はこの State が所有する。
-/// `Row`/`Column` を向きで切り替える [_LivePlayerState] の内側に置くと
-/// 画面回転のたびに State が消えるため、切り替えの外側で持つ必要がある。
-/// チャンネル切り替えは `go` で視聴画面ごと置き換わるため、切り替われば
-/// 破棄されて作り直される。
+/// [_LivePlayer] の内側に置くと画面回転のたびに State が消えるため、切り替えの
+/// 外側で持つ必要がある。チャンネル切り替えは `go` で視聴画面ごと置き換わる
+/// ため、切り替われば破棄されて作り直される。
+///
+/// 配置は [PlayerSplitLayout] に任せる。`Row`/`Column` で出し分けると
+/// `_LivePlayer` ごと破棄されるが、fullscreen 時に映像が黒く止まる原因になる。
 ///
 /// `stream` をこの State 経由で下に渡すのは、`loading` → `data` の
 /// 遷移でこの State を保ったまま映像側だけを差し替えるため
@@ -345,9 +348,7 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
 
   @override
   Widget build(BuildContext context) {
-    final isLandscape =
-        MediaQuery.orientationOf(context) == Orientation.landscape;
-    // セッション開設 (tap起動) 中は映像側だけ読み込み表示にし、
+    // セッション開設 (tap起動) 中は映像側だけ読み込み表示し、
     // 情報パネルは出したままにする。
     final video = widget.stream.when(
       loading: () => const _LoadingStatus(),
@@ -396,35 +397,11 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
         },
       ),
     );
-    // 映像は黒帯、情報パネルはテーマの地色で描画する。
-    final content = isLandscape
-        // 横画面: 映像の右に情報パネルを置く。
-        ? Row(
-            // パネルを画面の高さいっぱいに広げる (既定のcenterだと
-            // 内容量に応じた高さに縮んでしまうため)。
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: Container(color: Colors.black, child: video),
-              ),
-              SizedBox(width: 400, child: info),
-            ],
-          )
-        // 縦画面など: 映像の下に情報パネルを置く。
-        : Column(
-            children: [
-              Container(
-                color: Colors.black,
-                child: AspectRatio(aspectRatio: 16 / 9, child: video),
-              ),
-              Expanded(child: info),
-            ],
-          );
-    // 映像は横画面でも画面端まで描画する (フルブリード)。インカメラ等を
-    // 避けるためだけに画面端へ寄せているので、縦画面のみ SafeArea でノッチ等
-    // を避ける。
-    if (isLandscape) return content;
-    return SafeArea(child: content);
+    // 映像は黒帯、情報パネルはテーマの地色で描画する。向きで `Row`/`Column` を
+    // 出し分けると映像のサブツリーごと破棄される (画面回転と、media_kit の
+    // フルスクリーンでウィンドウサイズが変わる°) ので [PlayerSplitLayout] に
+    // 任せる (同ウィジェットのコメントを参照)。
+    return PlayerSplitLayout(video: video, info: info);
   }
 }
 

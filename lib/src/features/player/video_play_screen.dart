@@ -22,6 +22,7 @@ import 'mpv_options.dart';
 import 'player_control_buttons.dart';
 import 'player_controls_theme.dart';
 import 'player_error.dart';
+import 'player_split_layout.dart';
 
 /// 録画再生画面。録画番組の再生遷移先 (`/videos/:videoId/play`)。
 ///
@@ -148,6 +149,8 @@ class _VideoPlayBody extends ConsumerWidget {
 /// 画面離脱・画質切替時に `dispose` し直す。HLSセッションの keep-alive と
 /// 過去ログコメントの接続もここが持つ。向きに依存しない位置なので、
 /// 画面回転で作り直されても再生・コメント取得は保たれる。
+/// (配置は [PlayerSplitLayout] に任せ、向きでサブツリーごと作り直されない
+/// ようにしている。)
 class _VideoPlayer extends ConsumerStatefulWidget {
   const _VideoPlayer({
     super.key,
@@ -392,31 +395,11 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
         positionStream: _player.stream.position,
       ),
     );
-    // 映像は黒帯、情報パネルはテーマの地色で描画する。
-    final content = isLandscape
-        ? Row(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Expanded(
-                child: Container(color: Colors.black, child: video),
-              ),
-              SizedBox(width: 400, child: info),
-            ],
-          )
-        : Column(
-            children: [
-              Container(
-                color: Colors.black,
-                child: AspectRatio(aspectRatio: 16 / 9, child: video),
-              ),
-              Expanded(child: info),
-            ],
-          );
-    // 映像は横画面でも画面端まで描画する (フルブリード)。インカメラ等を
-    // 避けるためだけに画面端へ寄せているので、縦画面のみ SafeArea でノッチ等
-    // を避ける。
-    if (isLandscape) return content;
-    return SafeArea(child: content);
+    // 映像は黒帯、情報パネルはテーマの地色で描画する。向きで `Row`/`Column` を
+    // 出し分けると映像のサブツリーごと破棄される (画面回転と、media_kit の
+    // フルスクリーンでウィンドウサイズが変わる°) ので [PlayerSplitLayout] に
+    // 任せる (同ウィジェットのコメントを参照)。
+    return PlayerSplitLayout(video: video, info: info);
   }
 
   /// 映像+標準コントロール+エラー表示。レイアウトによらず共通。
