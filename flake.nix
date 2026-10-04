@@ -211,7 +211,7 @@
 
           gitHashes = {
             canvas_danmaku =
-              "sha256-BtQ4QN2trZ2K/9BOXXezuZhNWhA3H+kTgjgAm8GANfw=";
+              "sha256-DEP9+0NyX3URmYZVEUXMSpiS5NeNVaTaNexx2c5Gqg4=";
           };
 
           nativeBuildInputs = [ pkgs.copyDesktopItems ];

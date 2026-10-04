@@ -30,6 +30,9 @@ migrate_working_dir/
 .flutter-plugins-dependencies
 .pub-cache/
 .pub/
+# ローカル開発用の依存上書き (canvas_danmaku を ../canvas_danmaku に差し替える)。
+# commit しない。残しておくと pubspec.lock が path 依存になり `nix build` が壊れる。
+pubspec_overrides.yaml
 /build/
 /coverage/
 

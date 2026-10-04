@@ -60,6 +60,14 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 弾幕エンジンは `canvas_danmaku` のフォーク (`yasamari/canvas_danmaku`、MIT。`pubspec.yaml` は rev ピン留め git 依存)。描画は**決定論的**: 各弾幕は共有時計 (`DanmakuClock`) 上の birth を持ち、位置は `now - birth` の純関数 (`danmaku_track_assign.dart`)。軌道割当も birth 順の純関数で、`Random` は使わない。計測 (幅) とラスタ化は初回描画時に遅延実行し、挿入時はソート挿入だけ (一括取得が重くならない)。`CustomPainter` 3層分離・Ticker 自動停止・バッチ描画の高速化機構は温存する。
 
+**弾幕エンジンの不変条件 (3 つとも守ること)。** 破ると「消える少し前の弾幕が上段へ飛ぶ」症状 (描画中に `yPosition` が変わる) に戻る:
+
+1. **画面上の滞在時間は `duration` ちょうどで、幅に依存させない** (`scrollDanmakuGone`)。`scrollDanmakuX` は `W + w` を `duration` で進むので `x == -w` (= 完全退出) は幅によらず `birth + duration`。幅依存の transit を使うと消滅順が出生順とズレ、不可視の弾幕が軌道を占め続け、alive 窓の head 一括掃き出しも効かなくなる。
+2. **軌道割当は `now` を読まない** (`ScrollTrackAllocator`)。割当は `(birth, 幅, 画面幅, duration)` だけで決まり、出生順に 1 個ずつ「最初の空き軌道」。`store.prune` は 11 フレームごとに version を上げるので**窓の再構築が 1 秒に約 5 回起きる**が、`now` 依存の判定 (「もう消えたので軌道から外す」) を挟むと再構築が逐次処理と結果 달라れ、描画中の弾幕が別の行へ移動する。消えている弾幕も軌道は取る (直後の弾幕がそれで押し出された値なので、逐次処理と一致させるには落とせない)。静的弾幕 (`ue` / `shita`) の `_topLast` / `_bottomLast` も同じ。
+3. **再構築の開始点は `now - 2 * duration`** (`trackReplaySpanMs`)。塞ぎ条件はどちらも `elapsed < duration` を要求するので、それより古い弾幕は画面上のどの弾幕も塞げない。窓をこれより狭くすると、後から作られた view (フルスクリーン / 回転) が既存 view と別の行割当てになる。
+
+なお alive 窓のカーソルは添字ではなく **birth 処理済み境界** (`lowerBoundBirth` で毎回引く)。`prune` が出生順リストの先頭を落とした分だけ添字がずれると、新着弾幕を黙って落とす。
+
 **描画状態 (`DanmakuStore`) と時計は映像の `Stack` の外に持つ。** media_kit のフルスクリーンは同じ `controls` ビルダーで別ルートに新しい `Video` を積むため、`DanmakuScreen` が2つになる。両方に同じ store/clock を渡すと、同じ時計窓を描くので切替時に描画中の弾幕が消えない。回転も同様 (作り直されたviewが時計窓から描き直す)。所有者はライブが `_WatchLayoutState`、録画が `_VideoPlayerState` (どちらも回転で生き残る)。コメント二重購読 (通常+全画面) は store の重複排除キーで吸収する。store の画像キャッシュは共有で、view 側で破棄しない (重複破棄は null 化で冪等だが、他viewの表示中テクスチャを消さないこと)。
 
 - ライブ: 受信時の時計値を birth にする。保持は直近60秒 (`_liveDanmakuRetentionMs`)。バッファ (`paused-for-cache`、`player.stream.buffering`) 中と一時停止中は時計を凍結する (`danmakuClockShouldRun` の純関数)。バッファ解消は壁時計から再開し (再生位置の基準が無いため合わせ直しはしない)、一時停止の再開は停止中の壁時計分だけ進めて (`danmakuLiveResumeMs` の純関数) ライブエッジに追従させる。
@@ -152,5 +160,7 @@ Compose Material 3 の `dynamicLightColorScheme()` / `dynamicDarkColorScheme()` 
 
 - `flake.nix` builds from an explicit `fileset` (`analysis_options.yaml`, `lib`, `linux`, `packages`, `pubspec.yaml`, `pubspec.lock`, launcher icon). Adding `test/`, `assets/`, or new platform dirs requires updating that list or `nix build` breaks. `packages/` は `dependency_overrides` の path 依存なので、ここを抜くと Android ビルド以外でも `pub get` が失敗する。
 - `pubspec.lock` に path 依存が `relative: true` で記録される。`packages/` 以下の相対パスを変えたら lock を作り直す。
+- **`canvas_danmaku` を直すには参照先の差し替えが要る。** `pubspec.yaml` は git 依存の rev ピン留めなので、`../canvas_danmaku` を直しても解決先は `~/.pub-cache/git/canvas_danmaku-<rev>/` のままで反映されない。作業中は `pubspec_overrides.yaml` (gitignore 済み) で path 参照に差し替える。フォークを push して `pubspec.yaml` の `ref:` を上げたら **override を削除し、`pubspec.lock` を git 依存の記載に戻す** — 残しておくと lock が `../canvas_danmaku` を指し、`flake.nix` の fileset にそのパスが無く `nix build` が落ちる。
+- **`canvas_danmaku` の rev を上げたら `flake.nix` の `gitHashes` も更新する。** `buildFlutterApplication` は git 依存を `fetchgit` (固定出力) で取るので、`gitHashes.canvas_danmaku` は rev ごとの木ハッシュ。古いままだと `nix build` が hash mismatch で落ちる。新しい値は `hash = pkgs.lib.fakeHash` で `nix build` してエラー出力の `got:` を使う (空文字でも.hash を教えてくれる)。
 - Both backends are plain-HTTP LAN servers. Android is fine — `android/app/src/main/AndroidManifest.xml` already declares `INTERNET` **and** `usesCleartextTraffic="true"`, and `ios`/`macos` `Info.plist` declare `NSAllowsLocalNetworking` (local network only; internet-bound cleartext stays blocked by ATS).
 - No CI config exists; verification is local `flutter analyze` + `flutter test` (both currently clean).

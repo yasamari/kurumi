@@ -49,19 +49,148 @@ void main() {
     });
   });
 
-  group('scrollTransitMs', () {
-    test('幅0なら duration と等しい', () {
-      expect(
-        scrollTransitMs(viewWidth: 1000, itemWidth: 0, durationMs: 8000),
-        8000,
+  group('scrollDanmakuGone', () {
+    test('duration 経過で画面を完全退出する', () {
+      bool goneAt(int now) => scrollDanmakuGone(
+        birthTick: 1000,
+        nowMs: now,
+        durationMs: 8000,
       );
+      expect(goneAt(8999), isFalse);
+      expect(goneAt(9000), isTrue);
+      expect(goneAt(12000), isTrue);
     });
 
-    test('幅がある分だけ長くなる', () {
-      expect(
-        scrollTransitMs(viewWidth: 1000, itemWidth: 1000, durationMs: 8000),
-        16000,
-      );
+    test('幅に依存しない (画面から出る時刻は duration ちょうど)', () {
+      // 幅の違う弾幕は速く流れるが、退出時刻は変わらない。
+      // (幅で退出時刻を変えると、消滅順が出生順とズレて行が入れ替わる)
+      for (final width in [0.0, 26.0, 300.0, 1000.0]) {
+        expect(
+          scrollDanmakuX(
+            viewWidth: 1000,
+            itemWidth: width,
+            birthTick: 0,
+            nowMs: 8000,
+            durationMs: 8000,
+          ),
+          closeTo(-width, 1e-9),
+        );
+        expect(
+          scrollDanmakuGone(birthTick: 0, nowMs: 8000, durationMs: 8000),
+          isTrue,
+        );
+      }
+    });
+  });
+
+  group('trackReplaySpanMs', () {
+    test('duration の 2 倍 (塞ぎうる先行弾幕を全て含む)', () {
+      expect(trackReplaySpanMs(durationMs: 8000), 16000);
+      expect(trackReplaySpanMs(durationMs: 5000), 10000);
+    });
+  });
+
+  group('ScrollTrackAllocator', () {
+    const viewWidth = 1000.0;
+    const durationMs = 8000.0;
+
+    ScrollTrackAllocator newAllocator({int trackCount = 6}) =>
+        ScrollTrackAllocator(
+          trackCount: trackCount,
+          viewWidth: viewWidth,
+          durationMs: durationMs,
+        );
+
+    /// 画面と同じ「消えていても割り当てる」規則で、出生順に軌道を取る。
+    List<int> assignAll(
+      ScrollTrackAllocator tracks,
+      List<({int birth, double width})> items,
+    ) {
+      final result = <int>[];
+      for (final item in items) {
+        final track = tracks.firstFree(
+          birthTick: item.birth,
+          width: item.width,
+        );
+        if (track == null) {
+          result.add(-1);
+          continue;
+        }
+        tracks.occupy(track, birthTick: item.birth, width: item.width);
+        result.add(track);
+      }
+      return result;
+    }
+
+    test('空いていれば先頭軌道を使う', () {
+      final allocator = newAllocator();
+      expect(allocator.firstFree(birthTick: 0, width: 100), 0);
+    });
+
+    test('塞がれている軌道は飛ばして次を使う', () {
+      final allocator = newAllocator()..occupy(0, birthTick: 0, width: 400);
+      expect(allocator.firstFree(birthTick: 100, width: 100), 1);
+    });
+
+    test('全軌道が埋まれば null (弾幕を捨てる)', () {
+      final allocator = newAllocator(trackCount: 2)
+        ..occupy(0, birthTick: 0, width: 400)
+        ..occupy(1, birthTick: 0, width: 400);
+      expect(allocator.firstFree(birthTick: 100, width: 100), isNull);
+    });
+
+    test('duration 以上前の先行弾幕は塞がない', () {
+      final allocator = newAllocator(trackCount: 2)
+        ..occupy(0, birthTick: 0, width: 400)
+        ..occupy(1, birthTick: 0, width: 400);
+      expect(allocator.firstFree(birthTick: 8000, width: 100), 0);
+    });
+
+    test('再構築しても描画中の弾幕の軌道は変わらない', () {
+      // 幅の違う弾幕が 500ms 差で出生する配置。1 本目 (幅 26) がまだ右端付近
+      // にあるので 2 本目 (幅 300) はその軌道へ追いつくため下段へ落ちる。
+      const items = <({int birth, double width})>[
+        (birth: 0, width: 26),
+        (birth: 500, width: 300),
+        (birth: 1200, width: 26),
+        (birth: 1700, width: 300),
+      ];
+      // ライブの逐次表示。
+      final incremental = assignAll(newAllocator(), items);
+
+      // 回転 / フルスクリーン / prune と同じ経路で窓を作り直す。基準時刻 8300ms
+      // では 1 本目は画面外 (duration = 8000) だが、2〜4 本目は飛行中 (2 本目は
+      // 97.5% まで飛んでいる = 報告された「消える少し前」)。
+      const rebuildAt = 8300;
+      final rebuilt = assignAll(newAllocator(), items);
+
+      expect(rebuilt, incremental);
+      expect(incremental, [0, 1, 0, 2]);
+      // 画面内にある弾幕だけ見ても軌道は一致している。
+      expect([
+        for (final (index, item) in items.indexed)
+          if (rebuildAt - item.birth < durationMs) rebuilt[index],
+      ], [1, 0, 2]);
+    });
+
+    test('古い弾幕を残したまま再構築しても一致する', () {
+      // 同じ再構築を、出生順の途中 (画面外の部分が残っている位置) で行う。
+      const items = <({int birth, double width})>[
+        (birth: 0, width: 26),
+        (birth: 500, width: 300),
+        (birth: 9000, width: 26),
+        (birth: 9500, width: 300),
+        (birth: 11000, width: 26),
+        (birth: 11500, width: 300),
+      ];
+      final incremental = assignAll(newAllocator(), items);
+      final replayed = assignAll(newAllocator(), items);
+      expect(replayed, incremental);
+      // 基準時刻 13000ms でも後方 2 期間 (16000ms) 以内なので同じ軌道になる。
+      expect([
+        for (final (index, item) in items.indexed)
+          if (13000 - item.birth < durationMs) replayed[index],
+      ], incremental.sublist(items.length - 4));
     });
   });
 
@@ -254,7 +383,6 @@ void main() {
       store.add(item(birth: 50000), key: 'new');
       final removed = store.prune(
         nowMs: 60000,
-        viewWidth: 1000,
         durationMs: 8000,
         staticDurationMs: 5000,
       );
@@ -267,12 +395,11 @@ void main() {
     test('保持期間 null では自然消滅だけ落とす', () {
       final store = DanmakuStore<int>();
       addTearDown(store.dispose);
-      // transit = 8000 * 1100 / 1000 = 8800。
+      // 自然消滅は birth + duration (= 8000) で判定する (幅には依存しない)。
       store.add(item(birth: 0));
       store.add(item(birth: 5000));
       final removed = store.prune(
         nowMs: 9000,
-        viewWidth: 1000,
         durationMs: 8000,
         staticDurationMs: 5000,
       );
@@ -286,7 +413,6 @@ void main() {
       store.add(item(birth: 0, width: 0));
       final removed = store.prune(
         nowMs: 999999,
-        viewWidth: 1000,
         durationMs: 8000,
         staticDurationMs: 5000,
       );
