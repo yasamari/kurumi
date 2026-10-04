@@ -56,7 +56,7 @@ dependencies:
   canvas_danmaku:
     git:
       url: https://github.com/yasamari/canvas_danmaku
-      ref: 237a2e6c0bab87d226e74be24692ea351d388e16
+      ref: 957109cf36ff9c228402284a8ac0f2208695c0c5
   scrollable_positioned_list: ^0.3.8
 
   # ARIB STD-B24文字列 (EIT) のShift_JISバイト列をUnicodeに直すために使う。

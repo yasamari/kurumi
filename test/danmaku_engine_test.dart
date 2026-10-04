@@ -101,96 +101,108 @@ void main() {
           durationMs: durationMs,
         );
 
-    /// 画面と同じ「消えていても割り当てる」規則で、出生順に軌道を取る。
-    List<int> assignAll(
-      ScrollTrackAllocator tracks,
-      List<({int birth, double width})> items,
-    ) {
-      final result = <int>[];
-      for (final item in items) {
-        final track = tracks.firstFree(
-          birthTick: item.birth,
-          width: item.width,
+    DanmakuItem<int> danmaku(int birth, double width, int serial) =>
+        DanmakuItem<int>(
+          content: DanmakuContentItem<int>('#$serial', extra: serial),
+          width: width,
+          height: 38.4,
+          birthTick: birth,
         );
-        if (track == null) {
-          result.add(-1);
-          continue;
-        }
-        tracks.occupy(track, birthTick: item.birth, width: item.width);
-        result.add(track);
-      }
-      return result;
-    }
 
     test('空いていれば先頭軌道を使う', () {
-      final allocator = newAllocator();
-      expect(allocator.firstFree(birthTick: 0, width: 100), 0);
+      expect(newAllocator().take(birthTick: 0, width: 100), 0);
     });
 
     test('塞がれている軌道は飛ばして次を使う', () {
       final allocator = newAllocator()..occupy(0, birthTick: 0, width: 400);
-      expect(allocator.firstFree(birthTick: 100, width: 100), 1);
+      expect(allocator.take(birthTick: 100, width: 100), 1);
     });
 
     test('全軌道が埋まれば null (弾幕を捨てる)', () {
       final allocator = newAllocator(trackCount: 2)
         ..occupy(0, birthTick: 0, width: 400)
         ..occupy(1, birthTick: 0, width: 400);
-      expect(allocator.firstFree(birthTick: 100, width: 100), isNull);
+      expect(allocator.take(birthTick: 100, width: 100), isNull);
     });
 
     test('duration 以上前の先行弾幕は塞がない', () {
       final allocator = newAllocator(trackCount: 2)
         ..occupy(0, birthTick: 0, width: 400)
         ..occupy(1, birthTick: 0, width: 400);
-      expect(allocator.firstFree(birthTick: 8000, width: 100), 0);
+      expect(allocator.take(birthTick: 8000, width: 100), 0);
     });
 
-    test('再構築しても描画中の弾幕の軌道は変わらない', () {
-      // 幅の違う弾幕が 500ms 差で出生する配置。1 本目 (幅 26) がまだ右端付近
-      // にあるので 2 本目 (幅 300) はその軌道へ追いつくため下段へ落ちる。
-      const items = <({int birth, double width})>[
-        (birth: 0, width: 26),
-        (birth: 500, width: 300),
-        (birth: 1200, width: 26),
-        (birth: 1700, width: 300),
-      ];
-      // ライブの逐次表示。
-      final incremental = assignAll(newAllocator(), items);
-
-      // 回転 / フルスクリーン / prune と同じ経路で窓を作り直す。基準時刻 8300ms
-      // では 1 本目は画面外 (duration = 8000) だが、2〜4 本目は飛行中 (2 本目は
-      // 97.5% まで飛んでいる = 報告された「消える少し前」)。
-      const rebuildAt = 8300;
-      final rebuilt = assignAll(newAllocator(), items);
-
-      expect(rebuilt, incremental);
-      expect(incremental, [0, 1, 0, 2]);
-      // 画面内にある弾幕だけ見ても軌道は一致している。
-      expect([
-        for (final (index, item) in items.indexed)
-          if (rebuildAt - item.birth < durationMs) rebuilt[index],
-      ], [1, 0, 2]);
+    test('massiveMode は空き軌道に関係なく軌道を決める', () {
+      final allocator = newAllocator(trackCount: 3)
+        ..occupy(0, birthTick: 0, width: 400)
+        ..occupy(1, birthTick: 0, width: 400)
+        ..occupy(2, birthTick: 0, width: 400);
+      expect(allocator.take(birthTick: 100, width: 100), isNull);
+      expect(
+        allocator.take(birthTick: 100, width: 100, massiveFallback: true),
+        massiveFallbackTrack(birthTick: 100, trackCount: 3),
+      );
     });
 
-    test('古い弾幕を残したまま再構築しても一致する', () {
-      // 同じ再構築を、出生順の途中 (画面外の部分が残っている位置) で行う。
-      const items = <({int birth, double width})>[
-        (birth: 0, width: 26),
-        (birth: 500, width: 300),
-        (birth: 9000, width: 26),
-        (birth: 9500, width: 300),
-        (birth: 11000, width: 26),
-        (birth: 11500, width: 300),
-      ];
-      final incremental = assignAll(newAllocator(), items);
-      final replayed = assignAll(newAllocator(), items);
-      expect(replayed, incremental);
-      // 基準時刻 13000ms でも後方 2 期間 (16000ms) 以内なので同じ軌道になる。
-      expect([
-        for (final (index, item) in items.indexed)
-          if (13000 - item.birth < durationMs) replayed[index],
-      ], incremental.sublist(items.length - 4));
+    test('rewind は占有だけ空にする', () {
+      final allocator = newAllocator()..occupy(0, birthTick: 0, width: 400);
+      allocator.rewind();
+      expect(allocator.take(birthTick: 100, width: 100), 0);
+    });
+
+    test('記録された軌道は二度と変わらない (admitScrollTrack)', () {
+      // 「消える少し前」の回帰: 幅の違う 2 本が 500ms 差で出生する配置。1 本目
+      // (幅 26) がまだ右端付近なので 2 本目 (幅 300) はその軌道へ追いつくため
+      // 下段へ落ちる。作り直しで 1 本目が画面外になっても 2 本目は動かない。
+      final narrow = danmaku(0, 26, 0);
+      final wide = danmaku(500, 300, 1);
+      final tracks = newAllocator();
+      expect(admitScrollTrack(narrow, tracks, massiveMode: false), 0);
+      expect(admitScrollTrack(wide, tracks, massiveMode: false), 1);
+
+      // 作り直し (回転 / フルスクリーン / prune) を模す。
+      tracks.rewind();
+      final rebuilt = newAllocator();
+      expect(admitScrollTrack(narrow, rebuilt, massiveMode: false), 0);
+      expect(admitScrollTrack(wide, rebuilt, massiveMode: false), 1);
+      expect(narrow.track, 0);
+      expect(wide.track, 1);
+    });
+
+    test('軌道数が減って範囲外になった記録だけ開き直す', () {
+      final wide = danmaku(0, 26, 0);
+      final narrow = newAllocator(trackCount: 4);
+      expect(admitScrollTrack(wide, narrow, massiveMode: false), 0);
+
+      // 縦持ちで軌道数が 1 になった view が見ても、範囲外ではない行は保たれる。
+      final oneTrack = newAllocator(trackCount: 1);
+      expect(admitScrollTrack(wide, oneTrack, massiveMode: false), 0);
+
+      // 4 軌道のままなら記録どおり。
+      final same = newAllocator(trackCount: 4);
+      expect(admitScrollTrack(wide, same, massiveMode: false), 0);
+      expect(wide.track, 0);
+    });
+
+    test('静的弾幕も記録された軌道を使い続ける', () {
+      final tracks = StaticTrackAllocator(trackCount: 4, staticDurationMs: 5000);
+      final first = danmaku(0, 100, 0);
+      final second = danmaku(100, 100, 1);
+      expect(admitStaticTrack(first, tracks), 0);
+      // 表示期間 (< 5000ms) なので次の弾幕は同じ軌道に乗れない。
+      expect(admitStaticTrack(second, tracks), 1);
+
+      tracks.rewind();
+      final rebuilt = StaticTrackAllocator(trackCount: 4, staticDurationMs: 5000);
+      expect(admitStaticTrack(first, rebuilt), 0);
+      expect(admitStaticTrack(second, rebuilt), 1);
+    });
+
+    test('静的弾幕は minTrack を下回らない', () {
+      final tracks = StaticTrackAllocator(trackCount: 6, staticDurationMs: 5000);
+      final item = danmaku(0, 100, 0);
+      expect(admitStaticTrack(item, tracks, minTrack: 2), 2);
+      expect(item.track, 2);
     });
   });
 
@@ -427,6 +439,31 @@ void main() {
       store.clear();
       expect(store.isEmpty, isTrue);
       expect(store.add(item(birth: 1000), key: 'a'), isTrue);
+    });
+
+    test('resetTracks は記録された軌道だけを捨てる', () {
+      final store = DanmakuStore<int>();
+      addTearDown(store.dispose);
+      final scroll = item(birth: 1000);
+      final top = DanmakuItem<int>(
+        content: DanmakuContentItem<int>(
+          '上',
+          type: DanmakuItemType.top,
+        ),
+        width: 50,
+        height: 20,
+        birthTick: 1000,
+      );
+      store.add(scroll);
+      store.add(top);
+      scroll.track = 3;
+      top.track = 1;
+      store.resetTracks();
+      expect(scroll.track, isNull);
+      expect(top.track, isNull);
+      // 項目自体は残る (保持期間を捨てるのとは別)。
+      expect(store.scrollItems, hasLength(1));
+      expect(store.staticItems, hasLength(1));
     });
   });
 

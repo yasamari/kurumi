@@ -70,15 +70,15 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 **字幕は既定で非表示** (`AppSettingsState.defaultSubtitlesEnabled`)。mpv は既定で `sid=auto` (字幕があれば出す) なので、プレイヤーは映像を開くたび ([`PlayerPlaybackController.openUri`]) に `SubtitleTrack.no()` / `auto()` を選び直して適用する (`toggleSubtitles` は mpv 適用・notifier 更新・永続化をまとめて行う)。字幕ボタンは mpv のトラックを自分で購読せず、表示状態は `subtitlesEnabled` の通知を購読して受ける (`SubtitleToggleButton`)。
 
-弾幕エンジンは `canvas_danmaku` のフォーク (`yasamari/canvas_danmaku`、MIT。`pubspec.yaml` は rev ピン留め git 依存)。描画は**決定論的**: 各弾幕は共有時計 (`DanmakuClock`) 上の birth を持ち、位置は `now - birth` の純関数 (`danmaku_track_assign.dart`)。軌道割当も birth 順の純関数で、`Random` は使わない。計測 (幅) とラスタ化は初回描画時に遅延実行し、挿入時はソート挿入だけ (一括取得が重くならない)。`CustomPainter` 3層分離・Ticker 自動停止・バッチ描画の高速化機構は温存する。
+弾幕エンジンは `canvas_danmaku` のフォーク (`yasamari/canvas_danmaku`、MIT。`pubspec.yaml` は rev ピン留め git 依存)。描画は**決定論的**: 各弾幕は共有時計 (`DanmakuClock`) 上の birth を持ち、位置は `now - birth` の純関数 (`danmaku_track_assign.dart`)。軌道も birth 順の純関数で、`Random` は使わない — ただし**一度決まったら二度と変えない** (下の不変条件 2)。計測 (幅) とラスタ化は初回描画時に遅延実行し、挿入時はソート挿入だけ (一括取得が重くならない)。`CustomPainter` 3層分離・Ticker 自動停止・バッチ描画の高速化機構は温存する。
 
 **弾幕エンジンの不変条件 (3 つとも守ること)。** 破ると「消える少し前の弾幕が上段へ飛ぶ」症状 (描画中に `yPosition` が変わる) に戻る:
 
 1. **画面上の滞在時間は `duration` ちょうどで、幅に依存させない** (`scrollDanmakuGone`)。`scrollDanmakuX` は `W + w` を `duration` で進むので `x == -w` (= 完全退出) は幅によらず `birth + duration`。幅依存の transit を使うと消滅順が出生順とズレ、不可視の弾幕が軌道を占め続け、alive 窓の head 一括掃き出しも効かなくなる。
-2. **軌道割当は `now` を読まない** (`ScrollTrackAllocator`)。割当は `(birth, 幅, 画面幅, duration)` だけで決まり、出生順に 1 個ずつ「最初の空き軌道」。`store.prune` は 11 フレームごとに version を上げるので**窓の再構築が 1 秒に約 5 回起きる**が、`now` 依存の判定 (「もう消えたので軌道から外す」) を挟むと再構築が逐次処理と結果 れ、描画中の弾幕が別の行へ移動する。消えている弾幕も軌道は取る (直後の弾幕がそれで押し出された値なので、逐次処理と一致させるには落とせない)。静的弾幕 (`ue` / `shita`) の `_topLast` / `_bottomLast` も同じ。
-3. **再構築の開始点は `now - 2 * duration`** (`trackReplaySpanMs`)。塞ぎ条件はどちらも `elapsed < duration` を要求するので、それより古い弾幕は画面上のどの弾幕も塞げない。窓をこれより狭くすると、後から作られた view (フルスクリーン / 回転) が既存 view と別の行割当てになる。
+2. **軌道は 1 回だけ決め、弾幕自身に記録する** (`DanmakuItem.track` / `admitScrollTrack`)。**作り直しのたびに決め直してはいけない。** 読み直しは出生順の別の場所 (`now - 2 * duration`) から始まるので逐次処理と結果が同じにならず、窓の外 (描画されない古い弾幕) が軌道を確保しているかどうかで途中の弾幕が変わり、それが連鎖して表示中の弾幕まで動く。`store.prune` は 11 フレームごとに version を上げるので**窓の作り直しは 1 秒に約 5 回**起きており、弾幕数が多いほど露見する。記録は store 経由の共有なので、回転・フルスクリーンで新しく作られた `DanmakuScreen` も同じ行になる (軌道数が減って範囲外になった記録だけ開き直す)。静的弾幕 (`ue` / `shita`) の `admitStaticTrack` にも同じ規則を適用する。
+3. **再構築の開始点は `now - 2 * duration`** (`trackReplaySpanMs`)。塞ぎ条件はどちらも `elapsed < duration` を要求するので、それより古い弾幕は画面上のどの弾幕も塞げない。窓をこれより狭くすると、再構築時に読み飛ばした弾幕の衝突が反映されない (2. の記録があるので表示中の弾幕は行が動かないが、これは前提であって記録の代わりにはならない)。
 
-なお alive 窓のカーソルは添字ではなく **birth 処理済み境界** (`lowerBoundBirth` で毎回引く)。`prune` が出生順リストの先頭を落とした分だけ添字がずれると、新着弾幕を黙って落とす。
+なお alive 窓のカーソルは添字ではなく **birth 処理済み境界** (`lowerBoundBirth` で毎回引く)。`prune` が出生順リストの先頭を落とした分だけ添字がずれると、新着弾幕を黙って落とす。回帰テストは `test/danmaku_track_stability_test.dart` (窓管理を再現して高流量を回し、飛行中の行の変化数と「後から作った view との一致」を見る)。`test/danmaku_engine_test.dart` は個別の純関数。
 
 **描画状態 (`DanmakuStore`) と時計は映像の `Stack` の外に持つ。** media_kit のフルスクリーンは同じ `controls` ビルダーで別ルートに新しい `Video` を積むため、`DanmakuScreen` が2つになる。両方に同じ store/clock を渡すと、同じ時計窓を描くので切替時に描画中の弾幕が消えない。回転も同様 (作り直されたviewが時計窓から描き直す)。所有者はライブが `_WatchLayoutState`、録画が `_VideoPlayerState` (どちらも回転で生き残る)。コメント二重購読 (通常+全画面) は store の重複排除キーで吸収する。store の画像キャッシュは共有で、view 側で破棄しない (重複破棄は null 化で冪等だが、他viewの表示中テクスチャを消さないこと)。
 

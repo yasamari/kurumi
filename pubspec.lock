@@ -125,11 +125,11 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "237a2e6c0bab87d226e74be24692ea351d388e16"
-      resolved-ref: "237a2e6c0bab87d226e74be24692ea351d388e16"
+      ref: "957109cf36ff9c228402284a8ac0f2208695c0c5"
+      resolved-ref: "957109cf36ff9c228402284a8ac0f2208695c0c5"
       url: "https://github.com/yasamari/canvas_danmaku"
     source: git
-    version: "0.4.1"
+    version: "0.4.3"
   characters:
     dependency: transitive
     description:
