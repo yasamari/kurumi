@@ -27,12 +27,24 @@ import 'player_error.dart';
 /// 作り直されない位置にこのコントローラーを持たせる必要がある。実況コメント
 /// (`JikkyoCommentController`) と同じ流儀。
 ///
-/// 通知はエラー表示・表示アスペクト比・二重モノラル・弾幕の on/off が
-/// 変わったときだけ起きる。再生フレームごとに通知は起きない。
-/// 弾幕の表示設定 ([danmakuSettings]) は映像側へ影響しないため、この通知では
-/// 配らない (専用の notifier を弾幕の層に購読させる)。
+/// 通知はエラー表示・表示アスペクト比・二重モノラルが変わったときだけ起きる。
+/// 再生フレームごとに通知は起きない。
+///
+/// **弾幕の表示設定 ([danmakuPreferences]) と字幕の on/off ([subtitlesEnabled])
+/// はこの通知では配らない。** どちらも映像のサブツリー (弾幕の層・字幕ボタン)
+/// だけが購読する専用 notifier で配る。ここに乗せると、設定を1つ変えるたびに
+/// 映像 ([PlayerVideoView]) まで作り直されるうえ、`Video` の controls ビルダーが
+/// 差し替わるため mpv の内部パラメータ通知まで飛び、フレームが一瞬止まる。
 class PlayerPlaybackController extends ChangeNotifier {
-  PlayerPlaybackController({this.seekToLiveEdgeOnResume = false}) {
+  PlayerPlaybackController({
+    this.seekToLiveEdgeOnResume = false,
+    this.initialDanmakuPreferences = const DanmakuPreferences(),
+    this.initialSubtitlesEnabled = defaultSubtitlesEnabled,
+    this.onDanmakuPreferencesChanged,
+    this.onSubtitlesEnabledChanged,
+  }) {
+    danmakuPreferences = ValueNotifier(initialDanmakuPreferences);
+    subtitlesEnabled = ValueNotifier(initialSubtitlesEnabled);
     videoController = VideoController(player);
     // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
     // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`
@@ -59,6 +71,19 @@ class PlayerPlaybackController extends ChangeNotifier {
   /// [seekToLiveEdge] 参照)。録画再生は放送に追従しないので不要。
   final bool seekToLiveEdgeOnResume;
 
+  /// 弾幕の表示設定の初期値。永続化済みの値を呼び出し側が渡す
+  /// (`AppSettings` のスナップショットから作る)。
+  final DanmakuPreferences initialDanmakuPreferences;
+
+  /// 字幕表示の初期値。永続化済みの値を呼び出し側が渡す。既定は非表示。
+  final bool initialSubtitlesEnabled;
+
+  /// 弾幕の表示設定が変わったときのコールバック。呼び出し側が永続化する。
+  final ValueChanged<DanmakuPreferences>? onDanmakuPreferencesChanged;
+
+  /// 字幕表示が変わったときのコールバック。呼び出し側が永続化する。
+  final ValueChanged<bool>? onSubtitlesEnabledChanged;
+
   StreamSubscription<String>? _errorSub;
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<VideoParams>? _videoParamsSub;
@@ -78,7 +103,6 @@ class PlayerPlaybackController extends ChangeNotifier {
   String? _errorMessage;
   double? _videoDisplayAspect;
   DualMonoChannel? _dualMonoChannel;
-  bool _danmakuEnabled = true;
   bool _disposed = false;
 
   /// 表示中の再生エラー。null なら表示しない。
@@ -99,40 +123,63 @@ class PlayerPlaybackController extends ChangeNotifier {
   /// 現在選択中の二重モノラルのチャンネル。null はステレオ (主＋副)。
   DualMonoChannel? get dualMonoChannel => _dualMonoChannel;
 
-  /// 実況コメントの弾幕表示の on/off。
+  /// 弾幕の表示設定 (on/off と文字サイズ・透明度・速度) の通知元。
   ///
   /// 向きに依存しない状態に持たせる。映像の `Stack` 内は回転で作り直される
   /// ため、ウィジェット側に持たせると回転でリセットされる。
-  bool get danmakuEnabled => _danmakuEnabled;
-
-  /// 弾幕の表示設定 (文字サイズ・透明度・速度) の通知元。
   ///
-  /// [danmakuEnabled] と同じ理由で、向きに依存しない状態に持たせる (映像の
-  /// `Stack` の内で持つと回転で作り直されてリセットされる)。
+  /// 購読は弾幕の層 ([JikkyoDanmakuOverlay]) だけが行う。設定メニューは
+  /// この notifier を購読せず、コールバック経由 ([onDanmakuPreferencesChanged])
+  /// で反映するため変わらない ([PlayerSettingsButton] が購読すると映像の
+  /// 再構築に巻き込まれるため)。
   ///
-  /// 購読は弾幕の層 ([JikkyoDanmakuOverlay]) と設定メニュー内だけで行う。
   /// この notifier を [notifyListeners] と連動させないのは、設定を1つ変える
-  /// たびに映像 ([PlayerVideoView]) まで作り直したくなるため。設定は弾幕以外
-  /// の要素に影響しない。
-  final ValueNotifier<DanmakuDisplaySettings> danmakuSettings =
-      ValueNotifier(const DanmakuDisplaySettings());
+  /// たびに映像 ([PlayerVideoView]) まで作り直されるため。設定は弾幕以外の
+  /// 要素に影響しない。
+  late final ValueNotifier<DanmakuPreferences> danmakuPreferences;
+
+  /// 字幕を表示するかどうかの通知元。既定は非表示。
+  ///
+  /// mpv 側の字幕トラック選択は [_applySubtitleSelection] で別に追従させる。
+  /// 購読は字幕ボタン ([SubtitleToggleButton]) だけが行う ([danmakuPreferences]
+  /// と同じ理屈)。
+  late final ValueNotifier<bool> subtitlesEnabled;
 
   /// 再生位置のストリーム。録画のコメント追従 (再生位置に追従する一覧) に使う。
   Stream<Duration> get position => player.stream.position;
 
-  /// 弾幕表示を切り替える。
-  void toggleDanmaku() {
-    _danmakuEnabled = !_danmakuEnabled;
-    notifyListeners();
+  /// 弾幕の表示設定を決める。永続化は [onDanmakuPreferencesChanged] の
+  /// 呼び出し側に任せる。
+  ///
+  /// [notifyListeners] は呼ばない。弾幕の層が [danmakuPreferences] を購読して
+  /// いるため、設定変更は弾幕のサブツリーにだけ届く。
+  void setDanmakuPreferences(DanmakuPreferences preferences) {
+    if (preferences == danmakuPreferences.value) return;
+    danmakuPreferences.value = preferences;
+    onDanmakuPreferencesChanged?.call(preferences);
   }
 
-  /// 弾幕の表示設定を変える。
+  /// 字幕表示を切り替える。mpv の字幕トラック選択にそのまま反映し、
+  /// [onSubtitlesEnabledChanged] で永続化する。
   ///
-  /// 弾幕の層が [danmakuSettings] を購読しているため、こちらは値を更新する
-  /// だけ ([notifyListeners] は呼ばない = 映像は作り直さない)。
-  void setDanmakuSettings(DanmakuDisplaySettings settings) {
-    if (danmakuSettings.value == settings) return;
-    danmakuSettings.value = settings;
+  /// [notifyListeners] は呼ばない。字幕ボタンが [subtitlesEnabled] を購読して
+  /// いる ([danmakuPreferences] と同じ理屈)。
+  void toggleSubtitles() {
+    final next = !subtitlesEnabled.value;
+    subtitlesEnabled.value = next;
+    unawaited(_applySubtitleSelection());
+    onSubtitlesEnabledChanged?.call(next);
+  }
+
+  /// 字幕の選択を mpv に適用する。
+  ///
+  /// mpv は既定で `sid=auto` (字幕があれば出す) なので、非表示にしたい場合は
+  /// 選び直す。映像を開き直すたび ([openUri]) に呼ぶことで、画質変更や再試行
+  /// の後も選択が保たれる。
+  Future<void> _applySubtitleSelection() {
+    return player.setSubtitleTrack(
+      subtitlesEnabled.value ? SubtitleTrack.auto() : SubtitleTrack.no(),
+    );
   }
 
   /// 音声メニューの選択を反映する。
@@ -167,10 +214,14 @@ class PlayerPlaybackController extends ChangeNotifier {
   }
 
   /// 映像を開く。表示中のエラーは取り下げてから開く。
+  ///
+  /// 開くたびに字幕の選び直しを適用するため、字幕の on/off と非表示の既定
+  /// ([initialSubtitlesEnabled]) はここで mpv へ反映される。
   Future<void> openUri(Uri url) async {
     _errorMessage = null;
     notifyListeners();
     await player.open(Media(url.toString()));
+    await _applySubtitleSelection();
   }
 
   /// 再生状態の変化を反映する。
@@ -270,7 +321,8 @@ class PlayerPlaybackController extends ChangeNotifier {
     _playingSub?.cancel();
     _videoParamsSub?.cancel();
     _audioParamsSub?.cancel();
-    danmakuSettings.dispose();
+    danmakuPreferences.dispose();
+    subtitlesEnabled.dispose();
     player.dispose();
     super.dispose();
   }

@@ -1,7 +1,62 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kurumi/src/core/settings/app_settings_state.dart';
 import 'package:kurumi/src/features/player/danmaku_settings.dart';
 
 void main() {
+  group('DanmakuPreferences', () {
+    test('既定値は表示・標準サイズ', () {
+      const preferences = DanmakuPreferences();
+      expect(preferences.enabled, isTrue);
+      expect(preferences.settings.fontSize, 24);
+      expect(preferences.settings.opacity, 1.0);
+      expect(preferences.settings.speed, 1.0);
+    });
+
+    test('copyWith は on/off だけを変えられる', () {
+      const preferences = DanmakuPreferences();
+      final hidden = preferences.copyWith(enabled: false);
+      expect(hidden.enabled, isFalse);
+      expect(hidden.settings, preferences.settings);
+    });
+
+    test('設定が違えば等価にならない', () {
+      const shown = DanmakuPreferences();
+      const bigger = DanmakuPreferences(
+        settings: DanmakuDisplaySettings(fontSize: 36),
+      );
+      expect(shown, isNot(bigger));
+      expect(shown, isNot(shown.copyWith(enabled: false)));
+    });
+  });
+
+  group('danmakuPreferencesOf', () {
+    test('未読 (null) は既定値', () {
+      expect(danmakuPreferencesOf(null), const DanmakuPreferences());
+    });
+
+    test('永続化済みの値を取り出す', () {
+      final preferences = danmakuPreferencesOf(
+        const AppSettingsState(
+          danmakuEnabled: false,
+          danmakuFontSize: 30,
+          danmakuOpacity: 0.5,
+          danmakuSpeed: 1.5,
+        ),
+      );
+      expect(preferences.enabled, isFalse);
+      expect(preferences.settings.fontSize, 30);
+      expect(preferences.settings.opacity, 0.5);
+      expect(preferences.settings.speed, 1.5);
+    });
+
+    test('既定値と同じ設定からは既定の実行時値になる', () {
+      expect(
+        danmakuPreferencesOf(const AppSettingsState()),
+        const DanmakuPreferences(),
+      );
+    });
+  });
+
   group('DanmakuDisplaySettings', () {
     test('既定値は文字サイズ24・不透明・等速', () {
       const settings = DanmakuDisplaySettings();
@@ -116,6 +171,31 @@ void main() {
       expect(danmakuSpeedLabel(0.5), '0.5倍');
       expect(danmakuSpeedLabel(1.75), '1.75倍');
       expect(danmakuSpeedLabel(2.0), '2倍');
+    });
+  });
+
+  group('永続化の既定値', () {
+    test('弾幕は表示・字幕は非表示が既定', () {
+      expect(defaultDanmakuEnabled, isTrue);
+      expect(defaultSubtitlesEnabled, isFalse);
+      expect(AppSettingsState.defaultSubtitlesEnabled, isFalse);
+      expect(AppSettingsState().danmakuEnabled, isTrue);
+      expect(AppSettingsState().subtitlesEnabled, isFalse);
+    });
+
+    test('実行時の既定値は永続化側の既定値と同じ', () {
+      expect(
+        DanmakuDisplaySettings.defaultFontSize,
+        AppSettingsState.defaultDanmakuFontSize,
+      );
+      expect(
+        DanmakuDisplaySettings.defaultOpacity,
+        AppSettingsState.defaultDanmakuOpacity,
+      );
+      expect(
+        DanmakuDisplaySettings.defaultSpeed,
+        AppSettingsState.defaultDanmakuSpeed,
+      );
     });
   });
 }

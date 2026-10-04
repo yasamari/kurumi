@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
@@ -31,32 +32,39 @@ class PlayerBackButton extends StatelessWidget {
 /// 字幕表示のオンオフ切替ボタン (ARIB字幕など)。ライブ視聴と録画再生で共有する。
 ///
 /// 下部バーの設定ボタンの左に置く。
+///
+/// mpv への適用と永続化は [PlayerPlaybackController] が担う
+/// ([PlayerPlaybackController.toggleSubtitles])。ここでは表示と入力だけを受け
+/// 持つ。mpv 側の字幕トラック変化は購読せず、表示状態は [enabled]
+/// ([PlayerPlaybackController.subtitlesEnabled]) の通知を購読して受ける。
+/// bool を引数で受け取る形にすると、切り替えるたびにその値を持つ側の State が
+/// 映像の作り直しに巻き込まれるため、通知元を渡してこのボタンの中だけを作り
+/// 直させる。
 class SubtitleToggleButton extends StatelessWidget {
-  const SubtitleToggleButton({super.key, required this.player});
+  const SubtitleToggleButton({
+    super.key,
+    required this.enabled,
+    required this.onToggled,
+  });
 
-  final Player player;
+  /// 字幕を表示しているかどうかの通知元。
+  final ValueListenable<bool> enabled;
+
+  /// 押下時に呼ぶ。表示状態は通知元側が更新する。
+  final VoidCallback onToggled;
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<Track>(
-      stream: player.stream.track,
-      builder: (context, snapshot) {
-        final current =
-            snapshot.data?.subtitle ?? player.state.track.subtitle;
-        final isOff = current.id == SubtitleTrack.no().id;
-        return IconButton(
-          icon: Icon(
-            isOff
-                ? Icons.closed_caption_off_outlined
-                : Icons.closed_caption,
-          ),
-          color: Colors.white,
-          tooltip: isOff ? '字幕を表示' : '字幕を非表示',
-          onPressed: () => player.setSubtitleTrack(
-            isOff ? SubtitleTrack.auto() : SubtitleTrack.no(),
-          ),
-        );
-      },
+    return ValueListenableBuilder<bool>(
+      valueListenable: enabled,
+      builder: (context, enabled, _) => IconButton(
+        icon: Icon(
+          enabled ? Icons.closed_caption : Icons.closed_caption_off_outlined,
+        ),
+        color: Colors.white,
+        tooltip: enabled ? '字幕を非表示' : '字幕を表示',
+        onPressed: onToggled,
+      ),
     );
   }
 }

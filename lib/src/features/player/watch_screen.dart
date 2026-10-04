@@ -55,8 +55,16 @@ class WatchScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final channels = ref.watch(nowOnAirChannelsProvider);
-    final settings = ref.watch(appSettingsProvider).value;
-    final backendType = settings?.backendType ?? BackendType.mirakurun;
+    // 必要なのはバックエンド種別が画質選択に対応しているかだけ。弾幕や字幕の
+    // 表示設定が保存されるたびに視聴画面が作り直されて映像まで巻き込まれる
+    // ため、設定全体を購読せずこの値だけを見る。
+    final showQualityMenu = ref.watch(
+      appSettingsProvider.select(
+        (settings) =>
+            (settings.value?.backendType ?? BackendType.mirakurun)
+                .supportsLiveQualitySelection,
+      ),
+    );
 
     return channels.when(
       loading: () => const PlayerPlaceholderScaffold(
@@ -94,7 +102,7 @@ class WatchScreen extends ConsumerWidget {
           channelId: channelId,
           item: item,
           title: title,
-          showQualityMenu: backendType.supportsLiveQualitySelection,
+          showQualityMenu: showQualityMenu,
         );
       },
     );
@@ -201,10 +209,8 @@ class _LiveSettingsButton extends ConsumerWidget {
     required this.onAudioSelected,
     required this.audioLayout,
     required this.danmakuSupported,
-    required this.danmakuEnabled,
-    required this.onDanmakuToggled,
-    required this.danmakuSettings,
-    required this.onDanmakuSettingsChanged,
+    required this.danmakuPreferences,
+    required this.onDanmakuPreferencesChanged,
     required this.showQualityMenu,
   });
 
@@ -217,14 +223,13 @@ class _LiveSettingsButton extends ConsumerWidget {
   final ValueListenable<LiveAudioLayout> audioLayout;
 
   final bool danmakuSupported;
-  final bool danmakuEnabled;
-  final VoidCallback onDanmakuToggled;
 
-  /// 弾幕の文字サイズ・透明度・速度の通知元。購読は設定メニュー内で行うため、
-  /// ここでは参照だけを持つ。
-  final ValueListenable<DanmakuDisplaySettings> danmakuSettings;
+  /// 弾幕の表示設定 (メニューを開いた時点の値)。実体 (_playback) は購読しない
+  /// (購読すると映像まで作り直される)。
+  final DanmakuPreferences danmakuPreferences;
 
-  final ValueChanged<DanmakuDisplaySettings> onDanmakuSettingsChanged;
+  /// 弾幕の表示設定を変えたときのコールバック。永続化まで行う。
+  final ValueChanged<DanmakuPreferences> onDanmakuPreferencesChanged;
 
   /// KonomiTVのときだけ真 (Mirakurunは `decode=1` 固定のため画質を出さない)。
   final bool showQualityMenu;
@@ -245,10 +250,8 @@ class _LiveSettingsButton extends ConsumerWidget {
       onAudioSelected: onAudioSelected,
       audioLayout: audioLayout,
       danmakuSupported: danmakuSupported,
-      danmakuEnabled: danmakuEnabled,
-      onDanmakuToggled: onDanmakuToggled,
-      danmakuSettings: danmakuSettings,
-      onDanmakuSettingsChanged: onDanmakuSettingsChanged,
+      danmakuPreferences: danmakuPreferences,
+      onDanmakuPreferencesChanged: onDanmakuPreferencesChanged,
       qualityCurrent: showQualityMenu ? ref.watch(watchQualityProvider) : null,
       qualities: showQualityMenu ? repository.getLiveQualities() : const [],
       onQualitySelected: qualityNotifier == null
@@ -399,31 +402,53 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
             ref.invalidate(liveStreamProvider(widget.item.channel.id)),
         backFallbackPath: '/tv',
       ),
-      data: (live) => _LivePlayer(
-        // URLが変わったらPlayerを作り直す (画質切替対応)。
-        key: ValueKey(live.url.toString()),
-        sessionFactory: (player) => _liveSessionFactory(
-          ref,
-          player: player,
-          showQualityMenu: widget.showQualityMenu,
+      data: (live) {
+        // 表示設定はここで読む。プレイヤーはベースURLが読めていないと開けない
+        // ため、到達時には設定の読み込みが済んでいる。
+        final settings = ref.read(appSettingsProvider).value;
+        return _LivePlayer(
+          // URLが変わったらPlayerを作り直す (画質切替対応)。
+          key: ValueKey(live.url.toString()),
+          sessionFactory: (player) => _liveSessionFactory(
+            ref,
+            player: player,
+            showQualityMenu: widget.showQualityMenu,
+            item: widget.item,
+            liveUrl: live.url,
+            quality: live.qualityLabel,
+          ),
           item: widget.item,
-          liveUrl: live.url,
-          quality: live.qualityLabel,
-        ),
-        item: widget.item,
-        title: widget.title,
-        showQualityMenu: widget.showQualityMenu,
-        controller: _jikkyo,
-        danmakuStore: _danmakuStore,
-        danmakuClock: _danmakuClock,
-        psiNotifier: _psiNotifier,
-        // KonomiTVは `original` (生放送TS) のときだけデインタレースする。
-        // Mirakurun (`decode=1` 固定) も生放送TSのためデインタレースする。
-        // トランスコード済み画質はプログレッシブのため不要。
-        deinterlace: widget.showQualityMenu
-            ? ref.read(tvRepositoryProvider).isOriginalLiveQuality(live.qualityLabel)
-            : true,
-      ),
+          title: widget.title,
+          showQualityMenu: widget.showQualityMenu,
+          controller: _jikkyo,
+          danmakuStore: _danmakuStore,
+          danmakuClock: _danmakuClock,
+          psiNotifier: _psiNotifier,
+          danmakuPreferences: danmakuPreferencesOf(settings),
+          subtitlesEnabled:
+              settings?.subtitlesEnabled ?? defaultSubtitlesEnabled,
+          onDanmakuPreferencesChanged: (preferences) => ref
+              .read(appSettingsProvider.notifier)
+              .setDanmakuPreferences(
+                enabled: preferences.enabled,
+                fontSize: preferences.settings.fontSize,
+                opacity: preferences.settings.opacity,
+                speed: preferences.settings.speed,
+              ),
+          onSubtitlesEnabledChanged: (enabled) => ref
+              .read(appSettingsProvider.notifier)
+              .setSubtitlesEnabled(enabled),
+          // KonomiTVは `original` (生放送TS) のときだけデインタレースする。
+          // Mirakurun (`decode=1` 固定) も生放送TSのためデインタレースする。
+          // トランスコード済み画質はプログレッシブのため不要。
+          deinterlace:
+              widget.showQualityMenu
+                  ? ref
+                      .read(tvRepositoryProvider)
+                      .isOriginalLiveQuality(live.qualityLabel)
+                  : true,
+        );
+      },
     );
     final info = Container(
       color: Theme.of(context).colorScheme.surface,
@@ -498,6 +523,10 @@ class _LivePlayer extends StatefulWidget {
     required this.danmakuStore,
     required this.danmakuClock,
     required this.psiNotifier,
+    required this.danmakuPreferences,
+    required this.subtitlesEnabled,
+    required this.onDanmakuPreferencesChanged,
+    required this.onSubtitlesEnabledChanged,
   });
 
   /// 再生セッション (mpvが開くURL+EIT用パケット列) を開く。
@@ -523,13 +552,31 @@ class _LivePlayer extends StatefulWidget {
   /// 最新の EIT[p/f] 取得状態の通知先。[_WatchLayoutState] が持つ。
   final ValueNotifier<LivePsiController?> psiNotifier;
 
+  /// 弾幕の表示設定の初期値。永続化済みの値 ([_WatchLayoutState] が
+  /// `AppSettings` から読んで渡す)。
+  final DanmakuPreferences danmakuPreferences;
+
+  /// 字幕表示の初期値。永続化済みの値。既定は非表示。
+  final bool subtitlesEnabled;
+
+  /// 弾幕の表示設定を変えたときのコールバック。永続化まで行う。
+  final ValueChanged<DanmakuPreferences> onDanmakuPreferencesChanged;
+
+  /// 字幕表示を変えたときのコールバック。永続化まで行う。
+  final ValueChanged<bool> onSubtitlesEnabledChanged;
+
   @override
   State<_LivePlayer> createState() => _LivePlayerState();
 }
 
 class _LivePlayerState extends State<_LivePlayer> {
-  late final PlayerPlaybackController _playback =
-      PlayerPlaybackController(seekToLiveEdgeOnResume: true);
+  late final PlayerPlaybackController _playback = PlayerPlaybackController(
+    seekToLiveEdgeOnResume: true,
+    initialDanmakuPreferences: widget.danmakuPreferences,
+    initialSubtitlesEnabled: widget.subtitlesEnabled,
+    onDanmakuPreferencesChanged: widget.onDanmakuPreferencesChanged,
+    onSubtitlesEnabledChanged: widget.onSubtitlesEnabledChanged,
+  );
 
   /// EIT[p/f] の接続。セッション確立後に作る。
   LivePsiController? _psi;
@@ -751,10 +798,8 @@ class _LivePlayerState extends State<_LivePlayer> {
           onAudioSelected: _playback.selectAudio,
           audioLayout: _audioLayout,
           danmakuSupported: jikkyo.isSupported,
-          danmakuEnabled: _playback.danmakuEnabled,
-          onDanmakuToggled: _playback.toggleDanmaku,
-          danmakuSettings: _playback.danmakuSettings,
-          onDanmakuSettingsChanged: _playback.setDanmakuSettings,
+          danmakuPreferences: _playback.danmakuPreferences.value,
+          onDanmakuPreferencesChanged: _playback.setDanmakuPreferences,
           showQualityMenu: widget.showQualityMenu,
         );
         return PlayerVideoView(
@@ -779,7 +824,10 @@ class _LivePlayerState extends State<_LivePlayer> {
           // 下部バーは「字幕 → 設定 → フルスクリーン」の並び。
           liveBottomButtonBar: [
             const Spacer(),
-            SubtitleToggleButton(player: _playback.player),
+            SubtitleToggleButton(
+              enabled: _playback.subtitlesEnabled,
+              onToggled: _playback.toggleSubtitles,
+            ),
             settingsButton(),
             const MaterialFullscreenButton(),
           ],
@@ -792,7 +840,10 @@ class _LivePlayerState extends State<_LivePlayer> {
             _ChannelZapButton(channel: widget.item.channel, isNext: true),
             const MaterialDesktopVolumeButton(),
             const Spacer(),
-            SubtitleToggleButton(player: _playback.player),
+            SubtitleToggleButton(
+              enabled: _playback.subtitlesEnabled,
+              onToggled: _playback.toggleSubtitles,
+            ),
             settingsButton(),
             const MaterialDesktopFullscreenButton(),
           ],
@@ -803,8 +854,7 @@ class _LivePlayerState extends State<_LivePlayer> {
                     controller: jikkyo,
                     store: widget.danmakuStore,
                     clock: widget.danmakuClock,
-                    enabled: _playback.danmakuEnabled,
-                    settings: _playback.danmakuSettings,
+                    preferences: _playback.danmakuPreferences,
                   ),
                 )
               : null,

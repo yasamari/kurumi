@@ -2,13 +2,13 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:canvas_danmaku/canvas_danmaku.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../../core/settings/app_settings.dart';
 import '../../core/widgets/program_detail_body.dart';
 import '../../domain/entities/video_program.dart';
 import '../../domain/providers/backend_provider.dart';
@@ -169,7 +169,27 @@ class _VideoPlayer extends ConsumerStatefulWidget {
 }
 
 class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
-  late final PlayerPlaybackController _playback = PlayerPlaybackController();
+  /// 表示設定は `AppSettings` から読む。プレイヤーはベースURLが読めていないと
+  /// 開けないため、到達時には設定の読み込みが済んでいる。
+  late final PlayerPlaybackController _playback = PlayerPlaybackController(
+    initialDanmakuPreferences: danmakuPreferencesOf(
+      ref.read(appSettingsProvider).value,
+    ),
+    initialSubtitlesEnabled:
+        ref.read(appSettingsProvider).value?.subtitlesEnabled ??
+        defaultSubtitlesEnabled,
+    onDanmakuPreferencesChanged: (preferences) => ref
+        .read(appSettingsProvider.notifier)
+        .setDanmakuPreferences(
+          enabled: preferences.enabled,
+          fontSize: preferences.settings.fontSize,
+          opacity: preferences.settings.opacity,
+          speed: preferences.settings.speed,
+        ),
+    onSubtitlesEnabledChanged: (enabled) => ref
+        .read(appSettingsProvider.notifier)
+        .setSubtitlesEnabled(enabled),
+  );
   late final JikkyoPastCommentController _pastComments;
   late final String _sessionId;
 
@@ -339,10 +359,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           dualMonoChannel: _playback.dualMonoChannel,
           onAudioSelected: _playback.selectAudio,
           danmakuSupported: pastComments.isSupported,
-          danmakuEnabled: _playback.danmakuEnabled,
-          onDanmakuToggled: _playback.toggleDanmaku,
-          danmakuSettings: _playback.danmakuSettings,
-          onDanmakuSettingsChanged: _playback.setDanmakuSettings,
+          danmakuPreferences: _playback.danmakuPreferences.value,
+          onDanmakuPreferencesChanged: _playback.setDanmakuPreferences,
           quality: widget.quality,
         );
         return PlayerVideoView(
@@ -355,7 +373,10 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           seekableBottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
-            SubtitleToggleButton(player: _playback.player),
+            SubtitleToggleButton(
+              enabled: _playback.subtitlesEnabled,
+              onToggled: _playback.toggleSubtitles,
+            ),
             settingsButton(),
             const MaterialFullscreenButton(),
           ],
@@ -366,7 +387,10 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
             const MaterialDesktopVolumeButton(),
             const MaterialDesktopPositionIndicator(),
             const Spacer(),
-            SubtitleToggleButton(player: _playback.player),
+            SubtitleToggleButton(
+              enabled: _playback.subtitlesEnabled,
+              onToggled: _playback.toggleSubtitles,
+            ),
             settingsButton(),
             const MaterialDesktopFullscreenButton(),
           ],
@@ -377,8 +401,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
                   controller: pastComments,
                   store: _danmakuStore,
                   clock: _danmakuClock,
-                  enabled: _playback.danmakuEnabled,
-                  settings: _playback.danmakuSettings,
+                  preferences: _playback.danmakuPreferences,
                   birthMsOf: (comment) => danmakuBirthMsOf(
                     comment: comment,
                     syncStart: pastComments.syncStart,
@@ -420,10 +443,8 @@ class _VideoSettingsButton extends ConsumerWidget {
     required this.dualMonoChannel,
     required this.onAudioSelected,
     required this.danmakuSupported,
-    required this.danmakuEnabled,
-    required this.onDanmakuToggled,
-    required this.danmakuSettings,
-    required this.onDanmakuSettingsChanged,
+    required this.danmakuPreferences,
+    required this.onDanmakuPreferencesChanged,
     required this.quality,
   });
 
@@ -431,14 +452,13 @@ class _VideoSettingsButton extends ConsumerWidget {
   final DualMonoChannel? dualMonoChannel;
   final ValueChanged<AudioChoice> onAudioSelected;
   final bool danmakuSupported;
-  final bool danmakuEnabled;
-  final VoidCallback onDanmakuToggled;
 
-  /// 弾幕の文字サイズ・透明度・速度の通知元。購読は設定メニュー内で行うため、
-  /// ここでは参照だけを持つ。
-  final ValueListenable<DanmakuDisplaySettings> danmakuSettings;
+  /// 弾幕の表示設定 (メニューを開いた時点の値)。実体 (_playback) は購読しない
+  /// (購読すると映像まで作り直される)。
+  final DanmakuPreferences danmakuPreferences;
 
-  final ValueChanged<DanmakuDisplaySettings> onDanmakuSettingsChanged;
+  /// 弾幕の表示設定を変えたときのコールバック。永続化まで行う。
+  final ValueChanged<DanmakuPreferences> onDanmakuPreferencesChanged;
 
   /// 現在再生している画質。
   final String quality;
@@ -456,10 +476,8 @@ class _VideoSettingsButton extends ConsumerWidget {
       dualMonoChannel: dualMonoChannel,
       onAudioSelected: onAudioSelected,
       danmakuSupported: danmakuSupported,
-      danmakuEnabled: danmakuEnabled,
-      onDanmakuToggled: onDanmakuToggled,
-      danmakuSettings: danmakuSettings,
-      onDanmakuSettingsChanged: onDanmakuSettingsChanged,
+      danmakuPreferences: danmakuPreferences,
+      onDanmakuPreferencesChanged: onDanmakuPreferencesChanged,
       qualityCurrent: quality,
       qualities: [
         if (repository.isOriginalVideoQuality('original')) 'original',

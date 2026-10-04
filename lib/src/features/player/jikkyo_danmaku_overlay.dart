@@ -19,7 +19,7 @@ import 'jikkyo_danmaku_item.dart';
 /// 取るため `Positioned.fill` が必須 (`Stack` の既定の loose では子にサイズが
 /// 付かず幅 0 になる)。
 ///
-/// [enabled] が false のときは [DanmakuScreen] を組まない。弾幕は明示的に
+/// [preferences] が enabled のときは [DanmakuScreen] を組む。弾幕は明示的に
 /// 有効にした時だけ Ticker を回したい。
 ///
 /// 描画状態 ([DanmakuStore]) と時刻 ([DanmakuClock]) は回転・フルスクリーンで
@@ -36,18 +36,19 @@ import 'jikkyo_danmaku_item.dart';
 ///   `birthMsOf` で時刻換算して一括登録する。再生位置ではなく時計が可視窓を
 ///   決めるため、シーク先の表示期間内コメントは途中位置から描画される。
 ///
-/// 表示設定 ([settings]) はここで購読し、各 [DanmakuScreen] の
-/// [DanmakuController.updateOption] で配る。`DanmakuScreen` は `option` を
-/// `initState` でしか読まない (`didUpdateWidget` を持たない) ため、引数
-/// [DanmakuScreen.option] の差し替えでは反映されない。
+/// 表示設定 ([preferences]) はここで購読し、変更は (1) 各 [DanmakuScreen] の
+/// [DanmakuController.updateOption] で配り、(2) 画面の組み直しで初期値を渡す。
+/// `DanmakuScreen` は `option` を `initState` でしか読まない
+/// (`didUpdateWidget` が無い) ため、引数 [DanmakuScreen.option] の差し替え
+/// だけでは反映されない。購読はこの層の中に閉じる — 設定を変えるたびに映像まで
+/// 作り直さないため ([PlayerPlaybackController] のコメント参照)。
 class JikkyoDanmakuOverlay extends StatefulWidget {
   const JikkyoDanmakuOverlay({
     super.key,
     required this.controller,
     required this.store,
     required this.clock,
-    required this.enabled,
-    required this.settings,
+    required this.preferences,
     this.birthMsOf,
   });
 
@@ -59,13 +60,11 @@ class JikkyoDanmakuOverlay extends StatefulWidget {
   /// セッション所有の共有時計 (通常表示・フルスクリーンで共有)。
   final DanmakuClock clock;
 
-  final bool enabled;
-
-  /// 文字サイズ・透明度・速度の通知元。
+  /// 弾幕の表示設定 (on/off と文字サイズ・透明度・速度) の通知元。
   ///
   /// ここ (弾幕の層の中) で購読する。設定変更は弾幕のサブツリーにだけ
   /// 届かせ、映像を作り直さない。
-  final ValueListenable<DanmakuDisplaySettings> settings;
+  final ValueListenable<DanmakuPreferences> preferences;
 
   /// 録画用: コメントの時計 birth (再生位置0起点のms) を返す純粋関数。
   /// null ならライブ扱いで受信時を birth にする。
@@ -90,8 +89,8 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
 
   /// 幅のキャッシュを現在の文字サイズへ測り直した時の文字サイズ。
   ///
-  /// 文字サイズが変わったことを ([_onSettingsChanged] で) 判定する基準値。
-  /// [initState] で [widget.settings] の値から初期化する。
+  /// 文字サイズが変わったことを ([_onPreferencesChanged] で) 判定する基準値。
+  /// [initState] で [widget.preferences] の値から初期化する。
   double _measuredFontSize = 0;
 
   /// 破棄済みの State へ登録させないため [_onAttach] で弾く。
@@ -102,8 +101,10 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
   @override
   void initState() {
     super.initState();
-    _measuredFontSize = danmakuOptionOf(widget.settings.value).fontSize;
-    widget.settings.addListener(_onSettingsChanged);
+    _measuredFontSize = danmakuOptionOf(
+      widget.preferences.value.settings,
+    ).fontSize;
+    widget.preferences.addListener(_onPreferencesChanged);
     if (_isLive) {
       // 弾幕に出すのは購読直後のバックログを除いた新規コメントだけ。
       _liveSub = widget.controller.liveComments.listen(_onLiveComment);
@@ -116,11 +117,11 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
   @override
   void didUpdateWidget(JikkyoDanmakuOverlay oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.settings, widget.settings)) {
-      oldWidget.settings.removeListener(_onSettingsChanged);
-      widget.settings.addListener(_onSettingsChanged);
+    if (!identical(oldWidget.preferences, widget.preferences)) {
+      oldWidget.preferences.removeListener(_onPreferencesChanged);
+      widget.preferences.addListener(_onPreferencesChanged);
       // 購読先が変わったぶん、今の設定を各画面へ配り直す。
-      _onSettingsChanged();
+      _onPreferencesChanged();
     }
     if (identical(oldWidget.controller, widget.controller) &&
         identical(oldWidget.store, widget.store) &&
@@ -146,8 +147,8 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
   /// ため二重になるが、その間の再測定は起きない (同期的に連続して呼ぶだけ)。
   /// ここで落としておかないと、画面が作り直された直後に旧サイズで測った幅を
   /// 使ったまま描画してしまう。
-  void _onSettingsChanged() {
-    final option = danmakuOptionOf(widget.settings.value);
+  void _onPreferencesChanged() {
+    final option = danmakuOptionOf(widget.preferences.value.settings);
     if (option.fontSize != _measuredFontSize) {
       _measuredFontSize = option.fontSize;
       widget.store.resetMeasurements();
@@ -212,7 +213,7 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
   @override
   void dispose() {
     _disposed = true;
-    widget.settings.removeListener(_onSettingsChanged);
+    widget.preferences.removeListener(_onPreferencesChanged);
     _controllers.clear();
     _liveSub?.cancel();
     widget.controller.removeListener(_onSourceChanged);
@@ -221,16 +222,25 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    if (!widget.enabled) return const SizedBox.shrink();
-    // 設定変更は [DanmakuController.updateOption] で配るので、ここは
-    // 作られた時点の値でよい ([_onSettingsChanged] 参照)。後から作られた画面が
-    // この値をそのまま受け取る。
-    return _DanmakuScreenView(
-      option: danmakuOptionOf(widget.settings.value),
-      clock: widget.clock,
-      store: widget.store,
-      onAttach: _onAttach,
-      onDetach: _onDetach,
+    // on/off と各項目の変更は弾幕の層の中に閉じる。設定ごとに映像の `Stack` を
+    // 作り直さないため [preferences] をここで購読し、画面の組み直しだけを
+    // 差し替える。既に作られている画面への反映は [DanmakuController.updateOption]
+    // が担当する ([_onPreferencesChanged] 参照)。
+    return ValueListenableBuilder<DanmakuPreferences>(
+      valueListenable: widget.preferences,
+      builder: (context, preferences, _) {
+        if (!preferences.enabled) return const SizedBox.shrink();
+        // 設定変更は [DanmakuController.updateOption] で配るので、ここは
+        // 作られた時点の値でよい ([_onPreferencesChanged] 参照)。後から作られた
+        // 画面がこの値をそのまま受け取る。
+        return _DanmakuScreenView(
+          option: danmakuOptionOf(preferences.settings),
+          clock: widget.clock,
+          store: widget.store,
+          onAttach: _onAttach,
+          onDetach: _onDetach,
+        );
+      },
     );
   }
 }
