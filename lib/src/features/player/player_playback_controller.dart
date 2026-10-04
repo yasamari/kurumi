@@ -5,6 +5,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import 'audio_switch.dart';
+import 'danmaku_settings.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
 import 'player_error.dart';
@@ -28,6 +29,8 @@ import 'player_error.dart';
 ///
 /// 通知はエラー表示・表示アスペクト比・二重モノラル・弾幕の on/off が
 /// 変わったときだけ起きる。再生フレームごとに通知は起きない。
+/// 弾幕の表示設定 ([danmakuSettings]) は映像側へ影響しないため、この通知では
+/// 配らない (専用の notifier を弾幕の層に購読させる)。
 class PlayerPlaybackController extends ChangeNotifier {
   PlayerPlaybackController({this.seekToLiveEdgeOnResume = false}) {
     videoController = VideoController(player);
@@ -102,6 +105,18 @@ class PlayerPlaybackController extends ChangeNotifier {
   /// ため、ウィジェット側に持たせると回転でリセットされる。
   bool get danmakuEnabled => _danmakuEnabled;
 
+  /// 弾幕の表示設定 (文字サイズ・透明度・速度) の通知元。
+  ///
+  /// [danmakuEnabled] と同じ理由で、向きに依存しない状態に持たせる (映像の
+  /// `Stack` の内で持つと回転で作り直されてリセットされる)。
+  ///
+  /// 購読は弾幕の層 ([JikkyoDanmakuOverlay]) と設定メニュー内だけで行う。
+  /// この notifier を [notifyListeners] と連動させないのは、設定を1つ変える
+  /// たびに映像 ([PlayerVideoView]) まで作り直したくなるため。設定は弾幕以外
+  /// の要素に影響しない。
+  final ValueNotifier<DanmakuDisplaySettings> danmakuSettings =
+      ValueNotifier(const DanmakuDisplaySettings());
+
   /// 再生位置のストリーム。録画のコメント追従 (再生位置に追従する一覧) に使う。
   Stream<Duration> get position => player.stream.position;
 
@@ -109,6 +124,15 @@ class PlayerPlaybackController extends ChangeNotifier {
   void toggleDanmaku() {
     _danmakuEnabled = !_danmakuEnabled;
     notifyListeners();
+  }
+
+  /// 弾幕の表示設定を変える。
+  ///
+  /// 弾幕の層が [danmakuSettings] を購読しているため、こちらは値を更新する
+  /// だけ ([notifyListeners] は呼ばない = 映像は作り直さない)。
+  void setDanmakuSettings(DanmakuDisplaySettings settings) {
+    if (danmakuSettings.value == settings) return;
+    danmakuSettings.value = settings;
   }
 
   /// 音声メニューの選択を反映する。
@@ -246,6 +270,7 @@ class PlayerPlaybackController extends ChangeNotifier {
     _playingSub?.cancel();
     _videoParamsSub?.cancel();
     _audioParamsSub?.cancel();
+    danmakuSettings.dispose();
     player.dispose();
     super.dispose();
   }

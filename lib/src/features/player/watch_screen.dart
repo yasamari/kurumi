@@ -20,6 +20,7 @@ import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
 import 'audio_switch.dart';
+import 'danmaku_settings.dart';
 import 'jikkyo_comment_controller.dart';
 import 'jikkyo_danmaku_item.dart';
 import 'jikkyo_danmaku_overlay.dart';
@@ -202,6 +203,8 @@ class _LiveSettingsButton extends ConsumerWidget {
     required this.danmakuSupported,
     required this.danmakuEnabled,
     required this.onDanmakuToggled,
+    required this.danmakuSettings,
+    required this.onDanmakuSettingsChanged,
     required this.showQualityMenu,
   });
 
@@ -216,6 +219,12 @@ class _LiveSettingsButton extends ConsumerWidget {
   final bool danmakuSupported;
   final bool danmakuEnabled;
   final VoidCallback onDanmakuToggled;
+
+  /// 弾幕の文字サイズ・透明度・速度の通知元。購読は設定メニュー内で行うため、
+  /// ここでは参照だけを持つ。
+  final ValueListenable<DanmakuDisplaySettings> danmakuSettings;
+
+  final ValueChanged<DanmakuDisplaySettings> onDanmakuSettingsChanged;
 
   /// KonomiTVのときだけ真 (Mirakurunは `decode=1` 固定のため画質を出さない)。
   final bool showQualityMenu;
@@ -238,6 +247,8 @@ class _LiveSettingsButton extends ConsumerWidget {
       danmakuSupported: danmakuSupported,
       danmakuEnabled: danmakuEnabled,
       onDanmakuToggled: onDanmakuToggled,
+      danmakuSettings: danmakuSettings,
+      onDanmakuSettingsChanged: onDanmakuSettingsChanged,
       qualityCurrent: showQualityMenu ? ref.watch(watchQualityProvider) : null,
       qualities: showQualityMenu ? repository.getLiveQualities() : const [],
       onQualitySelected: qualityNotifier == null
@@ -742,6 +753,8 @@ class _LivePlayerState extends State<_LivePlayer> {
           danmakuSupported: jikkyo.isSupported,
           danmakuEnabled: _playback.danmakuEnabled,
           onDanmakuToggled: _playback.toggleDanmaku,
+          danmakuSettings: _playback.danmakuSettings,
+          onDanmakuSettingsChanged: _playback.setDanmakuSettings,
           showQualityMenu: widget.showQualityMenu,
         );
         return PlayerVideoView(
@@ -791,6 +804,7 @@ class _LivePlayerState extends State<_LivePlayer> {
                     store: widget.danmakuStore,
                     clock: widget.danmakuClock,
                     enabled: _playback.danmakuEnabled,
+                    settings: _playback.danmakuSettings,
                   ),
                 )
               : null,

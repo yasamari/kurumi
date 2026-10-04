@@ -7,6 +7,7 @@ import 'package:media_kit/media_kit.dart';
 import '../../data/ts/audio_layout.dart';
 import '../shell/app_destinations.dart';
 import 'audio_switch.dart';
+import 'danmaku_settings.dart';
 
 /// 設定メニューの幅。`showMenu` の既定より広く取る。
 const _settingsMenuWidth = 320.0;
@@ -59,6 +60,8 @@ class PlayerSettingsButton extends StatelessWidget {
     this.danmakuSupported = false,
     this.danmakuEnabled = true,
     this.onDanmakuToggled,
+    this.danmakuSettings,
+    this.onDanmakuSettingsChanged,
     this.qualityCurrent,
     this.qualities = const [],
     this.onQualitySelected,
@@ -90,6 +93,16 @@ class PlayerSettingsButton extends StatelessWidget {
   /// 弾幕切替時のコールバック。
   final VoidCallback? onDanmakuToggled;
 
+  /// 弾幕の文字サイズ・透明度・速度の通知元。
+  ///
+  /// null のときスライダーを出さない。購読はボタン側で行わない。映像側の
+  /// 再構築に巻き込まれるため ([audioLayout] と同じ理屈)、メニューの中で
+  /// 購読する。
+  final ValueListenable<DanmakuDisplaySettings>? danmakuSettings;
+
+  /// 弾幕の表示設定を変えたときのコールバック。呼び出し側で状態に反映すること。
+  final ValueChanged<DanmakuDisplaySettings>? onDanmakuSettingsChanged;
+
   /// 現在の画質。null のときは画質ページを出さない。
   final String? qualityCurrent;
 
@@ -120,6 +133,8 @@ class PlayerSettingsButton extends StatelessWidget {
         danmakuSupported: danmakuSupported,
         danmakuEnabled: danmakuEnabled,
         onDanmakuToggled: onDanmakuToggled,
+        danmakuSettings: danmakuSettings,
+        onDanmakuSettingsChanged: onDanmakuSettingsChanged,
         qualityCurrent: qualityCurrent,
         qualities: qualities,
         onQualitySelected: onQualitySelected,
@@ -163,6 +178,8 @@ Future<void> showPlayerSettingsMenu(
   bool danmakuSupported = false,
   bool danmakuEnabled = true,
   VoidCallback? onDanmakuToggled,
+  ValueListenable<DanmakuDisplaySettings>? danmakuSettings,
+  ValueChanged<DanmakuDisplaySettings>? onDanmakuSettingsChanged,
   String? qualityCurrent,
   List<String> qualities = const [],
   ValueChanged<String>? onQualitySelected,
@@ -194,6 +211,8 @@ Future<void> showPlayerSettingsMenu(
           danmakuSupported: danmakuSupported,
           danmakuEnabled: danmakuEnabled,
           onDanmakuToggled: onDanmakuToggled,
+          danmakuSettings: danmakuSettings,
+          onDanmakuSettingsChanged: onDanmakuSettingsChanged,
           qualityCurrent: qualityCurrent,
           qualities: qualities,
           onQualitySelected: onQualitySelected,
@@ -222,6 +241,8 @@ Future<void> showPlayerSettingsMenu(
       danmakuSupported: danmakuSupported,
       danmakuEnabled: danmakuEnabled,
       onDanmakuToggled: onDanmakuToggled,
+      danmakuSettings: danmakuSettings,
+      onDanmakuSettingsChanged: onDanmakuSettingsChanged,
       qualityCurrent: qualityCurrent,
       qualities: qualities,
       onQualitySelected: onQualitySelected,
@@ -241,6 +262,8 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
     required this.danmakuSupported,
     required this.danmakuEnabled,
     required this.onDanmakuToggled,
+    required this.danmakuSettings,
+    required this.onDanmakuSettingsChanged,
     required this.qualityCurrent,
     required this.qualities,
     required this.onQualitySelected,
@@ -256,6 +279,8 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
   final bool danmakuSupported;
   final bool danmakuEnabled;
   final VoidCallback? onDanmakuToggled;
+  final ValueListenable<DanmakuDisplaySettings>? danmakuSettings;
+  final ValueChanged<DanmakuDisplaySettings>? onDanmakuSettingsChanged;
   final String? qualityCurrent;
   final List<String> qualities;
   final ValueChanged<String>? onQualitySelected;
@@ -324,6 +349,8 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
                 danmakuSupported: danmakuSupported,
                 danmakuEnabled: danmakuEnabled,
                 onDanmakuToggled: onDanmakuToggled,
+                danmakuSettings: danmakuSettings,
+                onDanmakuSettingsChanged: onDanmakuSettingsChanged,
                 qualityCurrent: qualityCurrent,
                 qualities: qualities,
                 onQualitySelected: onQualitySelected,
@@ -368,6 +395,8 @@ class _SettingsMenuPanel extends StatefulWidget {
     required this.danmakuSupported,
     required this.danmakuEnabled,
     required this.onDanmakuToggled,
+    required this.danmakuSettings,
+    required this.onDanmakuSettingsChanged,
     required this.qualityCurrent,
     required this.qualities,
     required this.onQualitySelected,
@@ -385,6 +414,11 @@ class _SettingsMenuPanel extends StatefulWidget {
   final bool danmakuSupported;
   final bool danmakuEnabled;
   final VoidCallback? onDanmakuToggled;
+
+  /// 弾幕の表示設定の通知元。null はスライダーを出さない。
+  final ValueListenable<DanmakuDisplaySettings>? danmakuSettings;
+
+  final ValueChanged<DanmakuDisplaySettings>? onDanmakuSettingsChanged;
   final String? qualityCurrent;
   final List<String> qualities;
   final ValueChanged<String>? onQualitySelected;
@@ -681,19 +715,96 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
 
   Widget _buildDanmakuPage(BuildContext context) {
     final toggle = widget.onDanmakuToggled;
-    return ListView(
-      shrinkWrap: true,
+    final switchTile = SwitchListTile(
+      title: const Text('弾幕を表示'),
+      value: _danmakuEnabled,
+      // 切り替えてもメニューは開いたままにする (選択ページと違い閉じない)。
+      onChanged: toggle == null
+          ? null
+          : (value) {
+              toggle();
+              setState(() => _danmakuEnabled = value);
+            },
+    );
+    // スライダーは1つ動かすごとに反映する。値を確かめるため、on/off と同じく
+    // メニューは開いたままにする (選択ページは [_pick] で閉じる)。
+    final settings = widget.danmakuSettings;
+    final onChanged = widget.onDanmakuSettingsChanged;
+    if (settings == null || onChanged == null) {
+      return ListView(shrinkWrap: true, children: [switchTile]);
+    }
+    return ValueListenableBuilder<DanmakuDisplaySettings>(
+      valueListenable: settings,
+      builder: (context, value, _) {
+        // スライダーは刻み幅に丸めた値 ([danmaku*Of]) で置き換える。
+        DanmakuDisplaySettings fontSizeOf(double raw) =>
+            value.copyWith(fontSize: danmakuFontSizeOf(raw));
+        DanmakuDisplaySettings opacityOf(double raw) =>
+            value.copyWith(opacity: danmakuOpacityOf(raw));
+        DanmakuDisplaySettings speedOf(double raw) =>
+            value.copyWith(speed: danmakuSpeedOf(raw));
+        return ListView(
+          shrinkWrap: true,
+          children: [
+            switchTile,
+            _danmakuSlider(
+              label: '文字サイズ',
+              value: danmakuFontSizeLabel(value.fontSize),
+              sliderValue: value.fontSize,
+              min: DanmakuDisplaySettings.minFontSize,
+              max: DanmakuDisplaySettings.maxFontSize,
+              divisions: DanmakuDisplaySettings.fontSizeSteps,
+              onChanged: (raw) => onChanged(fontSizeOf(raw)),
+            ),
+            _danmakuSlider(
+              label: '透明度',
+              value: danmakuOpacityLabel(value.opacity),
+              sliderValue: value.opacity,
+              min: DanmakuDisplaySettings.minOpacity,
+              max: DanmakuDisplaySettings.maxOpacity,
+              divisions: DanmakuDisplaySettings.opacitySteps,
+              onChanged: (raw) => onChanged(opacityOf(raw)),
+            ),
+            _danmakuSlider(
+              label: '速度',
+              value: danmakuSpeedLabel(value.speed),
+              sliderValue: value.speed,
+              min: DanmakuDisplaySettings.minSpeed,
+              max: DanmakuDisplaySettings.maxSpeed,
+              divisions: DanmakuDisplaySettings.speedSteps,
+              onChanged: (raw) => onChanged(speedOf(raw)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// スライダー1つ。見出し行にラベルと現在値、下にスライダーを置く。
+  Widget _danmakuSlider({
+    required String label,
+    required String value,
+    required double sliderValue,
+    required double min,
+    required double max,
+    required int divisions,
+    required ValueChanged<double> onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        SwitchListTile(
-          title: const Text('弾幕を表示'),
-          value: _danmakuEnabled,
-          // 切り替えてもメニューは開いたままにする (選択ページと違い閉じない)。
-          onChanged: toggle == null
-              ? null
-              : (value) {
-                  toggle();
-                  setState(() => _danmakuEnabled = value);
-                },
+        ListTile(title: Text(label), trailing: Text(value)),
+        // スライダーは見出し行と同じ幅に取る。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+          child: Slider(
+            value: sliderValue,
+            min: min,
+            max: max,
+            divisions: divisions,
+            label: value,
+            onChanged: onChanged,
+          ),
         ),
       ],
     );

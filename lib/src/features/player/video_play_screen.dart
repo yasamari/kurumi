@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:canvas_danmaku/canvas_danmaku.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -16,6 +17,7 @@ import '../../domain/repositories/video_repository.dart';
 import '../videos/videos_providers.dart';
 import 'audio_switch.dart';
 import 'comment_list_panel.dart';
+import 'danmaku_settings.dart';
 import 'jikkyo_comment_source.dart';
 import 'jikkyo_danmaku_item.dart';
 import 'jikkyo_danmaku_overlay.dart';
@@ -339,6 +341,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           danmakuSupported: pastComments.isSupported,
           danmakuEnabled: _playback.danmakuEnabled,
           onDanmakuToggled: _playback.toggleDanmaku,
+          danmakuSettings: _playback.danmakuSettings,
+          onDanmakuSettingsChanged: _playback.setDanmakuSettings,
           quality: widget.quality,
         );
         return PlayerVideoView(
@@ -374,6 +378,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
                   store: _danmakuStore,
                   clock: _danmakuClock,
                   enabled: _playback.danmakuEnabled,
+                  settings: _playback.danmakuSettings,
                   birthMsOf: (comment) => danmakuBirthMsOf(
                     comment: comment,
                     syncStart: pastComments.syncStart,
@@ -417,6 +422,8 @@ class _VideoSettingsButton extends ConsumerWidget {
     required this.danmakuSupported,
     required this.danmakuEnabled,
     required this.onDanmakuToggled,
+    required this.danmakuSettings,
+    required this.onDanmakuSettingsChanged,
     required this.quality,
   });
 
@@ -426,6 +433,12 @@ class _VideoSettingsButton extends ConsumerWidget {
   final bool danmakuSupported;
   final bool danmakuEnabled;
   final VoidCallback onDanmakuToggled;
+
+  /// 弾幕の文字サイズ・透明度・速度の通知元。購読は設定メニュー内で行うため、
+  /// ここでは参照だけを持つ。
+  final ValueListenable<DanmakuDisplaySettings> danmakuSettings;
+
+  final ValueChanged<DanmakuDisplaySettings> onDanmakuSettingsChanged;
 
   /// 現在再生している画質。
   final String quality;
@@ -445,6 +458,8 @@ class _VideoSettingsButton extends ConsumerWidget {
       danmakuSupported: danmakuSupported,
       danmakuEnabled: danmakuEnabled,
       onDanmakuToggled: onDanmakuToggled,
+      danmakuSettings: danmakuSettings,
+      onDanmakuSettingsChanged: onDanmakuSettingsChanged,
       qualityCurrent: quality,
       qualities: [
         if (repository.isOriginalVideoQuality('original')) 'original',

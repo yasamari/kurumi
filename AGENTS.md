@@ -58,6 +58,12 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 **弾幕の on/off は回転で破棄されない位置に持つ。** `PlayerPlaybackController` のフィールドで、通知を `PlayerVideoView` の外側 (`ListenableBuilder`) で受ける。映像の `Stack` 内に持つと回転でリセットされる。`controller.liveComments` (ライブ) は購読直後のバックログ (直近100件) を除外した新規コメントだけを送る。`DanmakuOption.fontSize` は画面全体で1つなので `mail` のサイズコマンド (`small`/`big`) は弾幕では表現できない。
 
+**文字サイズ・透明度・速度は `danmaku_settings.dart` に集約する。** 値は `DanmakuDisplaySettings` (画面固定値との合成は純関数 `danmakuOptionOf`、スライダー値の正規化は `danmakuFontSizeOf` ほか)。所有者は `PlayerPlaybackController.danmakuSettings` (`ValueNotifier`)。**`notifyListeners` と連動させない**: 弾幕以外に影響する要素がないので、設定を変えるたびに映像 (`PlayerVideoView`) を作り直す理由がない。購読するのは弾幕の層と設定メニュー内だけで、どちらも映像の `Stack` の**内側かポップアップルートの中**なので安全。
+
+設定の変更は引数の差し替えでは反映しない。**`DanmakuScreen` は `option` を `initState` でしか読まない** (`didUpdateWidget` が無い) ため、`DanmakuScreen.option` に新しい値を渡すだけでは何も起きない。`createdController` で受けた `DanmakuController.updateOption` で配る。`DanmakuScreen` の破棄は親に通知されないので、登録の解除は `_DanmakuScreenView` (オーバーレイ内の薄いラッパ) の `dispose` で行う — 解除しないと通常表示→フルスクリーン切替で破棄済みの notifier に触って落ちる。文字サイズが変わったら `store.resetMeasurements()` が必要 (キャッシュされた幅は旧サイズのまま測り直されない)。オーバーレイ側でも 1 度落とす: `updateOption` 側も落とすため二重呼びだが、その間の再測定は起きない。
+
+設定値は回転・一時停止・弾幕の on/off で失われないが、**画質変更ではリセットされる** (ライブは `_LivePlayerState`、録画は `_VideoPlayerState` が URL をキーにして作り直される。`danmakuEnabled` の on/off と同じ挙動)。
+
 弾幕エンジンは `canvas_danmaku` のフォーク (`yasamari/canvas_danmaku`、MIT。`pubspec.yaml` は rev ピン留め git 依存)。描画は**決定論的**: 各弾幕は共有時計 (`DanmakuClock`) 上の birth を持ち、位置は `now - birth` の純関数 (`danmaku_track_assign.dart`)。軌道割当も birth 順の純関数で、`Random` は使わない。計測 (幅) とラスタ化は初回描画時に遅延実行し、挿入時はソート挿入だけ (一括取得が重くならない)。`CustomPainter` 3層分離・Ticker 自動停止・バッチ描画の高速化機構は温存する。
 
 **弾幕エンジンの不変条件 (3 つとも守ること)。** 破ると「消える少し前の弾幕が上段へ飛ぶ」症状 (描画中に `yPosition` が変わる) に戻る:
