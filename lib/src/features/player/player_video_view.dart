@@ -54,6 +54,8 @@ class PlayerVideoView extends StatelessWidget {
     this.livePrimaryButtonBar,
     this.liveBottomButtonBar,
     this.liveDesktopBottomButtonBar,
+    this.seekableBottomButtonBar,
+    this.seekableDesktopBottomButtonBar,
     this.danmaku,
     this.errorMessage,
     this.onRetry,
@@ -68,7 +70,7 @@ class PlayerVideoView extends StatelessWidget {
   /// 映像のコントローラー。
   final VideoController videoController;
 
-  /// 標準コントロールの上部ボタンバー。戻るボタン・タイトル・字幕・音声など。
+  /// 標準コントロールの上部ボタンバー。戻るボタン・タイトル。
   final List<Widget> topButtonBar;
 
   /// 標準コントロールのボタン構成。
@@ -82,6 +84,14 @@ class PlayerVideoView extends StatelessWidget {
 
   /// ライブのデスクトップ下端ボタン行 ([PlayerControlsLayout.live] のみ使う)。
   final List<Widget>? liveDesktopBottomButtonBar;
+
+  /// 録画のモバイル下端ボタン行 ([PlayerControlsLayout.seekable] のみ使う)。
+  /// null のときは media_kit の既定を使う。
+  final List<Widget>? seekableBottomButtonBar;
+
+  /// 録画のデスクトップ下端ボタン行 ([PlayerControlsLayout.seekable] のみ使う)。
+  /// null のときは media_kit の既定を使う。
+  final List<Widget>? seekableDesktopBottomButtonBar;
 
   /// controls レイヤー内に描く弾幕。null なら描かない。
   ///
@@ -145,7 +155,7 @@ class PlayerVideoView extends StatelessWidget {
           controlsHoverDuration: playerControlsHoverDuration,
         );
       }
-      return MaterialVideoControlsThemeData(
+      var theme = MaterialVideoControlsThemeData(
         // 既定 (`EdgeInsets.zero`) ではシークバーがボタン行の下・画面端に落ち
         // るので、横画面・フルスクリーンではボタン行の上へ持ち上げる。
         seekBarMargin: insets.seekBarMargin,
@@ -159,6 +169,13 @@ class PlayerVideoView extends StatelessWidget {
         visibleOnMount: true,
         controlsHoverDuration: playerControlsHoverDuration,
       );
+      // 録画の下端ボタン行は字幕・設定をフルスクリーンの左に足すときだけ
+      // 上書きする。null のときは media_kit の既定のまま (書き写さない)。
+      final seekableBottom = seekableBottomButtonBar;
+      if (seekableBottom != null) {
+        theme = theme.copyWith(bottomButtonBar: seekableBottom);
+      }
+      return theme;
     }
 
     MaterialDesktopVideoControlsThemeData desktopTheme() {
@@ -181,7 +198,7 @@ class PlayerVideoView extends StatelessWidget {
           controlsHoverDuration: playerControlsHoverDuration,
         );
       }
-      return MaterialDesktopVideoControlsThemeData(
+      var theme = MaterialDesktopVideoControlsThemeData(
         seekBarColor: seekBar.track,
         seekBarBufferColor: seekBar.buffer,
         seekBarPositionColor: seekBar.position,
@@ -191,6 +208,12 @@ class PlayerVideoView extends StatelessWidget {
         visibleOnMount: true,
         controlsHoverDuration: playerControlsHoverDuration,
       );
+      // モバイル側と同じく、録画の下端ボタン行の上書きは指定があるときだけ。
+      final seekableBottom = seekableDesktopBottomButtonBar;
+      if (seekableBottom != null) {
+        theme = theme.copyWith(bottomButtonBar: seekableBottom);
+      }
+      return theme;
     }
 
     final desktop = desktopTheme();

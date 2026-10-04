@@ -5,6 +5,8 @@ import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/widgets/program_detail_body.dart';
 import '../../domain/entities/video_program.dart';
@@ -12,6 +14,7 @@ import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../../domain/repositories/video_repository.dart';
 import '../videos/videos_providers.dart';
+import 'audio_switch.dart';
 import 'comment_list_panel.dart';
 import 'jikkyo_comment_source.dart';
 import 'jikkyo_danmaku_item.dart';
@@ -20,6 +23,7 @@ import 'jikkyo_past_comment_controller.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
 import 'player_playback_controller.dart';
+import 'player_settings_menu.dart';
 import 'player_split_layout.dart';
 import 'player_status_views.dart';
 import 'player_video_view.dart';
@@ -325,20 +329,43 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     final pastComments = _pastComments;
     final video = ListenableBuilder(
       listenable: _playback,
-      builder: (context, _) => PlayerVideoView(
-        videoController: _playback.videoController,
-        topButtonBar: buildPlayerTopButtonBar(
-          title: widget.video.title,
-          backFallbackPath: '/videos',
+      builder: (context, _) {
+        // 下部バーは「字幕 → 設定 → フルスクリーン」の並び。録画の下端は
+        // media_kit の既定構成に字幕・設定を足す。
+        Widget settingsButton() => _VideoSettingsButton(
           player: _playback.player,
           dualMonoChannel: _playback.dualMonoChannel,
           onAudioSelected: _playback.selectAudio,
           danmakuSupported: pastComments.isSupported,
           danmakuEnabled: _playback.danmakuEnabled,
           onDanmakuToggled: _playback.toggleDanmaku,
-          trailing: [_VideoQualityButton(quality: widget.quality)],
-        ),
-        layout: PlayerControlsLayout.seekable,
+          quality: widget.quality,
+        );
+        return PlayerVideoView(
+          videoController: _playback.videoController,
+          topButtonBar: buildPlayerTopButtonBar(
+            title: widget.video.title,
+            backFallbackPath: '/videos',
+          ),
+          layout: PlayerControlsLayout.seekable,
+          seekableBottomButtonBar: [
+            const MaterialPositionIndicator(),
+            const Spacer(),
+            SubtitleToggleButton(player: _playback.player),
+            settingsButton(),
+            const MaterialFullscreenButton(),
+          ],
+          seekableDesktopBottomButtonBar: [
+            const MaterialDesktopSkipPreviousButton(),
+            const MaterialDesktopPlayOrPauseButton(),
+            const MaterialDesktopSkipNextButton(),
+            const MaterialDesktopVolumeButton(),
+            const MaterialDesktopPositionIndicator(),
+            const Spacer(),
+            SubtitleToggleButton(player: _playback.player),
+            settingsButton(),
+            const MaterialDesktopFullscreenButton(),
+          ],
         danmaku: pastComments.isSupported
             ? JikkyoDanmakuLayer(
                 displayAspect: _playback.videoDisplayAspect,
@@ -356,7 +383,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
             : null,
         errorMessage: _playback.errorMessage,
         onRetry: _open,
-      ),
+        );
+      },
     );
     // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。映像側で
     // 購読するとタブ切替のたびに映像 (`Video`) まで作り直され、内部の表示
@@ -379,11 +407,25 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   }
 }
 
-/// 画質切替ボタン。映像とは切り離した `ConsumerWidget` に置く。
-///
-/// `buildPlayerTopButtonBar` の説明を参照。
-class _VideoQualityButton extends ConsumerWidget {
-  const _VideoQualityButton({required this.quality});
+/// 画質切替を含む設定ボタン。画質は親 ([_VideoPlayBody]) が購読し、URL変更で
+/// プレイヤーごと作り直すため、ここでは購読しない。
+class _VideoSettingsButton extends ConsumerWidget {
+  const _VideoSettingsButton({
+    required this.player,
+    required this.dualMonoChannel,
+    required this.onAudioSelected,
+    required this.danmakuSupported,
+    required this.danmakuEnabled,
+    required this.onDanmakuToggled,
+    required this.quality,
+  });
+
+  final Player player;
+  final DualMonoChannel? dualMonoChannel;
+  final ValueChanged<AudioChoice> onAudioSelected;
+  final bool danmakuSupported;
+  final bool danmakuEnabled;
+  final VoidCallback onDanmakuToggled;
 
   /// 現在再生している画質。
   final String quality;
@@ -391,14 +433,24 @@ class _VideoQualityButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repository = ref.read(videoRepositoryProvider);
-    return QualityMenuButton(
-      current: quality,
+    // notifier は build 時 (＝ボタンが載っている間) に確保する。メニュー選択は
+    // ボタン破棄後 (コントロール自動非表示) に起きうるため、コールバック内で
+    // `ref.read` すると例外で画質が切り替わらない。notifier は keepAlive のため
+    // ボタン破棄後も有効 ([videoPlayQualityProvider] 参照)。
+    final qualityNotifier = ref.read(videoPlayQualityProvider.notifier);
+    return PlayerSettingsButton(
+      player: player,
+      dualMonoChannel: dualMonoChannel,
+      onAudioSelected: onAudioSelected,
+      danmakuSupported: danmakuSupported,
+      danmakuEnabled: danmakuEnabled,
+      onDanmakuToggled: onDanmakuToggled,
+      qualityCurrent: quality,
       qualities: [
         if (repository.isOriginalVideoQuality('original')) 'original',
         ...repository.getVideoQualities(),
       ].where((q) => q.isNotEmpty).toList(),
-      onSelected: (quality) =>
-          ref.read(videoPlayQualityProvider.notifier).setQuality(quality),
+      onQualitySelected: (quality) => qualityNotifier.setQuality(quality),
     );
   }
 }

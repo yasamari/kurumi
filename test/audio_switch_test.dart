@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:kurumi/src/features/player/audio_switch.dart';
 
 void main() {
@@ -33,9 +34,41 @@ void main() {
       expect(audioTrackLabel(language: 'jpn', index: 2), 'jpn');
     });
 
-    test('どちらも無ければ通し番号を使う', () {
-      expect(audioTrackLabel(index: 1), '音声1');
+    test('どちらも無ければ1本目は主音声・2本目は副音声', () {
+      expect(audioTrackLabel(index: 1), '主音声');
+      expect(audioTrackLabel(index: 2), '副音声');
       expect(audioTrackLabel(title: '  ', language: '', index: 3), '音声3');
+    });
+  });
+
+  group('再生中の音声トラックの位置', () {
+    const tracks = [
+      AudioTrack('1', null, null),
+      AudioTrack('2', null, null),
+    ];
+
+    test('一覧にあればその位置', () {
+      expect(
+        currentAudioTrackIndex(tracks: tracks, current: tracks[1]),
+        1,
+      );
+    });
+
+    test('auto など一覧に無ければ先頭', () {
+      expect(
+        currentAudioTrackIndex(tracks: tracks, current: AudioTrack.auto()),
+        0,
+      );
+    });
+
+    test('空なら -1', () {
+      expect(
+        currentAudioTrackIndex(
+          tracks: const [],
+          current: AudioTrack.auto(),
+        ),
+        -1,
+      );
     });
   });
 }

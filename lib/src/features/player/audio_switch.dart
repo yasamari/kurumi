@@ -15,6 +15,8 @@
 /// 「切り替えたい値」を mpv に渡せる形へ変換するところまでを担う。
 library;
 
+import 'package:media_kit/media_kit.dart';
+
 /// 二重モノラルで復号するチャンネル。
 enum DualMonoChannel {
   /// 主音声 (Lch)。
@@ -48,14 +50,32 @@ String dualMonoLavcOption(DualMonoChannel? channel) =>
 
 /// 音声トラックのメニュー表示名。
 ///
-/// タイトル → 言語 → `音声N` の順にフォールバックする。放送TSでは通常どちらも
-/// 空なので、多くの場合 `音声N` になる。
+/// タイトル → 言語 → 主音声/副音声の順にフォールバックする。放送TSでは通常
+/// タイトルも言語も空で、二重ステレオは1本目が主音声・2本目が副音声のため、
+/// その表示にする。3本目以降は `音声N`。
 String audioTrackLabel({String? title, String? language, required int index}) {
   final t = title?.trim();
   if (t != null && t.isNotEmpty) return t;
   final l = language?.trim();
   if (l != null && l.isNotEmpty) return l;
-  return '音声$index';
+  return switch (index) {
+    1 => '主音声',
+    2 => '副音声',
+    _ => '音声$index',
+  };
+}
+
+/// 再生中の音声トラックの位置を返す。
+///
+/// [current] が [tracks] にあればその位置。`auto` 選択中などで一覧に無い
+/// ときは先頭を返す (mpv の `auto` は最初のトラックを選択する)。空なら -1。
+int currentAudioTrackIndex({
+  required List<AudioTrack> tracks,
+  required AudioTrack current,
+}) {
+  final index = tracks.indexWhere((t) => t.id == current.id);
+  if (index >= 0) return index;
+  return tracks.isEmpty ? -1 : 0;
 }
 
 /// 音声メニューの選択結果。

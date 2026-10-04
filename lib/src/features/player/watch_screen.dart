@@ -17,6 +17,7 @@ import '../../domain/entities/live_stream.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
+import 'audio_switch.dart';
 import 'jikkyo_comment_controller.dart';
 import 'jikkyo_danmaku_item.dart';
 import 'jikkyo_danmaku_overlay.dart';
@@ -25,6 +26,7 @@ import 'live_session.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
 import 'player_playback_controller.dart';
+import 'player_settings_menu.dart';
 import 'player_split_layout.dart';
 import 'player_status_views.dart';
 import 'player_video_view.dart';
@@ -37,10 +39,11 @@ import 'watch_providers.dart';
 /// StatefulShellRoute の外側 (`rootNavigatorKey` 上) に積まれるため、
 /// シェル側のナビゲーションが隠れる。
 ///
-/// 再生UIはmedia_kit標準 (`AdaptiveVideoControls`) を使う。戻るボタン・番組名・
-/// 画質切替ボタンはAppBarではなく、標準コントロールの上部ボタンバーに載せる
-/// ([buildPlayerTopButtonBar])。ライブのためシークバー・シーク系ジェスチャは
-/// 無効化する ([PlayerControlsLayout.live])。
+/// 再生UIはmedia_kit標準 (`AdaptiveVideoControls`) を使う。戻るボタン・番組名は
+/// AppBarではなく、標準コントロールの上部ボタンバーに載せる
+/// ([buildPlayerTopButtonBar])。画質・弾幕・音声は下部バーの設定ボタン
+/// ([PlayerSettingsButton]) にまとめ、字幕はその左に置く。ライブのため
+/// シークバー・シーク系ジェスチャは無効化する ([PlayerControlsLayout.live])。
 class WatchScreen extends ConsumerWidget {
   const WatchScreen({super.key, required this.channelId});
 
@@ -183,21 +186,53 @@ class _WatchInfoPanel extends ConsumerWidget {
   }
 }
 
-/// 画質切替ボタンだけが画質を購読する。
+/// 画質切替を含む設定ボタンだけが画質を購読する。
 ///
 /// 映像側で購読すると画質表示の更新のたびに映像まで作り直されるため、ここに
-/// 切り出す (`buildPlayerTopButtonBar` の説明を参照)。
-class _LiveQualityButton extends ConsumerWidget {
-  const _LiveQualityButton();
+/// 切り出す。下部バーの設定ボタンはこのラッパーを置く。
+class _LiveSettingsButton extends ConsumerWidget {
+  const _LiveSettingsButton({
+    required this.player,
+    required this.dualMonoChannel,
+    required this.onAudioSelected,
+    required this.danmakuSupported,
+    required this.danmakuEnabled,
+    required this.onDanmakuToggled,
+    required this.showQualityMenu,
+  });
+
+  final Player player;
+  final DualMonoChannel? dualMonoChannel;
+  final ValueChanged<AudioChoice> onAudioSelected;
+  final bool danmakuSupported;
+  final bool danmakuEnabled;
+  final VoidCallback onDanmakuToggled;
+
+  /// KonomiTVのときだけ真 (Mirakurunは `decode=1` 固定のため画質を出さない)。
+  final bool showQualityMenu;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final repository = ref.watch(tvRepositoryProvider);
-    return QualityMenuButton(
-      current: ref.watch(watchQualityProvider),
-      qualities: repository.getLiveQualities(),
-      onSelected: (quality) =>
-          ref.read(watchQualityProvider.notifier).setQuality(quality),
+    // notifier は build 時 (＝ボタンが載っている間) に確保する。メニュー選択は
+    // ボタン破棄後 (コントロール自動非表示) に起きうるため、コールバック内で
+    // `ref.read` すると例外で画質が切り替わらない。notifier は keepAlive のため
+    // ボタン破棄後も有効 ([watchQualityProvider] 参照)。
+    final qualityNotifier = showQualityMenu
+        ? ref.read(watchQualityProvider.notifier)
+        : null;
+    return PlayerSettingsButton(
+      player: player,
+      dualMonoChannel: dualMonoChannel,
+      onAudioSelected: onAudioSelected,
+      danmakuSupported: danmakuSupported,
+      danmakuEnabled: danmakuEnabled,
+      onDanmakuToggled: onDanmakuToggled,
+      qualityCurrent: showQualityMenu ? ref.watch(watchQualityProvider) : null,
+      qualities: showQualityMenu ? repository.getLiveQualities() : const [],
+      onQualitySelected: qualityNotifier == null
+          ? null
+          : (quality) => qualityNotifier.setQuality(quality),
     );
   }
 }
@@ -660,21 +695,22 @@ class _LivePlayerState extends State<_LivePlayer> {
     return ListenableBuilder(
       listenable: _playback,
       builder: (context, _) {
+        // 設定ボタンだけが画質を購読する (`_LiveSettingsButton` 参照)。
+        // 映像まで作り直されないよう、購読はボタンの中に閉じる。
+        Widget settingsButton() => _LiveSettingsButton(
+          player: _playback.player,
+          dualMonoChannel: _playback.dualMonoChannel,
+          onAudioSelected: _playback.selectAudio,
+          danmakuSupported: jikkyo.isSupported,
+          danmakuEnabled: _playback.danmakuEnabled,
+          onDanmakuToggled: _playback.toggleDanmaku,
+          showQualityMenu: widget.showQualityMenu,
+        );
         return PlayerVideoView(
           videoController: _playback.videoController,
           topButtonBar: buildPlayerTopButtonBar(
             title: widget.title,
             backFallbackPath: '/tv',
-            player: _playback.player,
-            dualMonoChannel: _playback.dualMonoChannel,
-            onAudioSelected: _playback.selectAudio,
-            danmakuSupported: jikkyo.isSupported,
-            danmakuEnabled: _playback.danmakuEnabled,
-            onDanmakuToggled: _playback.toggleDanmaku,
-            trailing: [
-              // 画質ボタンだけが画質を購読する (`_LiveQualityButton` 参照)。
-              if (widget.showQualityMenu) const _LiveQualityButton(),
-            ],
           ),
           layout: PlayerControlsLayout.live,
           livePrimaryButtonBar: [
@@ -689,9 +725,12 @@ class _LivePlayerState extends State<_LivePlayer> {
             _ChannelZapButton(channel: widget.item.channel, isNext: true),
             const Spacer(flex: 2),
           ],
-          liveBottomButtonBar: const [
-            Spacer(),
-            MaterialFullscreenButton(),
+          // 下部バーは「字幕 → 設定 → フルスクリーン」の並び。
+          liveBottomButtonBar: [
+            const Spacer(),
+            SubtitleToggleButton(player: _playback.player),
+            settingsButton(),
+            const MaterialFullscreenButton(),
           ],
           liveDesktopBottomButtonBar: [
             _ChannelZapButton(
@@ -702,6 +741,8 @@ class _LivePlayerState extends State<_LivePlayer> {
             _ChannelZapButton(channel: widget.item.channel, isNext: true),
             const MaterialDesktopVolumeButton(),
             const Spacer(),
+            SubtitleToggleButton(player: _playback.player),
+            settingsButton(),
             const MaterialDesktopFullscreenButton(),
           ],
           danmaku: jikkyo.isSupported
