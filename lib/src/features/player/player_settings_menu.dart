@@ -1,8 +1,10 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../data/ts/audio_layout.dart';
 import '../shell/app_destinations.dart';
 import 'audio_switch.dart';
 
@@ -53,6 +55,7 @@ class PlayerSettingsButton extends StatelessWidget {
     required this.player,
     required this.dualMonoChannel,
     required this.onAudioSelected,
+    this.audioLayout,
     this.danmakuSupported = false,
     this.danmakuEnabled = true,
     this.onDanmakuToggled,
@@ -68,6 +71,15 @@ class PlayerSettingsButton extends StatelessWidget {
 
   /// 音声選択時のコールバック。呼び出し側で状態に反映すること。
   final ValueChanged<AudioChoice> onAudioSelected;
+
+  /// 音声構成の通知元。EIT[p/f] からの取得状況をここに渡す。
+  ///
+  /// ライブ視聴は `_LiveSettingsButton` が渡し、録画再生のように TS を
+  /// 見ない画面は null (＝ [LiveAudioLayout.unknown]、mpv に委ねる)。
+  /// 購読はせず notifier の参照だけ持ち、購読はメニュー内
+  /// ([_SettingsMenuPanel]) で行う。ボタン側で購読すると映像側の再構築に
+  /// 巻き込まれうるため。
+  final ValueListenable<LiveAudioLayout>? audioLayout;
 
   /// 実況チャンネルが対応している場合のみ弾幕ページを出す。
   final bool danmakuSupported;
@@ -104,6 +116,7 @@ class PlayerSettingsButton extends StatelessWidget {
         player: player,
         dualMonoChannel: dualMonoChannel,
         onAudioSelected: onAudioSelected,
+        audioLayout: audioLayout,
         danmakuSupported: danmakuSupported,
         danmakuEnabled: danmakuEnabled,
         onDanmakuToggled: onDanmakuToggled,
@@ -136,33 +149,6 @@ List<AudioTrack> _realAudioTracks(List<AudioTrack> tracks) {
   return tracks.where((t) => !reserved.contains(t.id)).toList();
 }
 
-/// 音声メニュー一覧に載せる現在の選択表示。
-String _audioSummary({
-  required List<AudioTrack> tracks,
-  required AudioTrack current,
-  required DualMonoChannel? dualMonoChannel,
-}) {
-  final realTracks = _realAudioTracks(tracks);
-  if (realTracks.length > 1) {
-    // `auto` 選択中などで現在値が一覧に無くても先頭 (再生中) を表示する。
-    final index = currentAudioTrackIndex(
-      tracks: realTracks,
-      current: current,
-    );
-    if (index < 0) return '切替';
-    return audioTrackLabel(
-      title: realTracks[index].title,
-      language: realTracks[index].language,
-      index: index + 1,
-    );
-  }
-  return switch (dualMonoChannel) {
-    DualMonoChannel.main => DualMonoChannel.main.label,
-    DualMonoChannel.sub => DualMonoChannel.sub.label,
-    null => 'ステレオ（主＋副）',
-  };
-}
-
 /// 設定メニューを開く。画質・弾幕・音声の3ページ構成。
 ///
 /// スマホ幅の縦画面では画面下からせり出すボトムシート、それ以外はボタンの
@@ -173,6 +159,7 @@ Future<void> showPlayerSettingsMenu(
   required Player player,
   required DualMonoChannel? dualMonoChannel,
   required ValueChanged<AudioChoice> onAudioSelected,
+  ValueListenable<LiveAudioLayout>? audioLayout,
   bool danmakuSupported = false,
   bool danmakuEnabled = true,
   VoidCallback? onDanmakuToggled,
@@ -203,6 +190,7 @@ Future<void> showPlayerSettingsMenu(
           player: player,
           dualMonoChannel: dualMonoChannel,
           onAudioSelected: onAudioSelected,
+          audioLayout: audioLayout,
           danmakuSupported: danmakuSupported,
           danmakuEnabled: danmakuEnabled,
           onDanmakuToggled: onDanmakuToggled,
@@ -230,6 +218,7 @@ Future<void> showPlayerSettingsMenu(
       player: player,
       dualMonoChannel: dualMonoChannel,
       onAudioSelected: onAudioSelected,
+      audioLayout: audioLayout,
       danmakuSupported: danmakuSupported,
       danmakuEnabled: danmakuEnabled,
       onDanmakuToggled: onDanmakuToggled,
@@ -248,6 +237,7 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
     required this.player,
     required this.dualMonoChannel,
     required this.onAudioSelected,
+    required this.audioLayout,
     required this.danmakuSupported,
     required this.danmakuEnabled,
     required this.onDanmakuToggled,
@@ -262,6 +252,7 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
   final Player player;
   final DualMonoChannel? dualMonoChannel;
   final ValueChanged<AudioChoice> onAudioSelected;
+  final ValueListenable<LiveAudioLayout>? audioLayout;
   final bool danmakuSupported;
   final bool danmakuEnabled;
   final VoidCallback? onDanmakuToggled;
@@ -329,6 +320,7 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
                 player: player,
                 dualMonoChannel: dualMonoChannel,
                 onAudioSelected: onAudioSelected,
+                audioLayout: audioLayout,
                 danmakuSupported: danmakuSupported,
                 danmakuEnabled: danmakuEnabled,
                 onDanmakuToggled: onDanmakuToggled,
@@ -372,6 +364,7 @@ class _SettingsMenuPanel extends StatefulWidget {
     required this.player,
     required this.dualMonoChannel,
     required this.onAudioSelected,
+    required this.audioLayout,
     required this.danmakuSupported,
     required this.danmakuEnabled,
     required this.onDanmakuToggled,
@@ -385,6 +378,10 @@ class _SettingsMenuPanel extends StatefulWidget {
   final Player player;
   final DualMonoChannel? dualMonoChannel;
   final ValueChanged<AudioChoice> onAudioSelected;
+
+  /// 音声構成の通知元。null は [LiveAudioLayout.unknown] として扱う。
+  final ValueListenable<LiveAudioLayout>? audioLayout;
+
   final bool danmakuSupported;
   final bool danmakuEnabled;
   final VoidCallback? onDanmakuToggled;
@@ -424,6 +421,20 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final audioLayout = widget.audioLayout;
+    // 音声構成 (EIT[p/f]) はメニューを開いた後に届くことがある。ボタン側で
+    // 購読すると映像側の再構築に巻き込まれるため、メニューの中で購読する
+    // (ポップアップルート内なので映像には影響しない)。
+    if (audioLayout == null) {
+      return _buildPanel(context, LiveAudioLayout.unknown);
+    }
+    return ValueListenableBuilder<LiveAudioLayout>(
+      valueListenable: audioLayout,
+      builder: (context, layout, _) => _buildPanel(context, layout),
+    );
+  }
+
+  Widget _buildPanel(BuildContext context, LiveAudioLayout layout) {
     final qualityCurrent = widget.qualityCurrent;
     final onQualitySelected = widget.onQualitySelected;
     final hasQualityPage =
@@ -464,6 +475,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
                         context,
                         hasQualityPage: hasQualityPage,
                         qualityCurrent: qualityCurrent,
+                        layout: layout,
                       ),
                       _SettingsPage.quality => _buildQualityPage(
                         context,
@@ -471,7 +483,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
                         onQualitySelected: onQualitySelected,
                       ),
                       _SettingsPage.danmaku => _buildDanmakuPage(context),
-                      _SettingsPage.audio => _buildAudioPage(context),
+                      _SettingsPage.audio => _buildAudioPage(context, layout),
                     },
                   ),
                 ),
@@ -579,6 +591,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
     BuildContext context, {
     required bool hasQualityPage,
     required String? qualityCurrent,
+    required LiveAudioLayout layout,
   }) {
     return ListView(
       shrinkWrap: true,
@@ -611,18 +624,31 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
                 final current =
                     trackSnapshot.data?.audio ??
                     widget.player.state.track.audio;
+                final realTracks = _realAudioTracks(tracks);
+                final mode = audioMenuMode(
+                  realAudioTrackCount: realTracks.length,
+                  layout: layout,
+                );
+                // 選べないときはページも開かず、表示だけで示す。
+                final selectable = mode != AudioMenuMode.single;
                 return ListTile(
                   leading: const Icon(Icons.audiotrack),
                   title: const Text('音声'),
                   subtitle: Text(
-                    _audioSummary(
-                      tracks: tracks,
+                    audioMenuLabel(
+                      mode: mode,
+                      layout: layout,
+                      realAudioTracks: realTracks,
                       current: current,
                       dualMonoChannel: widget.dualMonoChannel,
                     ),
                   ),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _go(_SettingsPage.audio, 1),
+                  trailing: selectable
+                      ? const Icon(Icons.chevron_right)
+                      : null,
+                  onTap: selectable
+                      ? () => _go(_SettingsPage.audio, 1)
+                      : null,
                 );
               },
             );
@@ -673,7 +699,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
     );
   }
 
-  Widget _buildAudioPage(BuildContext context) {
+  Widget _buildAudioPage(BuildContext context, LiveAudioLayout layout) {
     final checkColor = Theme.of(context).colorScheme.primary;
     return StreamBuilder<Tracks>(
       stream: widget.player.stream.tracks,
@@ -686,7 +712,11 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
             final current =
                 trackSnapshot.data?.audio ?? widget.player.state.track.audio;
             final realTracks = _realAudioTracks(tracks);
-            if (realTracks.length > 1) {
+            final mode = audioMenuMode(
+              realAudioTrackCount: realTracks.length,
+              layout: layout,
+            );
+            if (mode == AudioMenuMode.tracks) {
               // `auto` 選択中などで現在値が一覧に無くても先頭 (再生中) に付ける。
               final selected = currentAudioTrackIndex(
                 tracks: realTracks,
@@ -716,26 +746,41 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
                 ],
               );
             }
+            if (mode == AudioMenuMode.dualMono) {
+              // 判定できた時点で主音声へ倒しているため、初期状態は主音声。
+              return ListView(
+                shrinkWrap: true,
+                children: [
+                  _dualMonoTile(
+                    context,
+                    title: DualMonoChannel.main.label,
+                    checked:
+                        widget.dualMonoChannel != DualMonoChannel.sub,
+                    choice: const DualMonoChoice(DualMonoChannel.main),
+                  ),
+                  _dualMonoTile(
+                    context,
+                    title: DualMonoChannel.sub.label,
+                    checked: widget.dualMonoChannel == DualMonoChannel.sub,
+                    choice: const DualMonoChoice(DualMonoChannel.sub),
+                  ),
+                ],
+              );
+            }
+            // 選べない。1行だけ出して開かない。
             return ListView(
               shrinkWrap: true,
               children: [
-                _dualMonoTile(
-                  context,
-                  title: 'ステレオ（主＋副）',
-                  checked: widget.dualMonoChannel == null,
-                  choice: const DualMonoChoice(null),
-                ),
-                _dualMonoTile(
-                  context,
-                  title: DualMonoChannel.main.label,
-                  checked: widget.dualMonoChannel == DualMonoChannel.main,
-                  choice: const DualMonoChoice(DualMonoChannel.main),
-                ),
-                _dualMonoTile(
-                  context,
-                  title: DualMonoChannel.sub.label,
-                  checked: widget.dualMonoChannel == DualMonoChannel.sub,
-                  choice: const DualMonoChoice(DualMonoChannel.sub),
+                ListTile(
+                  title: Text(
+                    audioMenuLabel(
+                      mode: mode,
+                      layout: layout,
+                      realAudioTracks: realTracks,
+                      current: current,
+                      dualMonoChannel: widget.dualMonoChannel,
+                    ),
+                  ),
                 ),
               ],
             );

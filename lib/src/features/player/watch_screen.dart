@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:canvas_danmaku/canvas_danmaku.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -10,6 +11,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/network/dio_provider.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
+import '../../data/ts/audio_layout.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
@@ -156,7 +158,8 @@ class _WatchInfoPanel extends ConsumerWidget {
   /// 実況コメントの取得状態。[_WatchLayoutState] が所有する。
   final JikkyoCommentController controller;
 
-  /// EIT[p/f] の取得状態。KonomiTV時のみ非null。[_LivePlayerState] が更新する。
+  /// EIT[p/f] の取得状態。PSIが組み立てられた後に非null。
+  /// [_LivePlayerState] が更新する。
   final LivePsiController? psi;
 
   /// チャンネル切替タブでチャンネルを選んだときのコールバック。
@@ -195,6 +198,7 @@ class _LiveSettingsButton extends ConsumerWidget {
     required this.player,
     required this.dualMonoChannel,
     required this.onAudioSelected,
+    required this.audioLayout,
     required this.danmakuSupported,
     required this.danmakuEnabled,
     required this.onDanmakuToggled,
@@ -204,6 +208,11 @@ class _LiveSettingsButton extends ConsumerWidget {
   final Player player;
   final DualMonoChannel? dualMonoChannel;
   final ValueChanged<AudioChoice> onAudioSelected;
+
+  /// EIT[p/f] からの音声構成の通知元。購読は設定メニュー内で行うため、ここでは
+  /// 参照だけを持つ (ここで購読すると映像まで作り直される)。
+  final ValueListenable<LiveAudioLayout> audioLayout;
+
   final bool danmakuSupported;
   final bool danmakuEnabled;
   final VoidCallback onDanmakuToggled;
@@ -225,6 +234,7 @@ class _LiveSettingsButton extends ConsumerWidget {
       player: player,
       dualMonoChannel: dualMonoChannel,
       onAudioSelected: onAudioSelected,
+      audioLayout: audioLayout,
       danmakuSupported: danmakuSupported,
       danmakuEnabled: danmakuEnabled,
       onDanmakuToggled: onDanmakuToggled,
@@ -513,6 +523,11 @@ class _LivePlayerState extends State<_LivePlayer> {
   /// EIT[p/f] の接続。セッション確立後に作る。
   LivePsiController? _psi;
 
+  /// 音声構成の通知先。設定メニューに渡すだけなので、購読はメニュー内で行う。
+  final ValueNotifier<LiveAudioLayout> _audioLayout = ValueNotifier(
+    LiveAudioLayout.unknown,
+  );
+
   /// 再生セッション (mpvが開くURL+EIT用パケット列)。
   LiveSession? _session;
 
@@ -592,6 +607,23 @@ class _LivePlayerState extends State<_LivePlayer> {
 
   JikkyoCommentController get _jikkyo => widget.controller;
 
+  /// EIT[p/f] から得た音声構成をメニューへ流す。
+  ///
+  /// デュアルモノラルと分かった時点で主音声へ倒す。既定の `auto` は
+  /// Lch=主 / Rch=副 を同時に出力するため、判定できた瞬間切り替えておく。
+  /// 判定が変わったときだけ呼ぶので、ユーザーが副音声を選んでいても上書き
+  /// されない。
+  void _syncAudioLayout() {
+    final layout = _psi?.audioLayout;
+    if (layout == null || layout == _audioLayout.value) return;
+    _audioLayout.value = layout;
+    if (layout == LiveAudioLayout.dualMono) {
+      unawaited(
+        _playback.selectAudio(const DualMonoChoice(DualMonoChannel.main)),
+      );
+    }
+  }
+
   /// mpvオプションを適用してから映像を開く。
   ///
   /// オプションはデコーダ生成時に読まれるため、必ず `open` より前に渡す。
@@ -607,6 +639,9 @@ class _LivePlayerState extends State<_LivePlayer> {
     // 旧セッション (tap・PSI取得) を閉じてから開き直す。
     _psi?.dispose();
     _psi = null;
+    // 音声構成は「まだ分からない」状態に戻す (PSIごとに作り直されるため
+    // 判定そのものは残さない)。
+    _audioLayout.value = LiveAudioLayout.unknown;
     // 情報パネルの「取得中」表示に戻す。新しいPSIは下で通知する。
     widget.psiNotifier.value = null;
     final oldSession = _session;
@@ -641,6 +676,7 @@ class _LivePlayerState extends State<_LivePlayer> {
       serviceId: widget.item.channel.serviceId,
       packets: session.packets,
     )..start();
+    _psi!.addListener(_syncAudioLayout);
     widget.psiNotifier.value = _psi;
     setState(() => _sessionLoading = false);
     // stream tap (`kurumi-ts://`) は media_kit が temp playlist 経由
@@ -665,6 +701,7 @@ class _LivePlayerState extends State<_LivePlayer> {
     _bufferingSub?.cancel();
     _psi?.dispose();
     _psi = null;
+    _audioLayout.dispose();
     final session = _session;
     _session = null;
     if (session != null) {
@@ -701,6 +738,7 @@ class _LivePlayerState extends State<_LivePlayer> {
           player: _playback.player,
           dualMonoChannel: _playback.dualMonoChannel,
           onAudioSelected: _playback.selectAudio,
+          audioLayout: _audioLayout,
           danmakuSupported: jikkyo.isSupported,
           danmakuEnabled: _playback.danmakuEnabled,
           onDanmakuToggled: _playback.toggleDanmaku,

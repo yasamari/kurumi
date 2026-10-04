@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 
+import '../../data/ts/audio_layout.dart';
 import '../../data/ts/eit.dart';
 import '../../data/ts/live_program.dart';
 import '../../domain/entities/tv_program.dart';
@@ -20,6 +21,9 @@ import '../../domain/entities/tv_program.dart';
 /// EIT[p/f] をデコードし、現在・次番組 ([present]/[following]) を
 /// [TvProgram] で公開する。更新のたびに通知する。再生中の番組情報は
 /// ライブEIT[p/f]からのみ取得し、`/api/channels` 等の情報は使わない。
+///
+/// 現在番組の音声構成 ([audioLayout]) も同時に公開する。APIからは取得せず、
+/// EIT[p/f] の音声コンポーネント記述子だけを見る ([detectLiveAudioLayout])。
 class LivePsiController extends ChangeNotifier {
   LivePsiController({
     required this.networkId,
@@ -41,6 +45,14 @@ class LivePsiController extends ChangeNotifier {
 
   /// EIT[p/f] の次番組。未受信時は null。
   TvProgram? following;
+
+  /// 現在番組の音声構成。未受信または判定できない場合は [LiveAudioLayout.unknown]。
+  ///
+  /// 音声コンポーネント記述子を含まない EIT[p/f] が再送されても判定を失わない
+  /// よう、`unknown` は反映せず直前の値を保持する (切替可能だったはずの音声が
+  /// 突然選択できなくなるのを避ける)。チャンネル・画質切替では本コントローラー
+  /// ごと作り直されるため、そのときに unknown に戻る。
+  LiveAudioLayout audioLayout = LiveAudioLayout.unknown;
 
   StreamSubscription<Uint8List>? _subscription;
   bool _disposed = false;
@@ -92,8 +104,19 @@ class LivePsiController extends ChangeNotifier {
     if (program == null) return false;
     if (_disposed) return false;
     if (eit.sectionNumber == 0) {
+      // 音声構成は「現在番組」だけのもの。判定できない EIT では保持する
+      // (doc参照)。
+      final layout = detectLiveAudioLayout(eit.events.single.descriptors);
+      var updated = false;
+      if (layout != LiveAudioLayout.unknown && layout != audioLayout) {
+        audioLayout = layout;
+        updated = true;
+      }
       if (present != program) {
         present = program;
+        updated = true;
+      }
+      if (updated) {
         notifyListeners();
         return true;
       }

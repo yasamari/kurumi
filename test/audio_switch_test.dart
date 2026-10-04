@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:kurumi/src/data/ts/audio_layout.dart';
 import 'package:kurumi/src/features/player/audio_switch.dart';
 
 void main() {
@@ -68,6 +69,133 @@ void main() {
           current: AudioTrack.auto(),
         ),
         -1,
+      );
+    });
+  });
+
+  group('音声ページの表示方法', () {
+    test('mpv が2本以上ならトラック一覧 (EIT の判定より優先)', () {
+      expect(
+        audioMenuMode(
+          realAudioTrackCount: 2,
+          layout: LiveAudioLayout.dualMono,
+        ),
+        AudioMenuMode.tracks,
+      );
+      expect(
+        audioMenuMode(
+          realAudioTrackCount: 2,
+          layout: LiveAudioLayout.unknown,
+        ),
+        AudioMenuMode.tracks,
+      );
+    });
+
+    test('1本でデュアルモノラルなら主音声・副音声だけ', () {
+      expect(
+        audioMenuMode(
+          realAudioTrackCount: 1,
+          layout: LiveAudioLayout.dualMono,
+        ),
+        AudioMenuMode.dualMono,
+      );
+    });
+
+    test('主音声のみ・判定不能・0本なら1行だけ', () {
+      for (final layout in [
+        LiveAudioLayout.mainAudioOnly,
+        LiveAudioLayout.unknown,
+      ]) {
+        expect(
+          audioMenuMode(realAudioTrackCount: 1, layout: layout),
+          AudioMenuMode.single,
+          reason: '$layout',
+        );
+      }
+      expect(
+        audioMenuMode(
+          realAudioTrackCount: 0,
+          layout: LiveAudioLayout.dualMono,
+        ),
+        AudioMenuMode.dualMono,
+      );
+    });
+  });
+
+  group('音声の表示名', () {
+    const oneTrack = [AudioTrack('1', null, null)];
+    const twoTracks = [AudioTrack('1', null, null), AudioTrack('2', null, null)];
+
+    test('トラック一覧なら再生中のトラックの名', () {
+      expect(
+        audioMenuLabel(
+          mode: AudioMenuMode.tracks,
+          layout: LiveAudioLayout.unknown,
+          realAudioTracks: twoTracks,
+          current: twoTracks[1],
+          dualMonoChannel: null,
+        ),
+        '副音声',
+      );
+    });
+
+    test('dual mono は現在のチャンネル名、未選択は主音声', () {
+      expect(
+        audioMenuLabel(
+          mode: AudioMenuMode.dualMono,
+          layout: LiveAudioLayout.dualMono,
+          realAudioTracks: oneTrack,
+          current: oneTrack.first,
+          dualMonoChannel: null,
+        ),
+        '主音声',
+      );
+      expect(
+        audioMenuLabel(
+          mode: AudioMenuMode.dualMono,
+          layout: LiveAudioLayout.dualMono,
+          realAudioTracks: oneTrack,
+          current: oneTrack.first,
+          dualMonoChannel: DualMonoChannel.sub,
+        ),
+        '副音声',
+      );
+    });
+
+    test('選べないときは主音声とだけ表示する', () {
+      expect(
+        audioMenuLabel(
+          mode: AudioMenuMode.single,
+          layout: LiveAudioLayout.mainAudioOnly,
+          realAudioTracks: oneTrack,
+          current: oneTrack.first,
+          dualMonoChannel: null,
+        ),
+        '主音声',
+      );
+    });
+
+    test('判定不能の1本は mpv のトラック名をそのまま出す', () {
+      expect(
+        audioMenuLabel(
+          mode: AudioMenuMode.single,
+          layout: LiveAudioLayout.unknown,
+          realAudioTracks: const [AudioTrack('1', '5.1', null)],
+          current: AudioTrack('1', '5.1', null),
+          dualMonoChannel: null,
+        ),
+        '5.1',
+      );
+      // mpv がまだトラックを返していなくても落とさない。
+      expect(
+        audioMenuLabel(
+          mode: AudioMenuMode.single,
+          layout: LiveAudioLayout.unknown,
+          realAudioTracks: const [],
+          current: AudioTrack.auto(),
+          dualMonoChannel: null,
+        ),
+        '主音声',
       );
     });
   });

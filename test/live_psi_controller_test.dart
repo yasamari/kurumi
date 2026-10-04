@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kurumi/src/data/ts/audio_layout.dart';
 import 'package:kurumi/src/data/ts/eit.dart';
 import 'package:kurumi/src/features/player/live_psi_controller.dart';
 
@@ -8,7 +9,27 @@ Uint8List _aribAscii(String text) {
   return Uint8List.fromList([0x1B, 0x28, 0x4A, ...text.codeUnits]);
 }
 
-Uint8List _sectionBytes({required int sectionNumber, required int eventId}) {
+/// 音声コンポーネント記述子 (0xC4)。`componentType` は component_type と
+/// component_tag を詰めた2バイト目の値。
+Uint8List _audioComponent(int componentType, {bool main = true}) {
+  return Uint8List.fromList([
+    0xC4,
+    9,
+    0xF2, // reserved + stream_content 0b0010 (音声)
+    componentType,
+    0x01, // component_tag
+    0x0F, // stream_type
+    0x00, // simulcast_group_tag
+    main ? 0x4A : 0x8A, // main_component_flag + sampling_rate
+    0x6A, 0x70, 0x6E, // language
+  ]);
+}
+
+Uint8List _sectionBytes({
+  required int sectionNumber,
+  required int eventId,
+  List<Uint8List> extraDescriptors = const [],
+}) {
   final name = _aribAscii('AB');
   final bodyText = _aribAscii('C');
   final desc = BytesBuilder()
@@ -19,6 +40,9 @@ Uint8List _sectionBytes({required int sectionNumber, required int eventId}) {
     ..add(name)
     ..addByte(bodyText.length)
     ..add(bodyText);
+  for (final extra in extraDescriptors) {
+    desc.add(extra);
+  }
   final descBytes = desc.toBytes();
   final body = BytesBuilder()
     ..addByte(0x4E)
@@ -163,6 +187,138 @@ void main() {
       controller.start();
       await Future<void>.delayed(const Duration(milliseconds: 50));
       expect(controller.present, isNull);
+      controller.dispose();
+    });
+  });
+
+  group('音声構成', () {
+    test('初期状態は判定不能', () {
+      final controller = LivePsiController(
+        networkId: 1,
+        serviceId: 7,
+        packets: const Stream.empty(),
+      );
+      expect(controller.audioLayout, LiveAudioLayout.unknown);
+      controller.dispose();
+    });
+
+    test('現在番組のEITから音声構成を判定する', () {
+      final controller = LivePsiController(
+        networkId: 1,
+        serviceId: 7,
+        packets: const Stream.empty(),
+      );
+      // 現在の番組 (section_number 0) の 1/0+1/0 モード。
+      expect(
+        controller.handleSection(
+          _sectionBytes(
+            sectionNumber: 0,
+            eventId: 30,
+            extraDescriptors: [_audioComponent(0x02)],
+          ),
+        ),
+        isTrue,
+      );
+      expect(controller.audioLayout, LiveAudioLayout.dualMono);
+      controller.dispose();
+    });
+
+    test('次の番組のEITでは判定しない', () {
+      final controller = LivePsiController(
+        networkId: 1,
+        serviceId: 7,
+        packets: const Stream.empty(),
+      );
+      controller.handleSection(
+        _sectionBytes(
+          sectionNumber: 1,
+          eventId: 40,
+          extraDescriptors: [_audioComponent(0x02)],
+        ),
+      );
+      expect(controller.following, isNotNull);
+      expect(controller.audioLayout, LiveAudioLayout.unknown);
+      controller.dispose();
+    });
+
+    test('副音声だけの記述子では判定しない', () {
+      final controller = LivePsiController(
+        networkId: 1,
+        serviceId: 7,
+        packets: const Stream.empty(),
+      );
+      controller.handleSection(
+        _sectionBytes(
+          sectionNumber: 0,
+          eventId: 50,
+          extraDescriptors: [_audioComponent(0x03, main: false)],
+        ),
+      );
+      expect(controller.audioLayout, LiveAudioLayout.unknown);
+      controller.dispose();
+    });
+
+    test('音声コンポーネントを含まないEITでは判定を保持する', () {
+      final controller = LivePsiController(
+        networkId: 1,
+        serviceId: 7,
+        packets: const Stream.empty(),
+      );
+      controller.handleSection(
+        _sectionBytes(
+          sectionNumber: 0,
+          eventId: 60,
+          extraDescriptors: [_audioComponent(0x02)],
+        ),
+      );
+      expect(controller.audioLayout, LiveAudioLayout.dualMono);
+
+      // 記述子の無い再送で「判定不能」に戻さない (選択可能だった音声が
+      // 突然できなくなるのを避けるため)。
+      final withoutAudio = _sectionBytes(sectionNumber: 0, eventId: 60);
+      expect(controller.handleSection(withoutAudio), isFalse);
+      expect(controller.audioLayout, LiveAudioLayout.dualMono);
+      controller.dispose();
+    });
+
+    test('判定が変わったら通知する', () {
+      final controller = LivePsiController(
+        networkId: 1,
+        serviceId: 7,
+        packets: const Stream.empty(),
+      );
+      var notified = 0;
+      controller.addListener(() => notified++);
+
+      controller.handleSection(
+        _sectionBytes(
+          sectionNumber: 0,
+          eventId: 70,
+          extraDescriptors: [_audioComponent(0x02)],
+        ),
+      );
+      expect(notified, 1);
+
+      // 既に受信した内容と同じなら通知しない。
+      controller.handleSection(
+        _sectionBytes(
+          sectionNumber: 0,
+          eventId: 70,
+          extraDescriptors: [_audioComponent(0x02)],
+        ),
+      );
+      expect(notified, 1);
+
+      // 音声構成だけが変わっても通知する。
+      controller.handleSection(
+        _sectionBytes(
+          sectionNumber: 0,
+          eventId: 70,
+          extraDescriptors: [_audioComponent(0x03)],
+        ),
+      );
+      expect(controller.audioLayout, LiveAudioLayout.mainAudioOnly);
+      expect(notified, 2);
       controller.dispose();
     });
   });

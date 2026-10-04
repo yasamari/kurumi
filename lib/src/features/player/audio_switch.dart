@@ -11,11 +11,17 @@
 ///   ([dualMonoLavcOption] / [DualMonoChoice])。通常ステレオでは無効 (no-op)。
 ///
 /// 二重モノラルかどうかはコンテナ (PMT) からは判定できない
-/// (ストリームは通常のステレオと区別が付かない) ため、このモジュールは
-/// 「切り替えたい値」を mpv に渡せる形へ変換するところまでを担う。
+/// (ストリームは通常のステレオと区別が付かない)。そのため **EIT[p/f] の音声
+/// コンポーネント記述子 (0xC4)** から判定する ([LiveAudioLayout])。ただし
+/// 判定できるのは主・副の切替が要るかどうかだけで、マルチチャンネルなどは
+/// mpv の音声トラック認識に委ねる ([audioMenuMode])。
+///
+/// このモジュールは「どれを選ぶか」と「mpv にどう伝えるか」だけを担う。
 library;
 
 import 'package:media_kit/media_kit.dart';
+
+import '../../data/ts/audio_layout.dart';
 
 /// 二重モノラルで復号するチャンネル。
 enum DualMonoChannel {
@@ -37,7 +43,8 @@ extension DualMonoChannelX on DualMonoChannel {
 /// libavcodec の `dual_mono_mode` に渡す値。
 ///
 /// [channel] が null のときは既定 (`auto`)。二重モノラルでは `auto` は主副を
-/// そのままステレオ出力する (L=主 / R=副) ため、「主＋副」の表示に対応する。
+/// そのままステレオ出力する (L=主 / R=副) になる。メニューはこの値を選ばせず、
+/// 判定できた時点で主音声 ([DualMonoChannel.main]) を適用する。
 String dualMonoModeValue(DualMonoChannel? channel) => switch (channel) {
   DualMonoChannel.main => 'main',
   DualMonoChannel.sub => 'sub',
@@ -91,9 +98,82 @@ final class AudioTrackChoice extends AudioChoice {
   final String trackId;
 }
 
-/// 二重モノラルの復号チャンネルを選ぶ。null は既定 (主＋副をステレオ出力)。
+/// 二重モノラルの復号チャンネルを選ぶ。
+///
+/// null (既定 = 主＋副をステレオ出力) は選択肢として出さない。場面では
+/// [LiveAudioLayout.dualMono] と判定された時点で主音声を適用する。
 final class DualMonoChoice extends AudioChoice {
   const DualMonoChoice(this.channel);
 
   final DualMonoChannel? channel;
+}
+
+/// 音声ページで何を見せるか。
+enum AudioMenuMode {
+  /// mpv が得た音声トラックを一覧する (二重ステレオなど)。
+  tracks,
+
+  /// 主音声・副音声だけを選ぶ (デュアルモノラル)。
+  dualMono,
+
+  /// 選べない。1行だけ表示する。
+  single,
+}
+
+/// 音声ページの表示方法を決める。
+///
+/// mpv の音声トラックを最優先する。KonomiTV の再エンコード画質は元の放送が
+/// デュアルモノラルでも、右チャンネルを副音声トラックに分離して**2本**出すため、
+/// EIT の判定より mpv の認識を優先しないと `dual_mono_mode` の効かない
+/// 選択になる。
+///
+/// 音声が1本だけのときだけ [layout] を見る。判定できない
+/// ([LiveAudioLayout.unknown] = 録画再生・マルチチャンネルなど) か主音声のみ
+/// ([LiveAudioLayout.mainAudioOnly]) なら [AudioMenuMode.single]。
+AudioMenuMode audioMenuMode({
+  required int realAudioTrackCount,
+  required LiveAudioLayout layout,
+}) {
+  if (realAudioTrackCount > 1) return AudioMenuMode.tracks;
+  if (layout == LiveAudioLayout.dualMono) return AudioMenuMode.dualMono;
+  return AudioMenuMode.single;
+}
+
+/// 音声ページ・一覧に出す現在の音声の表示名。
+String audioMenuLabel({
+  required AudioMenuMode mode,
+  required LiveAudioLayout layout,
+  required List<AudioTrack> realAudioTracks,
+  required AudioTrack current,
+  required DualMonoChannel? dualMonoChannel,
+}) {
+  switch (mode) {
+    case AudioMenuMode.tracks:
+      // `auto` 選択中などで現在値が一覧に無くても先頭 (再生中) を表示する。
+      final index = currentAudioTrackIndex(
+        tracks: realAudioTracks,
+        current: current,
+      );
+      if (index < 0) return '切替';
+      return audioTrackLabel(
+        title: realAudioTracks[index].title,
+        language: realAudioTracks[index].language,
+        index: index + 1,
+      );
+    case AudioMenuMode.dualMono:
+      // 判定できた時点で主音声へ倒すため、未選択は主音声として扱う。
+      return dualMonoChannel?.label ?? DualMonoChannel.main.label;
+    case AudioMenuMode.single:
+      if (layout == LiveAudioLayout.mainAudioOnly) {
+        return DualMonoChannel.main.label;
+      }
+      // 判定できない場合は mpv の認識をそのまま出す (無ければ主音声)。
+      final first = realAudioTracks.isEmpty ? null : realAudioTracks.first;
+      if (first == null) return DualMonoChannel.main.label;
+      return audioTrackLabel(
+        title: first.title,
+        language: first.language,
+        index: 1,
+      );
+  }
 }
