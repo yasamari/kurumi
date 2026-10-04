@@ -46,6 +46,16 @@ depending on configuration. Releases are redistributed under the GPL.
 - Prebuilt mpv DLLs from the pub.dev `media_kit_libs_windows_video` package
   (e.g. 1.0.11), redistributed under the upstream license terms (GPL family).
 
+## canvas_danmaku (Dart, MIT, forked)
+
+- Upstream: Copyright Predidit <i@predidit.com>,
+  https://github.com/Predidit/canvas_danmaku (MIT).
+- This app uses the fork at https://github.com/yasamari/canvas_danmaku
+  (deterministic rendering: shared clock/store, seek mid-flight drawing,
+  fullscreen/rotation retention). Differences from upstream are limited to
+  positioning, track assignment, and clock/store plumbing; the CustomPainter
+  rendering pipeline is unchanged.
+
 ## Fonts
 
 - Fonts bundled with the Flutter SDK (e.g. Material Icons) keep their own

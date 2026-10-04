@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -17,6 +18,7 @@ import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
 import 'jikkyo_comment_controller.dart';
+import 'jikkyo_danmaku_item.dart';
 import 'jikkyo_danmaku_overlay.dart';
 import 'live_psi_controller.dart';
 import 'live_session.dart';
@@ -295,6 +297,17 @@ class _WatchLayout extends ConsumerStatefulWidget {
 class _WatchLayoutState extends ConsumerState<_WatchLayout> {
   late final JikkyoCommentController _jikkyo;
 
+  /// ライブ弾幕の保持期間。回転・フルスクリーン切替・一時的な無効化をまたいで
+  /// 描画中の弾幕が残るだけの余裕を持たせる (表示期間の数倍)。
+  static const _liveDanmakuRetentionMs = 60000;
+
+  /// 弾幕の共有状態。回転・フルスクリーンで作り直されない位置なので、
+  /// 描画中の弾幕が保たれる ([JikkyoDanmakuOverlay] 参照)。
+  /// ライブは巻き戻さないため保持は直近のみ。
+  late final DanmakuClock _danmakuClock = DanmakuClock();
+  late final DanmakuStore<int> _danmakuStore =
+      DanmakuStore<int>(retentionMs: _liveDanmakuRetentionMs);
+
   /// 最新の EIT[p/f] 取得状態。`_LivePlayerState` が開設のたびに更新する。
   final ValueNotifier<LivePsiController?> _psiNotifier = ValueNotifier(null);
 
@@ -312,6 +325,8 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
   @override
   void dispose() {
     _jikkyo.dispose();
+    _danmakuClock.dispose();
+    _danmakuStore.dispose();
     _psiNotifier.dispose();
     super.dispose();
   }
@@ -343,6 +358,8 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
         title: widget.title,
         showQualityMenu: widget.showQualityMenu,
         controller: _jikkyo,
+        danmakuStore: _danmakuStore,
+        danmakuClock: _danmakuClock,
         psiNotifier: _psiNotifier,
         // KonomiTVは `original` (生放送TS) のときだけデインタレースする。
         // Mirakurun (`decode=1` 固定) も生放送TSのためデインタレースする。
@@ -422,6 +439,8 @@ class _LivePlayer extends StatefulWidget {
     required this.showQualityMenu,
     required this.deinterlace,
     required this.controller,
+    required this.danmakuStore,
+    required this.danmakuClock,
     required this.psiNotifier,
   });
 
@@ -438,6 +457,12 @@ class _LivePlayer extends StatefulWidget {
 
   /// 実況コメントの取得状態。[_WatchLayoutState] が所有する。
   final JikkyoCommentController controller;
+
+  /// 弾幕の共有ストア。[_WatchLayoutState] が所有する。
+  final DanmakuStore<int> danmakuStore;
+
+  /// 弾幕の共有時計。[_WatchLayoutState] が所有する。
+  final DanmakuClock danmakuClock;
 
   /// 最新の EIT[p/f] 取得状態の通知先。[_WatchLayoutState] が持つ。
   final ValueNotifier<LivePsiController?> psiNotifier;
@@ -462,10 +487,72 @@ class _LivePlayerState extends State<_LivePlayer> {
   /// セッション開設の失敗内容。null以外は再試行表示する。
   String? _sessionError;
 
+  /// バッファ (`paused-for-cache`) の購読。停滞中は弾幕時計を凍結する。
+  StreamSubscription<bool>? _bufferingSub;
+
+  /// 再生状態の購読。一時停止中は弾幕時計を凍結する。
+  StreamSubscription<bool>? _playingSub;
+
+  /// 弾幕時計の駆動条件の最新値 ([danmakuClockShouldRun] の入力)。
+  bool _playingForDanmaku = true;
+  bool _bufferingForDanmaku = false;
+
+  /// 一時停止に入った壁時計。再開時に進んだ分だけ時計を進める。
+  DateTime? _pausedAt;
+
   @override
   void initState() {
     super.initState();
+    // `playing` はキャッシュ停滞で変わらないため、停滞検出は別途購読する。
+    _playingSub = _playback.player.stream.playing.listen(_onPlayingForDanmaku);
+    _bufferingSub = _playback.player.stream.buffering.listen(
+      _onBufferingForDanmaku,
+    );
     _initialize();
+  }
+
+  /// 再生状態に弾幕時計を追従させる。再開時は一時停止中の壁時計分だけ
+  /// 進めてライブエッジに追従させる (停止中のコメントが一斉に現れないよう)。
+  void _onPlayingForDanmaku(bool playing) {
+    if (!mounted) return;
+    if (!playing && _playingForDanmaku) {
+      _pausedAt = DateTime.now();
+    }
+    _playingForDanmaku = playing;
+    _syncDanmakuRunning();
+  }
+
+  /// バッファ (`paused-for-cache`) に弾幕時計を追従させる。停滞中は映像と
+  /// 一緒にスクロールを止める。解消時は合わせ直さず壁時計で再開する
+  /// (遅延分だけ映像に追従するため)。
+  void _onBufferingForDanmaku(bool buffering) {
+    if (!mounted) return;
+    _bufferingForDanmaku = buffering;
+    _syncDanmakuRunning();
+  }
+
+  void _syncDanmakuRunning() {
+    if (!mounted) return;
+    final clock = widget.danmakuClock;
+    if (danmakuClockShouldRun(
+      playing: _playingForDanmaku,
+      buffering: _bufferingForDanmaku,
+    )) {
+      final pausedAt = _pausedAt;
+      _pausedAt = null;
+      if (pausedAt != null) {
+        clock.seekTo(
+          danmakuLiveResumeMs(
+            frozenNowMs: clock.nowMs,
+            pausedAt: pausedAt,
+            resumedAt: DateTime.now(),
+          ),
+        );
+      }
+      clock.setRunning(true);
+    } else {
+      clock.setRunning(false);
+    }
   }
 
   JikkyoCommentController get _jikkyo => widget.controller;
@@ -539,6 +626,8 @@ class _LivePlayerState extends State<_LivePlayer> {
   @override
   void dispose() {
     // 視聴画面を離れたときにソケットを閉じる (_jikkyo は外側が所有する)。
+    _playingSub?.cancel();
+    _bufferingSub?.cancel();
     _psi?.dispose();
     _psi = null;
     final session = _session;
@@ -620,6 +709,8 @@ class _LivePlayerState extends State<_LivePlayer> {
                   displayAspect: _playback.videoDisplayAspect,
                   child: JikkyoDanmakuOverlay(
                     controller: jikkyo,
+                    store: widget.danmakuStore,
+                    clock: widget.danmakuClock,
                     enabled: _playback.danmakuEnabled,
                   ),
                 )

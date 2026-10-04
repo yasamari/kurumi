@@ -56,7 +56,14 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 弾幕 (`canvas_danmaku`) は `features/player/jikkyo_danmaku_overlay.dart`。`DanmakuScreen` は `LayoutBuilder` で親の制約からサイズを取るため `Positioned.fill` が必須。**置く場所は外側の `Stack` ではなく `Video` の `controls` ビルダーが返す `Stack` の中**。`Video` は「映像テクスチャ → 字幕 → 標準コントロール」を内側の `Stack` で描画しているため、外側の `Stack` に重ねると (1) コントロールより上になる / (2) 順序を入れ替えると映像テクスチャより下になって見えない、のどちらかで破綻する。controls レイヤーの内側なら「映像の上・操作オーバーレイの下」におさまる。**この制約は `PlayerVideoView` (`player_video_view.dart`) の `controls` ビルダーの中に閉じてあり**、両画面はこのウィジェットを使うだけ。同じ `Stack` には `StackFit.expand` を指定する (`Video` 側は `Positioned.fill` で tight 制約を渡しており、標準コントロールに loose な制約を渡すとグラデーション等が縮む)。コントロール自動非表示時 (`mount=false`) でもビルダーの返り値はツリーに残るので、弾幕だけが消えることはない。**ただし `Video` は `FittedBox(fit: BoxFit.contain)` で描くため、そのまま重ねるとレターボックス (黒帯・柱状) にも弾幕が出る**。映像の**表示**アスペクト比を `videoDisplayAspectOf` (`player_error.dart`) で取り、`JikkyoDanmakuLayer` の `Align` + `AspectRatio` で矩形を絞る。`FittedBox(contain)` と同じ矩形になるので幅高を自前で計算しなくてよい。比が確定するまで (`video-params` 未着・音声のみ) 弾幕は描画しない。**`w`/`h` (符号化サイズ) を使ってはいけない**: 日本語デジタル放送には 1440x1080 を 16:9 に引き伸ばすチャンネルが多く mpv が PAR 12:11 として持つため、`w`/`h` は 1.333 になるが**表示は 1.778**。ここを間違えると矩形が縦に伸びて弾幕が黒帯に侵入し、かつ端に届かない。
 
-**弾幕の on/off は回転で破棄されない位置に持つ。** `PlayerPlaybackController` のフィールドで、通知を `PlayerVideoView` の外側 (`ListenableBuilder`) で受ける。映像の `Stack` 内に持つと回転でリセットされる。参照 (購読) 自体は映像の `Stack` 内にあるが、弾幕は一時アニメーションなので消えても問題ない。ソケットは `JikkyoCommentController` が別に持つため回転しても切れない。`controller.liveComments` は購読直後のバックログ (直近100件) を除外した新規コメントだけを送る。`DanmakuOption.fontSize` は画面全体で1つなので `mail` のサイズコマンド (`small`/`big`) は弾幕では表現できない。
+**弾幕の on/off は回転で破棄されない位置に持つ。** `PlayerPlaybackController` のフィールドで、通知を `PlayerVideoView` の外側 (`ListenableBuilder`) で受ける。映像の `Stack` 内に持つと回転でリセットされる。`controller.liveComments` (ライブ) は購読直後のバックログ (直近100件) を除外した新規コメントだけを送る。`DanmakuOption.fontSize` は画面全体で1つなので `mail` のサイズコマンド (`small`/`big`) は弾幕では表現できない。
+
+弾幕エンジンは `canvas_danmaku` のフォーク (`yasamari/canvas_danmaku`、MIT。`pubspec.yaml` は rev ピン留め git 依存)。描画は**決定論的**: 各弾幕は共有時計 (`DanmakuClock`) 上の birth を持ち、位置は `now - birth` の純関数 (`danmaku_track_assign.dart`)。軌道割当も birth 順の純関数で、`Random` は使わない。計測 (幅) とラスタ化は初回描画時に遅延実行し、挿入時はソート挿入だけ (一括取得が重くならない)。`CustomPainter` 3層分離・Ticker 自動停止・バッチ描画の高速化機構は温存する。
+
+**描画状態 (`DanmakuStore`) と時計は映像の `Stack` の外に持つ。** media_kit のフルスクリーンは同じ `controls` ビルダーで別ルートに新しい `Video` を積むため、`DanmakuScreen` が2つになる。両方に同じ store/clock を渡すと、同じ時計窓を描くので切替時に描画中の弾幕が消えない。回転も同様 (作り直されたviewが時計窓から描き直す)。所有者はライブが `_WatchLayoutState`、録画が `_VideoPlayerState` (どちらも回転で生き残る)。コメント二重購読 (通常+全画面) は store の重複排除キーで吸収する。store の画像キャッシュは共有で、view 側で破棄しない (重複破棄は null 化で冪等だが、他viewの表示中テクスチャを消さないこと)。
+
+- ライブ: 受信時の時計値を birth にする。保持は直近60秒 (`_liveDanmakuRetentionMs`)。バッファ (`paused-for-cache`、`player.stream.buffering`) 中と一時停止中は時計を凍結する (`danmakuClockShouldRun` の純関数)。バッファ解消は壁時計から再開し (再生位置の基準が無いため合わせ直しはしない)、一時停止の再開は停止中の壁時計分だけ進めて (`danmakuLiveResumeMs` の純関数) ライブエッジに追従させる。
+- 録画: `JikkyoPastCommentController` は全件取得して `state` に置くだけ (位置購読・送出ポインタは持たない)。オーバーレイが `danmakuBirthMsOf` (`postedAt - syncStart`、`jikkyo_danmaku_item.dart` の純関数) で birth 換算して一括登録する。時計は `_VideoPlayerState` が `player.stream.position` (ずれ400ms超で補正) + `playing`/`buffering` の合成 (`danmakuClockShouldRun` の純関数、停滞中は凍結) で駆動し、通知間は壁時計で外挿する。シーク先の表示期間内コメントは途中位置から描画される。store 保持は番組尺+30秒。
 
 ## ライブEIT (番組情報)
 
@@ -77,7 +84,7 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 - `player_playback_controller.dart` — `PlayerPlaybackController` (`ChangeNotifier`)。mpv の `Player`/`VideoController` を所有し、エラー回復の判定 (`player_error.dart` の純関数を呼ぶだけ)、表示アスペクト比、二重モノラル、弾幕 on/off、再生位置ストリームを持つ。`dispose` で `Player` も解放する。**Riverpod にはしない** — 下節の回転耐性の要件。同上。
 - `player_video_view.dart` — `PlayerVideoView`。`Video` + モバイル/デスクトップ両方の `MaterialVideoControls` テーマデータ + `controls` レイヤー内の弾幕スロット + 再生エラーオーバーレイを**一つ**にまとめる。向きには依存せず常に単一の `Stack` を返す。コントロールの差異は `PlayerControlsLayout` (`live` / `seekable`) で表す。ボタン行は media_kit のテーマデータが非 nullable なので、既定のままにする側は分岐で切り替える (**既定値を自前で書き写さない**)。
-- `jikkyo_danmaku_overlay.dart` — `JikkyoDanmakuLayer` が表示矩形の絞り込み、`JikkyoDanmakuOverlay` が描画。
+- `jikkyo_danmaku_overlay.dart` — `JikkyoDanmakuLayer` が表示矩形の絞り込み、`JikkyoDanmakuOverlay` が store/clock 共有の描画 (ライブは受信時 birth、録画は `birthMsOf` 一括登録)。
 - `player_status_views.dart` — `PlayerPlaceholderScaffold` / `PlayerStatusOverlay` / `PlayerLoadingView` / `PlayerRetryView` / `PlayerErrorOverlay`。読み込み・再試行・戻るボタンの土台をライブ/録画で共有する。
 - `player_control_buttons.dart` — `buildPlayerTopButtonBar` が戻る→タイトル→字幕→音声→弾幕の並びを組み立てる。画質ボタンは `trailing` で渡し、**購読する `ConsumerWidget` を包む** (購読すると映像まで作り直され、コントロール自動非表示中のメニュー選択が `onSelected` に届かない)。
 - `program_info_panel.dart` — `PlayerInfoTabs` が情報パネルの `IndexedStack` + `NavigationBar` を共有 (タブ数固定の制約はここに集約)。

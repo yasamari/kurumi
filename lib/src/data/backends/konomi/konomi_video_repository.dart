@@ -5,7 +5,9 @@ import '../../../domain/repositories/tv_repository.dart';
 import '../../../domain/repositories/video_repository.dart';
 import 'konomi_api_client.dart';
 import 'konomi_video_filter.dart';
-import 'konomi_video_stream.dart';
+import 'konomi_video_stream.dart' hide needsVideoDeinterlace;
+import 'konomi_video_stream.dart' as video_stream
+    show needsVideoDeinterlace;
 
 /// KonomiTV向け [VideoRepository] 実装。
 ///
@@ -110,7 +112,9 @@ class KonomiVideoRepository implements VideoRepository {
     required bool isOriginal,
     String? videoCodec,
   }) {
-    return needsVideoDeinterlace(
+    // 同名のトップレベル純粋関数に委譲する (修飾なしで呼ぶとこのメソッド自身の
+    // 無限再帰になるため、プレフィックス付きで参照する)。
+    return video_stream.needsVideoDeinterlace(
       isOriginal: isOriginal,
       videoCodec: videoCodec,
     );

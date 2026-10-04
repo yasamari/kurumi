@@ -209,7 +209,10 @@
 
           autoPubspecLock = ./pubspec.lock;
 
-          gitHashes = { };
+          gitHashes = {
+            canvas_danmaku =
+              "sha256-BtQ4QN2trZ2K/9BOXXezuZhNWhA3H+kTgjgAm8GANfw=";
+          };
 
           nativeBuildInputs = [ pkgs.copyDesktopItems ];
 

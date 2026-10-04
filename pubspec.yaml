@@ -51,7 +51,12 @@ dependencies:
 
   # 実況コメントの弾幕描画に使用する。CustomPainter で直接描くため Widget 数が
   # 増えず、弾幕が無いフレームでは描画を自動的に止める。
-  canvas_danmaku: ^0.3.3
+  # yasamari によるフォークで決定論描画化: 時刻基準の絶対配置・シーク途中描画・
+  # フルスクリーン/回転での保持。rev ピン留めの git 依存で再現性を保つ。
+  canvas_danmaku:
+    git:
+      url: https://github.com/yasamari/canvas_danmaku
+      ref: cabf175dc1dbadb76a6b66205e226b2779da4fe8
   scrollable_positioned_list: ^0.3.8
 
   # ARIB STD-B24文字列 (EIT) のShift_JISバイト列をUnicodeに直すために使う。

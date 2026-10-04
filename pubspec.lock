@@ -124,11 +124,12 @@ packages:
   canvas_danmaku:
     dependency: "direct main"
     description:
-      name: canvas_danmaku
-      sha256: "1ff071d027b1cf3320d4b58ff1aee6811de51ce39b5b5773c2e0d7693e02d401"
-      url: "https://pub.dev"
-    source: hosted
-    version: "0.3.3"
+      path: "."
+      ref: cabf175dc1dbadb76a6b66205e226b2779da4fe8
+      resolved-ref: cabf175dc1dbadb76a6b66205e226b2779da4fe8
+      url: "https://github.com/yasamari/canvas_danmaku"
+    source: git
+    version: "0.4.0"
   characters:
     dependency: transitive
     description:

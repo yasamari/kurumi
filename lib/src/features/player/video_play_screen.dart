@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -13,6 +14,7 @@ import '../../domain/repositories/video_repository.dart';
 import '../videos/videos_providers.dart';
 import 'comment_list_panel.dart';
 import 'jikkyo_comment_source.dart';
+import 'jikkyo_danmaku_item.dart';
 import 'jikkyo_danmaku_overlay.dart';
 import 'jikkyo_past_comment_controller.dart';
 import 'mpv_options.dart';
@@ -23,6 +25,16 @@ import 'player_status_views.dart';
 import 'player_video_view.dart';
 import 'program_info_panel.dart';
 
+/// 弾幕時計と再生位置の許容ずれ。外挿で滑らかに進め、超えたら補正する。
+const _danmakuDriftThresholdMs = 400;
+
+/// 弾幕ストアの保持期間。番組尺 + 余裕 (横流し・静止の表示期間分を十分上回る)。
+int _danmakuRetentionMs(VideoProgram video) {
+  final start = video.recordedFile?.recordingStartTime ?? video.startAt;
+  final end = video.recordedFile?.recordingEndTime ?? video.endAt;
+  return end.difference(start).inMilliseconds +
+      const Duration(seconds: 30).inMilliseconds;
+}
 /// HLS視聴セッション ID を生成する。クライアント側で適宜生成した
 /// ランダム値でよく、衝突しなければ形式は問わない (32桁hex)。
 String generateVideoSessionId() {
@@ -154,9 +166,24 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   late final PlayerPlaybackController _playback = PlayerPlaybackController();
   late final JikkyoPastCommentController _pastComments;
   late final String _sessionId;
+
+  /// 弾幕の共有状態。向きに依存しない位置なので、画面回転・フルスクリーンで
+  /// 作り直されても描画中の弾幕が保たれる ([JikkyoDanmakuOverlay] 参照)。
+  late final DanmakuClock _danmakuClock =
+      DanmakuClock(initialMs: 0, running: false);
+  late final DanmakuStore<int> _danmakuStore =
+      DanmakuStore<int>(retentionMs: _danmakuRetentionMs(widget.video));
+
   VideoStreamInfo? _stream;
   String? _streamError;
   Timer? _keepAliveTimer;
+  StreamSubscription<bool>? _playingSub;
+  StreamSubscription<bool>? _bufferingSub;
+  StreamSubscription<Duration>? _danmakuPositionSub;
+
+  /// 弾幕時計の駆動条件の最新値 ([danmakuClockShouldRun] の入力)。
+  bool _playingForDanmaku = false;
+  bool _bufferingForDanmaku = false;
 
   @override
   void initState() {
@@ -171,11 +198,15 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     } on BackendUnconfiguredException {
       _streamError = 'サーバーが設定されていません';
     }
-    _pastComments = JikkyoPastCommentController(
-      player: _playback.player,
-      video: widget.video,
-    );
+    _pastComments = JikkyoPastCommentController(video: widget.video);
     _pastComments.start();
+    // 弾幕時計は再生位置に追従させる。位置通知の間は壁時計で外挿して滑らかに
+    // 進め、ずれが開いたら補正する。一時停止・バッファ中は凍結する。
+    _playingSub = _playback.player.stream.playing.listen(_onPlayingForDanmaku);
+    _bufferingSub =
+        _playback.player.stream.buffering.listen(_onBufferingForDanmaku);
+    _danmakuPositionSub =
+        _playback.player.stream.position.listen(_onPositionForDanmaku);
     if (_stream != null) {
       _startKeepAlive();
       _initialize();
@@ -232,10 +263,51 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     await _playback.openUri(stream.url);
   }
 
+  /// 再生状態に弾幕時計を追従させる。開始・停滞解消時は再生位置に合わせ直す。
+  void _onPlayingForDanmaku(bool playing) {
+    _playingForDanmaku = playing;
+    _syncDanmakuRunning();
+  }
+
+  /// バッファ (`paused-for-cache`) に弾幕時計を追従させる。停滞中は映像と
+  /// 一緒にスクロールを止める。`playing` は停滞で変わらないため別途購読する。
+  void _onBufferingForDanmaku(bool buffering) {
+    _bufferingForDanmaku = buffering;
+    _syncDanmakuRunning();
+  }
+
+  void _syncDanmakuRunning() {
+    if (!mounted) return;
+    if (danmakuClockShouldRun(
+      playing: _playingForDanmaku,
+      buffering: _bufferingForDanmaku,
+    )) {
+      _danmakuClock.seekTo(_playback.player.state.position.inMilliseconds);
+      _danmakuClock.setRunning(true);
+    } else {
+      _danmakuClock.setRunning(false);
+    }
+  }
+
+  /// 再生位置に弾幕時計を追従させる。外挿とのずれが開いたら補正する
+  /// (シーク時は大きくずれるため、そのまま時計が飛ぶ)。
+  void _onPositionForDanmaku(Duration position) {
+    if (!mounted) return;
+    final drift = position.inMilliseconds - _danmakuClock.nowMs;
+    if (drift.abs() > _danmakuDriftThresholdMs) {
+      _danmakuClock.seekTo(position.inMilliseconds);
+    }
+  }
+
   @override
   void dispose() {
     _keepAliveTimer?.cancel();
+    _playingSub?.cancel();
+    _bufferingSub?.cancel();
+    _danmakuPositionSub?.cancel();
     _pastComments.dispose();
+    _danmakuClock.dispose();
+    _danmakuStore.dispose();
     _playback.dispose();
     super.dispose();
   }
@@ -272,7 +344,13 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
                 displayAspect: _playback.videoDisplayAspect,
                 child: JikkyoDanmakuOverlay(
                   controller: pastComments,
+                  store: _danmakuStore,
+                  clock: _danmakuClock,
                   enabled: _playback.danmakuEnabled,
+                  birthMsOf: (comment) => danmakuBirthMsOf(
+                    comment: comment,
+                    syncStart: pastComments.syncStart,
+                  ),
                 ),
               )
             : null,

@@ -1,4 +1,6 @@
+import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kurumi/src/data/backends/konomi/konomi_video_repository.dart';
 import 'package:kurumi/src/data/backends/konomi/konomi_video_stream.dart';
 
 const _baseUrl = 'http://example.test:7000';
@@ -77,5 +79,23 @@ void main() {
     final second = generateVideoSessionId();
     expect(first, matches(RegExp(r'^[0-9a-f]{32}$')));
     expect(first, isNot(second));
+  });
+
+  test('リポジトリは純粋関数に委譲する (無限再帰しない)', () {
+    final repository = KonomiVideoRepository(Dio(), baseUrl: _baseUrl);
+    expect(
+      repository.needsVideoDeinterlace(
+        isOriginal: true,
+        videoCodec: 'MPEG-2',
+      ),
+      isTrue,
+    );
+    expect(
+      repository.needsVideoDeinterlace(
+        isOriginal: false,
+        videoCodec: 'MPEG-2',
+      ),
+      isFalse,
+    );
   });
 }
