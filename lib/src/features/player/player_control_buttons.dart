@@ -298,3 +298,59 @@ class DanmakuToggleButton extends StatelessWidget {
     );
   }
 }
+
+/// 標準コントロールの上部ボタンバーを組み立てる。
+///
+/// 並びは「戻る → タイトル → 字幕 → 音声 → 弾幕 → 呼び出し側の追加ボタン」。
+/// ライブ視聴・録画再生で共通。AppBar は使わず標準コントロールの内側に載せる。
+///
+/// [trailing] には画質ボタンなど、画面ごとのボタンを渡す。**ここには
+/// `ref.watch` するウィジェットを置かない。** 標準コントロールは自動非表示に
+/// なると `mount=false` としてツリーから取り除かれるため、画質変更で映像まで
+/// 作り直されると、メニュー選択時点でボタンが破棄済みになり `onSelected` が
+/// 呼ばれなくなる。画質の変化は URL 変更でプレイヤーごと作り直すので別の経路で
+/// 通知し、ボタン自身は購読を持つ別ウィジェット ([QualityMenuButton] を直接
+/// 使うか、購読する `ConsumerWidget` を包む) にする。
+List<Widget> buildPlayerTopButtonBar({
+  required String title,
+  required String backFallbackPath,
+  required Player player,
+  required DualMonoChannel? dualMonoChannel,
+  required ValueChanged<AudioChoice> onAudioSelected,
+  bool danmakuSupported = false,
+  bool danmakuEnabled = true,
+  VoidCallback? onDanmakuToggled,
+  List<Widget> trailing = const [],
+}) {
+  return <Widget>[
+    PlayerBackButton(fallbackPath: backFallbackPath),
+    const SizedBox(width: 8),
+    Expanded(
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    ),
+    // 字幕切替は音声切替の左に置く (両バックエンド共通)。
+    SubtitleToggleButton(player: player),
+    // 音声切替 (二重ステレオ/二重モノラル) は字幕切替の右に置く。
+    AudioMenuButton(
+      player: player,
+      dualMonoChannel: dualMonoChannel,
+      onSelected: onAudioSelected,
+    ),
+    // 弾幕切替は音声切替の右。実況チャンネルが対応している場合のみ出す。
+    if (danmakuSupported && onDanmakuToggled != null)
+      DanmakuToggleButton(
+        enabled: danmakuEnabled,
+        onPressed: onDanmakuToggled,
+      ),
+    ...trailing,
+  ];
+}

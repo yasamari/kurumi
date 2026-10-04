@@ -7,8 +7,8 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../core/settings/app_settings.dart';
-import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
 import '../../core/network/dio_provider.dart';
+import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
@@ -16,16 +16,16 @@ import '../../domain/entities/live_stream.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
 import '../tv/tv_providers.dart';
-import 'audio_switch.dart';
 import 'jikkyo_comment_controller.dart';
 import 'jikkyo_danmaku_overlay.dart';
 import 'live_psi_controller.dart';
 import 'live_session.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
-import 'player_controls_theme.dart';
-import 'player_error.dart';
+import 'player_playback_controller.dart';
 import 'player_split_layout.dart';
+import 'player_status_views.dart';
+import 'player_video_view.dart';
 import 'program_info_panel.dart';
 import 'watch_providers.dart';
 
@@ -36,8 +36,9 @@ import 'watch_providers.dart';
 /// シェル側のナビゲーションが隠れる。
 ///
 /// 再生UIはmedia_kit標準 (`AdaptiveVideoControls`) を使う。戻るボタン・番組名・
-/// 画質切替ボタンはAppBarではなく、標準コントロールの上部ボタンバーに載せる。
-/// ライブのためシークバー・シーク系ジェスチャは無効化する。
+/// 画質切替ボタンはAppBarではなく、標準コントロールの上部ボタンバーに載せる
+/// ([buildPlayerTopButtonBar])。ライブのためシークバー・シーク系ジェスチャは
+/// 無効化する ([PlayerControlsLayout.live])。
 class WatchScreen extends ConsumerWidget {
   const WatchScreen({super.key, required this.channelId});
 
@@ -50,17 +51,17 @@ class WatchScreen extends ConsumerWidget {
     final backendType = settings?.backendType ?? BackendType.mirakurun;
 
     return channels.when(
-      loading: () => const _PlaceholderScaffold(
+      loading: () => const PlayerPlaceholderScaffold(
         child: Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) {
         if (error is BackendUnconfiguredException) {
-          return const _PlaceholderScaffold(
+          return const PlayerPlaceholderScaffold(
             child: Center(child: Text('サーバーが設定されていません')),
           );
         }
-        return _PlaceholderScaffold(
-          child: _RetryError(
+        return PlayerPlaceholderScaffold(
+          child: PlayerRetryView(
             message: '$error',
             onRetry: () => ref.invalidate(nowOnAirChannelsProvider),
           ),
@@ -70,8 +71,8 @@ class WatchScreen extends ConsumerWidget {
         final item =
             items.where((e) => e.channel.id == channelId).firstOrNull;
         if (item == null) {
-          return _PlaceholderScaffold(
-            child: _RetryError(
+          return PlayerPlaceholderScaffold(
+            child: PlayerRetryView(
               message: 'チャンネルが見つかりません',
               onRetry: () => ref.invalidate(nowOnAirChannelsProvider),
             ),
@@ -88,31 +89,6 @@ class WatchScreen extends ConsumerWidget {
           showQualityMenu: backendType.supportsLiveQualitySelection,
         );
       },
-    );
-  }
-}
-
-/// まだプレイヤーを描画していない状態 (読み込み中・エラー) の土台。
-/// media_kitの標準コントロールが存在しないため、戻るボタンは自前で置く。
-class _PlaceholderScaffold extends StatelessWidget {
-  const _PlaceholderScaffold({required this.child});
-
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: Stack(
-        children: [
-          Positioned.fill(child: child),
-          const Positioned(
-            left: 4,
-            top: 4,
-            child: SafeArea(child: PlayerBackButton()),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -158,8 +134,9 @@ class _ChannelZapButton extends ConsumerWidget {
 
 /// 情報パネル側だけがタブ選択を購読する。
 ///
-/// [_LivePlayerState.build] で購読していたものをここに移した。タブ切替で
-/// 作り直されるのはこの子だけになり、映像 (`Video`) は触られない。
+/// 映像 (`PlayerVideoView`) 側で `ref.watch` するとタブ切替のたびに映像まで
+/// 作り直される (内部の表示パラメータ通知が飛んで映像・弾幕が一瞬止まる) ため、
+/// 購読は情報パネル側だけに置く。
 class _WatchInfoPanel extends ConsumerWidget {
   const _WatchInfoPanel({
     required this.item,
@@ -183,39 +160,31 @@ class _WatchInfoPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final psi = this.psi;
+    Widget panel(int selectedIndex) => ProgramInfoPanel(
+      item: item,
+      controller: controller,
+      selectedIndex: selectedIndex,
+      onDestinationSelected: (index) =>
+          ref.read(watchInfoTabProvider.notifier).select(index),
+      onChannelSelected: onChannelSelected,
+      livePresent: psi?.present,
+      liveFollowing: psi?.following,
+    );
     if (psi == null) {
-      return ProgramInfoPanel(
-        item: item,
-        controller: controller,
-        selectedIndex: ref.watch(watchInfoTabProvider),
-        onDestinationSelected: (index) =>
-            ref.read(watchInfoTabProvider.notifier).select(index),
-        onChannelSelected: onChannelSelected,
-      );
+      return panel(ref.watch(watchInfoTabProvider));
     }
     // PSIの更新で情報パネルだけ作り直す。映像には触らない。
     return ListenableBuilder(
       listenable: psi,
-      builder: (context, _) {
-        return ProgramInfoPanel(
-          item: item,
-          controller: controller,
-          selectedIndex: ref.watch(watchInfoTabProvider),
-          onDestinationSelected: (index) =>
-              ref.read(watchInfoTabProvider.notifier).select(index),
-          onChannelSelected: onChannelSelected,
-          livePresent: psi.present,
-          liveFollowing: psi.following,
-        );
-      },
+      builder: (context, _) => panel(ref.watch(watchInfoTabProvider)),
     );
   }
 }
 
 /// 画質切替ボタンだけが画質を購読する。
 ///
-/// [_LivePlayerState._buildVideo] で購読していたものをここに移した。
-/// 画質表示の更新で映像まで作り直されないようにするため。
+/// 映像側で購読すると画質表示の更新のたびに映像まで作り直されるため、ここに
+/// 切り出す (`buildPlayerTopButtonBar` の説明を参照)。
 class _LiveQualityButton extends ConsumerWidget {
   const _LiveQualityButton();
 
@@ -272,8 +241,8 @@ class _WatchBody extends ConsumerWidget {
           final message = error is ChannelNotFoundException
               ? 'チャンネルが見つかりません'
               : 'ストリームの取得に失敗しました\n$error';
-          return _PlaceholderScaffold(
-            child: _RetryError(
+          return PlayerPlaceholderScaffold(
+            child: PlayerRetryView(
               message: message,
               onRetry: () => ref.invalidate(liveStreamProvider(channelId)),
             ),
@@ -352,11 +321,12 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
     // セッション開設 (tap起動) 中は映像側だけ読み込み表示し、
     // 情報パネルは出したままにする。
     final video = widget.stream.when(
-      loading: () => const _LoadingStatus(),
-      error: (error, _) => _RetryStatus(
+      loading: () => const PlayerLoadingView(),
+      error: (error, _) => PlayerRetryView(
         message: '$error',
         onRetry: () =>
             ref.invalidate(liveStreamProvider(widget.item.channel.id)),
+        backFallbackPath: '/tv',
       ),
       data: (live) => _LivePlayer(
         // URLが変わったらPlayerを作り直す (画質切替対応)。
@@ -406,74 +376,6 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
   }
 }
 
-/// 映像スロットの読み込み表示。戻るボタンだけ重ねる。
-class _LoadingStatus extends StatelessWidget {
-  const _LoadingStatus();
-
-  @override
-  Widget build(BuildContext context) {
-    return const Stack(
-      children: [
-        Center(child: CircularProgressIndicator()),
-        Positioned(
-          left: 4,
-          top: 4,
-          child: SafeArea(child: PlayerBackButton()),
-        ),
-      ],
-    );
-  }
-}
-
-/// 映像スロットのエラー表示。戻るボタンだけ重ねる。
-class _RetryStatus extends StatelessWidget {
-  const _RetryStatus({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(
-                  Icons.error_outline,
-                  color: Colors.white,
-                  size: 64,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '取得に失敗しました',
-                  style: TextStyle(color: Colors.white, fontSize: 16),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  message,
-                  style: const TextStyle(color: Colors.white70, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                FilledButton(onPressed: onRetry, child: const Text('再試行')),
-              ],
-            ),
-          ),
-        ),
-        const Positioned(
-          left: 4,
-          top: 4,
-          child: SafeArea(child: PlayerBackButton()),
-        ),
-      ],
-    );
-  }
-}
-
 /// ライブセッションを開く。KonomiTVはmpegts直結、他はtap。
 ///
 /// Mirakurun等は stream tap (`kurumi-ts://`) を使う。tap 未対応OS
@@ -501,14 +403,17 @@ Future<LiveSession> _liveSessionFactory(
   return startStreamTapLiveSession(upstreamUrl: liveUrl, player: player);
 }
 
-/// media_kitのPlayer/Controllerを所有するウィジェット。
+/// ライブ再生の映像スロットを所有する。
 ///
-/// 画面離脱・画質切替時に `dispose`/`open` し直すことでチューナーを解放する。
+/// mpv のプレイヤーとエラー判定は [PlayerPlaybackController] が持つ
+/// (向きに依存しない位置なので、画面回転で作り直されても続きを保てる)。
+/// 再生セッション ([LiveSession]) と EIT 取得 ([LivePsiController]) だけ
+/// ここが持つ。実況コメントの接続は外側 ([_WatchLayoutState]) が持つ。
 ///
-/// 情報パネルの選択中タブは `watchInfoTabProvider` を読むため
-/// `ConsumerStatefulWidget` にする。`ConsumerWidget` ではなく Stateful なのは、
-/// 回転・チャンネル切替で作り直されても Player と実況コメントの接続を保つため。
-class _LivePlayer extends ConsumerStatefulWidget {
+/// Riverpod は使わない。画質の購読は [_LiveQualityButton]、情報パネルのタブ
+/// 選択は [_WatchInfoPanel] がそれぞれ持つため、ここでは購読するものが無い。
+/// セッションを持ち直す必要があるため `StatefulWidget` にする。
+class _LivePlayer extends StatefulWidget {
   const _LivePlayer({
     super.key,
     required this.sessionFactory,
@@ -538,18 +443,12 @@ class _LivePlayer extends ConsumerStatefulWidget {
   final ValueNotifier<LivePsiController?> psiNotifier;
 
   @override
-  ConsumerState<_LivePlayer> createState() => _LivePlayerState();
+  State<_LivePlayer> createState() => _LivePlayerState();
 }
 
-/// [Player] の所有者。向きに依存しない位置なので、画面回転で作り直されても
-/// 続きを保てる。実況コメントの接続は外側 ([_WatchLayoutState]) が持つ。
-/// 情報パネルの選択中タブだけはチャンネル切替 (`go` による画面の置き換え)
-/// でも保つ必要があるため、この State ではなく `watchInfoTabProvider` が持つ。
-class _LivePlayerState extends ConsumerState<_LivePlayer> {
-  late final Player _player;
-  late final VideoController _controller;
-
-  JikkyoCommentController get _jikkyo => widget.controller;
+class _LivePlayerState extends State<_LivePlayer> {
+  late final PlayerPlaybackController _playback =
+      PlayerPlaybackController(seekToLiveEdgeOnResume: true);
 
   /// EIT[p/f] の接続。セッション確立後に作る。
   LivePsiController? _psi;
@@ -563,107 +462,26 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
   /// セッション開設の失敗内容。null以外は再試行表示する。
   String? _sessionError;
 
-  /// 実況コメントの弾幕表示の on/off。
-  ///
-  /// ここも向きに依存しない State に持たせる。映像の `Stack` 内は回転で作り
-  /// 直されるため、ウィジェット側に持たせると回転でリセットされる。
-  bool _danmakuEnabled = true;
-
-  /// 二重モノラルの復号チャンネル。null はステレオ (主＋副)。
-  ///
-  /// 画面回転ではこの State ごと保たれる。チャンネル切替は `go` で画面ごと
-  /// 置き換わるため初期値に戻る。
-  DualMonoChannel? _dualMonoChannel;
-
-  StreamSubscription<String>? _errorSub;
-  StreamSubscription<bool>? _playingSub;
-  StreamSubscription<VideoParams>? _videoParamsSub;
-  StreamSubscription<AudioParams>? _audioParamsSub;
-  Timer? _errorTimer;
-  String? _pendingError;
-  bool _isPlaying = false;
-
-  /// 一度再生したうえで停止し、その後再開したかどうか。
-  ///
-  /// ライブ配信では再開しただけでは放送に追いつかないため、再開のたびに
-  /// [seekToLiveEdge] で溜まった過去データを捨てる必要がある。
-  /// 初回再生 (接続した時点で既にライブエッジにいる) や画質切替・再試行での
-  /// `_open` では追いかけ不要なので [_open] でリセットする。
-  bool _pausedAfterStart = false;
-  bool _hasVideo = false;
-  bool _hasAudio = false;
-  String? _errorMessage;
-
-  /// 映像の**表示**アスペクト比 (幅 / 高さ)。まだ mpv から届いていなければ null。
-  ///
-  /// media_kit の `Video` は `BoxFit.contain` で描くため、ウィジェット全体には
-  /// 黒帯や柱状 (レターボックス) ができる。弾幕を映像の上だけに重ねるにはこの比
-  /// が必要で、届くまで弾幕は描画しない。
-  ///
-  /// 符号化サイズ (4:3) ではなく表示アスペクト比 (16:9) を使う必要がある。日本語
-  /// のデジタル放送には 1440x1080 を 16:9 に引き伸ばしているチャンネルがあり、
-  /// ここを間違えると矩形がズレて弾幕が黒帯に出る。
-  /// [videoDisplayAspectOf] 参照。
-  double? _videoDisplayAspect;
-
   @override
   void initState() {
     super.initState();
-    _player = Player();
-    _controller = VideoController(_player);
-    // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
-    // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`
-    // など) でも届く。再生状態と組み合わせて判定し、再生できている場合は
-    // エラー表示しない (`player_error.dart` 参照)。
-    _errorSub = _player.stream.error.listen(_onPlayerError);
-    _playingSub = _player.stream.playing.listen(_onPlayingChanged);
-    _videoParamsSub = _player.stream.videoParams.listen((params) {
-      if (hasValidVideoSize(dw: params.dw, dh: params.dh, w: params.w, h: params.h)) {
-        _hasVideo = true;
-        _clearErrorIfRecovered();
-      }
-      // 弾幕を映像の Letterbox の内側に収めるため、表示アスペクト比を保持する。
-      final aspect = videoDisplayAspectOf(
-        aspect: params.aspect,
-        w: params.w,
-        h: params.h,
-        dw: params.dw,
-        dh: params.dh,
-      );
-      if (aspect == null || aspect == _videoDisplayAspect) return;
-      if (!mounted) return;
-      setState(() => _videoDisplayAspect = aspect);
-    });
-    _audioParamsSub = _player.stream.audioParams.listen((params) {
-      if (hasValidAudioFormat(
-        sampleRate: params.sampleRate,
-        channelCount: params.channelCount,
-      )) {
-        _hasAudio = true;
-        _clearErrorIfRecovered();
-      }
-    });
     _initialize();
   }
+
+  JikkyoCommentController get _jikkyo => widget.controller;
 
   /// mpvオプションを適用してから映像を開く。
   ///
   /// オプションはデコーダ生成時に読まれるため、必ず `open` より前に渡す。
   Future<void> _initialize() async {
-    await applyLiveMpvOptions(_player, deinterlace: widget.deinterlace);
+    await applyLiveMpvOptions(_playback.player, deinterlace: widget.deinterlace);
     if (!mounted) return;
     await _open();
   }
 
   Future<void> _open() async {
-    _errorTimer?.cancel();
-    _errorTimer = null;
-    _pendingError = null;
-    _isPlaying = false;
-    _hasVideo = false;
-    _hasAudio = false;
     // 開き直した時点がライブエッジなので、停止からの再開として扱わない。
-    _pausedAfterStart = false;
+    _playback.resetPlaybackState();
     // 旧セッション (tap・PSI取得) を閉じてから開き直す。
     _psi?.dispose();
     _psi = null;
@@ -674,16 +492,14 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     if (oldSession != null) {
       await oldSession.close();
     }
-    if (mounted) {
-      setState(() {
-        _errorMessage = null;
-        _sessionLoading = true;
-        _sessionError = null;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _sessionLoading = true;
+      _sessionError = null;
+    });
     LiveSession session;
     try {
-      session = await widget.sessionFactory(_player);
+      session = await widget.sessionFactory(_playback.player);
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -704,109 +520,24 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       packets: session.packets,
     )..start();
     widget.psiNotifier.value = _psi;
-    if (mounted) {
-      setState(() => _sessionLoading = false);
-    }
+    setState(() => _sessionLoading = false);
     // stream tap (`kurumi-ts://`) は media_kit が temp playlist 経由
     // (loadlist) で開く。プレイリスト由来の origin ゲート
     // (`STREAM_ORIGIN_UNSAFE` 拒否) を通すため、開く前に許可する。
     // 無いと UNSAFE が後続の NO_MATCH で上書きされ、見かけ上
     // protocol unsupported 相当のエラーになる。
+    final player = _playback.player;
     if (session.playUrl.scheme == 'kurumi-ts') {
-      final platform = _player.platform;
+      final platform = player.platform;
       if (platform is NativePlayer) {
         await platform.setProperty('load-unsafe-playlists', 'yes');
       }
     }
-    await _player.open(Media(session.playUrl.toString()));
+    await _playback.openUri(session.playUrl);
   }
-
-  /// 再生状態の変化を反映する。
-  ///
-  /// 停止 (`pause` プロパティが立った状態) してから再開したらライブエッジへ
-  /// 戻す。停止中は Demuxer キャッシュとソケットバッファに過去データが溜まる
-  /// ため、これでは放送に追いつかない。
-  ///
-  /// `playing` は mpv の `pause` プロパティの変化で通知されるので停止→再開の
-  /// 判別に使える。一時的なバッファ停滞は `paused-for-cache` なので混同しない。
-  void _onPlayingChanged(bool playing) {
-    if (playing) {
-      if (_pausedAfterStart) {
-        _pausedAfterStart = false;
-        // 溜まった過去データを捨てるだけなので、失敗しても再生自体には
-        // 影響しない。
-        unawaited(seekToLiveEdge(_player));
-      }
-    } else if (_isPlaying) {
-      _pausedAfterStart = true;
-    }
-    _isPlaying = playing;
-    _clearErrorIfRecovered();
-  }
-
-  /// `error` 受信時の処理。再生中の一過性エラーは無視し、それ以外は猶予時間
-  /// 後にまだ回復していなければエラー表示する。
-  void _onPlayerError(String message) {
-    if (message.isEmpty || !mounted) return;
-    if (_isRecovered()) return;
-    _pendingError = message;
-    _errorTimer?.cancel();
-    _errorTimer = Timer(playerErrorGracePeriod, () {
-      if (!mounted) return;
-      // 猶予時間内に再生が始まっていれば一過性エラーだったものとして捨てる。
-      if (_isRecovered()) return;
-      setState(() => _errorMessage = _pendingError);
-      _pendingError = null;
-    });
-  }
-
-  /// 再生が軌道に乗っていれば、表示中・表示待ちのエラーを取り下げる。
-  void _clearErrorIfRecovered() {
-    if (!_isRecovered()) return;
-    _errorTimer?.cancel();
-    _errorTimer = null;
-    _pendingError = null;
-    if (_errorMessage != null && mounted) {
-      setState(() => _errorMessage = null);
-    }
-  }
-
-  bool _isRecovered() => isPlayerRecovered(
-        isPlaying: _isPlaying,
-        hasVideo: _hasVideo,
-        hasAudio: _hasAudio,
-      );
-
-  /// 音声メニューの選択を反映する。
-  ///
-  /// トラック選択 (二重ステレオ) は mpv にそのまま委ねる。二重モノラルは
-  /// デコーダオプションの切り替えになるため [applyDualMonoChannel] で
-  /// 音声デコーダを作り直す。
-  Future<void> _onAudioSelected(AudioChoice choice) async {
-    switch (choice) {
-      case AudioTrackChoice(:final trackId):
-        await _player.setAudioTrack(AudioTrack(trackId, null, null));
-      case DualMonoChoice(:final channel):
-        setState(() => _dualMonoChannel = channel);
-        await applyDualMonoChannel(_player, channel);
-    }
-  }
-
-  /// 情報パネルのタブを切り替える。
-  ///
-  /// 選択位置は `watchInfoTabProvider` が持つ。画面回転でもチャンネル切り替えでも
-  /// outlive するため、ここでは State に持たせない。
-  ///
-  /// 実況コメントは弾幕を既定で表示するため、視聴画面を開いた時点で既に接続
-  /// 済み。ここでは接続を開始しない。
 
   @override
   void dispose() {
-    _errorTimer?.cancel();
-    _errorSub?.cancel();
-    _playingSub?.cancel();
-    _videoParamsSub?.cancel();
-    _audioParamsSub?.cancel();
     // 視聴画面を離れたときにソケットを閉じる (_jikkyo は外側が所有する)。
     _psi?.dispose();
     _psi = null;
@@ -816,7 +547,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       // セッションの停止を待たずに抜ける。
       unawaited(session.close());
     }
-    _player.dispose();
+    _playback.dispose();
     super.dispose();
   }
 
@@ -825,286 +556,78 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     // セッション開設中は映像の代わりに読み込み表示する (tap起動待ち等)。
     // 情報パネルは外側の `_WatchLayout` が描くので、ここでは映像スロット分だけ返す。
     if (_sessionLoading) {
-      return const _LoadingStatus();
+      return const PlayerLoadingView();
     }
     // セッション開設失敗は再試行表示する。
     final sessionError = _sessionError;
     if (sessionError != null) {
-      return _RetryStatus(message: sessionError, onRetry: _open);
-    }
-    final isLandscape =
-        MediaQuery.orientationOf(context) == Orientation.landscape;
-    return _buildVideo(context, fullBleed: isLandscape);
-  }
-
-  /// 映像+標準コントロール+エラー表示。レイアウトによらず共通。
-  ///
-  /// [fullBleed] は映像が画面端まで描画されているかどうか (横画面) を表す。
-  /// 標準コントロールは映像の `Stack` 内に載るため映像からはみ出すことはない
-  /// が、横画面は外側の `SafeArea` が無いので、コントロール自身がシステム
-  /// インセットを避ける。下端のボタン (フルスクリーン) がシステムナビゲーション
-  /// に重ならないためだが、上端の戻るボタンもノッチを避けることになる。
-  Widget _buildVideo(BuildContext context, {required bool fullBleed}) {
-    // AppBarの代わりに、標準コントロールの上部ボタンバーへ載せる。
-    final topButtonBar = <Widget>[
-      const PlayerBackButton(),
-      const SizedBox(width: 8),
-      Expanded(
-        child: Text(
-          widget.title,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-      // 字幕切替は画質切替の左に置く (両バックエンド共通)。
-      SubtitleToggleButton(player: _player),
-      // 音声切替 (二重ステレオ/二重モノラル) は字幕切替の右に置く。
-      AudioMenuButton(
-        player: _player,
-        dualMonoChannel: _dualMonoChannel,
-        onSelected: _onAudioSelected,
-      ),
-      // 弾幕切替は字幕切替の右。実況チャンネルが対応している場合のみ出す。
-      if (_jikkyo.isSupported)
-        DanmakuToggleButton(
-          enabled: _danmakuEnabled,
-          onPressed: () => setState(() => _danmakuEnabled = !_danmakuEnabled),
-        ),
-      // 画質ボタンだけが画質を購読する。ここで `ref.watch` すると画質表示の
-      // 更新のたびに映像まで作り直されるため (画質切替自体は URL 変更で
-      // `_LivePlayer` ごと作り直されるので別経路)。
-      if (widget.showQualityMenu) const _LiveQualityButton(),
-    ];
-
-    // シークバーはアプリの Dynamic Color に合わせる (既定は白+赤)。
-    // ライブでは出さないが、録画再生と配色がバラバラにならないよう両方の
-    // テーマデータに入れておく。
-    final seekBar = seekBarColorsFrom(Theme.of(context).colorScheme);
-
-    // ライブのためシークバー・シーク系操作を無効化する。
-    //
-    // 通常表示とフルスクリーンは余白が違うのでテーマデータを分ける
-    // (縦画面の通常表示は外側の `SafeArea` がインセットを消費済み)。
-    MaterialVideoControlsThemeData liveTheme({required bool fullscreen}) {
-      final insets = playerMobileControlsInsets(
-        fullBleed: fullBleed,
-        fullscreen: fullscreen,
-        systemPadding: MediaQuery.paddingOf(context),
-      );
-      return MaterialVideoControlsThemeData(
-        displaySeekBar: false,
-        seekGesture: false,
-        seekOnDoubleTap: false,
-        automaticallyImplySkipNextButton: false,
-        automaticallyImplySkipPreviousButton: false,
-        // シークバーは出さないが、録画再生と配色がバラバラにならないよう
-        // 入れておく。
-        seekBarColor: seekBar.track,
-        seekBarBufferColor: seekBar.buffer,
-        seekBarPositionColor: seekBar.position,
-        seekBarThumbColor: seekBar.thumb,
-        // 中央ボタンは既定のプレイリスト送り (単品再生では無動作) の代わりに、
-        // 前/次チャンネル送りを置く。大きさ・間隔は既定の構成を踏襲する。
-        primaryButtonBar: [
-          const Spacer(flex: 2),
-          _ChannelZapButton(
-            channel: widget.item.channel,
-            isNext: false,
-          ),
-          const Spacer(),
-          const MaterialPlayOrPauseButton(iconSize: 56.0),
-          const Spacer(),
-          _ChannelZapButton(
-            channel: widget.item.channel,
-            isNext: true,
-          ),
-          const Spacer(flex: 2),
-        ],
-        // ライブに再生時刻表示は不要のため、時刻表示を外して
-        // フルスクリーンボタンだけ残す。
-        bottomButtonBar: const [
-          Spacer(),
-          MaterialFullscreenButton(),
-        ],
-        // 既定 (`padding` が null) では下端のボタンが画面最下端に載り、
-        // 横画面ではシステムナビゲーションに重なる。回避はテーマデータ側でしか
-        // できないので明示する。
-        padding: insets.padding,
-        // 画面を開いた直後は操作ボタン (戻るボタン等) を表示しておく。
-        visibleOnMount: true,
-        // 既定3秒だと画質メニュー (全17件) を操作する前に消えてしまうため、
-        // 長く表示し続ける。
-        controlsHoverDuration: const Duration(seconds: 15),
-        topButtonBar: topButtonBar,
+      return PlayerRetryView(
+        message: sessionError,
+        onRetry: _open,
+        backFallbackPath: '/tv',
       );
     }
-
-    final liveDesktopTheme = MaterialDesktopVideoControlsThemeData(
-      displaySeekBar: false,
-      automaticallyImplySkipNextButton: false,
-      automaticallyImplySkipPreviousButton: false,
-      // ライブに再生時刻表示は不要のため、時刻表示を外して
-      // 前/次 (チャンネル送り)・再生・音量・フルスクリーンボタンを残す。
-      bottomButtonBar: [
-        _ChannelZapButton(
-          channel: widget.item.channel,
-          isNext: false,
-        ),
-        const MaterialDesktopPlayOrPauseButton(),
-        _ChannelZapButton(
-          channel: widget.item.channel,
-          isNext: true,
-        ),
-        const MaterialDesktopVolumeButton(),
-        const Spacer(),
-        const MaterialDesktopFullscreenButton(),
-      ],
-      // モバイル側と同じ配色 (ライブではシークバーを出さない)。
-      seekBarColor: seekBar.track,
-      seekBarBufferColor: seekBar.buffer,
-      seekBarPositionColor: seekBar.position,
-      seekBarThumbColor: seekBar.thumb,
-      visibleOnMount: true,
-      controlsHoverDuration: const Duration(seconds: 15),
-      topButtonBar: topButtonBar,
-    );
-    // 弾幕は映像の上に重ねる。ただし映像ウィジェットは `BoxFit.contain` で
-    // 描くため、そのまま重ねると黒帯 (レターボックス) にも出てしまう。
-    // 映像の**表示**アスペクト比に合わせて矩形を絞る。`Align` + `AspectRatio`
-    // は `FittedBox(fit: contain)` と同じ矩形になるので、幅高を自分で計算する
-    // 必要はない。比が確定するまで (起動直後・音声のみ) は描画しない。
-    //
-    // 描画位置は映像の上・操作オーバーレイの下。media_kit の `Video` は
-    // 「映像テクスチャ → 字幕 → 標準コントロール」を内側の `Stack` で
-    // 描画しているため、弾幕を外側の `Stack` に重ねるとコントロールより上に
-    // なってしまう (逆に順序を入れ替えれば映像テクスチャより下に回って
-    // 見えなくなる)。差し込めるのは controls レイヤーの内側だけなので、
-    // 下の `controls` ビルダーに渡す。
-    final danmaku = _jikkyo.isSupported && _videoDisplayAspect != null
-        ? Positioned.fill(
-            child: Align(
-              child: AspectRatio(
-                aspectRatio: _videoDisplayAspect!,
-                child: JikkyoDanmakuOverlay(
-                  controller: _jikkyo,
-                  enabled: _danmakuEnabled,
-                ),
-              ),
-            ),
-          )
-        : null;
-    return Stack(
-      children: [
-        MaterialVideoControlsTheme(
-          normal: liveTheme(fullscreen: false),
-          fullscreen: liveTheme(fullscreen: true),
-          child: MaterialDesktopVideoControlsTheme(
-            normal: liveDesktopTheme,
-            fullscreen: liveDesktopTheme,
-            // media_kit標準UI。平台で自動切替される。
-            child: Video(
-              controller: _controller,
-              controls: (state) => Stack(
-                // `Video` 側は `Positioned.fill` で tight 制約を渡している。
-                // 標準コントロールに loose な制約を渡すとグラデーション等が
-                // 縮むため、`Video` と同じ tight 制約を渡す。
-                fit: StackFit.expand,
-                children: [
-                  ?danmaku,
-                  AdaptiveVideoControls(state),
-                ],
-              ),
-            ),
+    final jikkyo = _jikkyo;
+    return ListenableBuilder(
+      listenable: _playback,
+      builder: (context, _) {
+        return PlayerVideoView(
+          videoController: _playback.videoController,
+          topButtonBar: buildPlayerTopButtonBar(
+            title: widget.title,
+            backFallbackPath: '/tv',
+            player: _playback.player,
+            dualMonoChannel: _playback.dualMonoChannel,
+            onAudioSelected: _playback.selectAudio,
+            danmakuSupported: jikkyo.isSupported,
+            danmakuEnabled: _playback.danmakuEnabled,
+            onDanmakuToggled: _playback.toggleDanmaku,
+            trailing: [
+              // 画質ボタンだけが画質を購読する (`_LiveQualityButton` 参照)。
+              if (widget.showQualityMenu) const _LiveQualityButton(),
+            ],
           ),
-        ),
-        if (_errorMessage != null)
-          Positioned.fill(
-            // 上部のコントロール (戻るボタン等) を隠さないよう上端だけ空ける。
-            child: Padding(
-              padding: const EdgeInsets.only(top: 64),
-              child: Container(
-                color: Colors.black54,
-                alignment: Alignment.center,
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.error_outline,
-                        color: Colors.white,
-                        size: 64,
-                      ),
-                      const SizedBox(height: 16),
-                      const Text(
-                        '再生に失敗しました',
-                        style: TextStyle(color: Colors.white, fontSize: 16),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        _errorMessage!,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 12,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 16),
-                      FilledButton(
-                        onPressed: _open,
-                        child: const Text('再試行'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
+          layout: PlayerControlsLayout.live,
+          livePrimaryButtonBar: [
+            const Spacer(flex: 2),
+            _ChannelZapButton(
+              channel: widget.item.channel,
+              isNext: false,
             ),
-          ),
-      ],
-    );
-  }
-}
-
-class _RetryError extends StatelessWidget {
-  const _RetryError({required this.message, required this.onRetry});
-
-  final String message;
-  final VoidCallback onRetry;
-
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.error_outline,
-              color: Colors.white,
-              size: 64,
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              '取得に失敗しました',
-              style: TextStyle(color: Colors.white, fontSize: 16),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: const TextStyle(color: Colors.white70, fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: const Text('再試行')),
+            const Spacer(),
+            const MaterialPlayOrPauseButton(iconSize: 56.0),
+            const Spacer(),
+            _ChannelZapButton(channel: widget.item.channel, isNext: true),
+            const Spacer(flex: 2),
           ],
-        ),
-      ),
+          liveBottomButtonBar: const [
+            Spacer(),
+            MaterialFullscreenButton(),
+          ],
+          liveDesktopBottomButtonBar: [
+            _ChannelZapButton(
+              channel: widget.item.channel,
+              isNext: false,
+            ),
+            const MaterialDesktopPlayOrPauseButton(),
+            _ChannelZapButton(channel: widget.item.channel, isNext: true),
+            const MaterialDesktopVolumeButton(),
+            const Spacer(),
+            const MaterialDesktopFullscreenButton(),
+          ],
+          danmaku: jikkyo.isSupported
+              ? JikkyoDanmakuLayer(
+                  displayAspect: _playback.videoDisplayAspect,
+                  child: JikkyoDanmakuOverlay(
+                    controller: jikkyo,
+                    enabled: _playback.danmakuEnabled,
+                  ),
+                )
+              : null,
+          errorMessage: _playback.errorMessage,
+          onRetry: _open,
+        );
+      },
     );
   }
 }

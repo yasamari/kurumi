@@ -114,3 +114,42 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
     );
   }
 }
+
+/// 映像の**表示**矩形に収めて弾幕を載せる層。
+///
+/// `Video` は `FittedBox(fit: BoxFit.contain)` で描くため、そのまま重ねると
+/// レターボックス (黒帯・柱状) にも弾幕が出る。[displayAspect] は表示
+/// アスペクト比 (幅/高さ) で、これを指定した `Align` + `AspectRatio` は
+/// `FittedBox(contain)` と**同じ矩形**になるので、幅高を自前で計算しなくてよい。
+///
+/// [displayAspect] が null のときは何も描画しない。比は mpv の `video-params`
+/// が届くまで未定のため (起動直後・音声のみ)、この間に弾幕を出さない。
+///
+/// [displayAspect] には**符号化サイズではなく表示アスペクト比**を渡すこと。
+/// 日本語デジタル放送には 1440x1080 を 16:9 に引き伸ばすチャンネルが多く、
+/// mpv が PAR 12:11 として持つため `w`/`h` だと 1.333 になるが、表示は 1.778。
+/// ここを間違えると矩形が縦に伸びて弾幕が黒帯に侵入し、かつ端に届かない。
+/// 比の算出は `videoDisplayAspectOf` (pure 関数、`player_error.dart`) が行う。
+///
+/// この層は `PlayerVideoView` が映像の controls レイヤー内に載せる。描画位置の
+/// 制約 (コントロールより上・映像テクスチャより下) はそちらのコメントを参照。
+class JikkyoDanmakuLayer extends StatelessWidget {
+  const JikkyoDanmakuLayer({
+    super.key,
+    required this.displayAspect,
+    required this.child,
+  });
+
+  /// 映像の表示アスペクト比 (幅 / 高さ)。未確定なら null。
+  final double? displayAspect;
+
+  /// 矩形内に描くウィジェット ([JikkyoDanmakuOverlay])。
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final aspect = displayAspect;
+    if (aspect == null) return const SizedBox.shrink();
+    return Align(child: AspectRatio(aspectRatio: aspect, child: child));
+  }
+}

@@ -52,11 +52,11 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 **実況コメントは Riverpod ではなく `JikkyoCommentController` (`features/player/`, `ChangeNotifier`) が所有する。** 視聴画面は `MediaQuery.orientationOf` で `Row` と `Column` を切り替えるが、ウィジェットの型が変わるとその下の Element が作り直されるため、`Row`/`Column` の内側にある State は画面回転ごとに失われる。コメント接続は回転しても保たれる必要があるため、向きに依存しない `_WatchLayoutState` が controller を持ち (`_WatchLayout` に channelId をキーで渡し、チャンネル切替では作り直す)、`dispose` でソケットを閉じる。**ここに `ConsumerWidget` や Riverpod provider を置くと回転のたびにタブが戻り、`connecting` に戻る。**
 
-情報パネルのタブは 3 つ (番組情報 / チャンネル / コメント)。選択位置は **`watchInfoTabProvider` (`@Riverpod(keepAlive: true)`) が持つ**。`_LivePlayerState` のフィールドだとチャンネル切替でタブが戻る — 切替は `context.go('/watch/<id>')` で視聴画面ごと置き換えるため、回転と異なり `_LivePlayerState` ごと破棄される。keepAlive provider なら回転・チャンネル切替の両方で保たれる (`watch_screen.dart` の `_LivePlayer` はこのため `ConsumerStatefulWidget`)。なお `ProgramInfoPanel` の `IndexedStack` は `if` で子を落とすとコメント選択時 (index 2) に子が1件只剩って範囲外.Assertion を出すので、未選択タブも `SizedBox.shrink()` で埋めて **3件固定**で渡す。
+情報パネルのタブは 3 つ (番組情報 / チャンネル / コメント)。選択位置は **`watchInfoTabProvider` (`@Riverpod(keepAlive: true)`) が持つ**。State のフィールドだとチャンネル切替でタブが戻る — 切替は `context.go('/watch/<id>')` で視聴画面ごと置き換えるため、回転と異なり映像スロットごと破棄される。keepAlive provider なら回転・チャンネル切替の両方で保たれる。なお `IndexedStack` は `if` で子を落とすとコメント選択時 (index 2) に子が1件只剩って範囲外.Assertion を出すので、未選択タブも `SizedBox.shrink()` で埋めて **タブ数固定**で渡す。この制約は `PlayerInfoTabs` (`program_info_panel.dart`) に集約してあり、`tabCount` と `children.length` / `destinations.length` の不一致は assert で検出する。
 
-弾幕 (`canvas_danmaku`) は `Positioned.fill` で描く (`features/player/jikkyo_danmaku_overlay.dart`)。`DanmakuScreen` は `LayoutBuilder` で親の制約からサイズを取るため `Positioned.fill` が必須。**置く場所は外側の `Stack` ではなく `Video` の `controls` ビルダーが返す `Stack` の中**。`Video` は「映像テクスチャ → 字幕 → 標準コントロール」を内側の `Stack` で描画しているため、外側の `Stack` に重ねると (1) コントロールより上になる / (2) 順序を入れ替えると映像テクスチャより下になって見えない、のどちらかで破綻する。controls レイヤーの内側なら「映像の上・操作オーバーレイの下」におさまる (`watch_screen.dart`)。この `Stack` には `StackFit.expand` を指定する。`Video` 側は `Positioned.fill` で tight 制約を渡しており、標準コントロールに loose な制約を渡すとグラデーション等が縮む。コントロール自動非表示時 (`mount=false`) でもビルダーの返り値はツリーに残るので、弾幕だけが消えることはない。**ただし `Video` は `FittedBox(fit: BoxFit.contain)` で描くため、そのまま重ねるとレターボックス (黒帯・柱状) にも弾幕が出る**。映像の**表示**アスペクト比を `videoDisplayAspectOf` (`player_error.dart`) で取り、`Align` + `AspectRatio` で矩形を絞る。`FittedBox(contain)` と同じ矩形になるので幅高を自前で計算しなくてよい。比が確定するまで (`video-params` 未着・音声のみ) 弾幕は描画しない。**`w`/`h` (符号化サイズ) を使ってはいけない**: 日本語デジタル放送には 1440x1080 を 16:9 に引き伸ばすチャンネルが多く mpv が PAR 12:11 として持つため、`w`/`h` は 1.333 になるが**表示は 1.778**。ここを間違えると矩形が縦に伸びて弾幕が黒帯に侵入し、かつ端に届かない。
+弾幕 (`canvas_danmaku`) は `features/player/jikkyo_danmaku_overlay.dart`。`DanmakuScreen` は `LayoutBuilder` で親の制約からサイズを取るため `Positioned.fill` が必須。**置く場所は外側の `Stack` ではなく `Video` の `controls` ビルダーが返す `Stack` の中**。`Video` は「映像テクスチャ → 字幕 → 標準コントロール」を内側の `Stack` で描画しているため、外側の `Stack` に重ねると (1) コントロールより上になる / (2) 順序を入れ替えると映像テクスチャより下になって見えない、のどちらかで破綻する。controls レイヤーの内側なら「映像の上・操作オーバーレイの下」におさまる。**この制約は `PlayerVideoView` (`player_video_view.dart`) の `controls` ビルダーの中に閉じてあり**、両画面はこのウィジェットを使うだけ。同じ `Stack` には `StackFit.expand` を指定する (`Video` 側は `Positioned.fill` で tight 制約を渡しており、標準コントロールに loose な制約を渡すとグラデーション等が縮む)。コントロール自動非表示時 (`mount=false`) でもビルダーの返り値はツリーに残るので、弾幕だけが消えることはない。**ただし `Video` は `FittedBox(fit: BoxFit.contain)` で描くため、そのまま重ねるとレターボックス (黒帯・柱状) にも弾幕が出る**。映像の**表示**アスペクト比を `videoDisplayAspectOf` (`player_error.dart`) で取り、`JikkyoDanmakuLayer` の `Align` + `AspectRatio` で矩形を絞る。`FittedBox(contain)` と同じ矩形になるので幅高を自前で計算しなくてよい。比が確定するまで (`video-params` 未着・音声のみ) 弾幕は描画しない。**`w`/`h` (符号化サイズ) を使ってはいけない**: 日本語デジタル放送には 1440x1080 を 16:9 に引き伸ばすチャンネルが多く mpv が PAR 12:11 として持つため、`w`/`h` は 1.333 になるが**表示は 1.778**。ここを間違えると矩形が縦に伸びて弾幕が黒帯に侵入し、かつ端に届かない。
 
-**弾幕の on/off と参照は映像の `Stack` 内にあり回転で作り直される**が、弾幕は一時アニメーションなので消えても問題ない。ソケットは `JikkyoCommentController` が別に持つため回転しても切れない。`controller.liveComments` は購読直後のバックログ (直近100件) を除外した新規コメントだけを送る。`DanmakuOption.fontSize` は画面全体で1つなので `mail` のサイズコマンド (`small`/`big`) は弾幕では表現できない。
+**弾幕の on/off は回転で破棄されない位置に持つ。** `PlayerPlaybackController` のフィールドで、通知を `PlayerVideoView` の外側 (`ListenableBuilder`) で受ける。映像の `Stack` 内に持つと回転でリセットされる。参照 (購読) 自体は映像の `Stack` 内にあるが、弾幕は一時アニメーションなので消えても問題ない。ソケットは `JikkyoCommentController` が別に持つため回転しても切れない。`controller.liveComments` は購読直後のバックログ (直近100件) を除外した新規コメントだけを送る。`DanmakuOption.fontSize` は画面全体で1つなので `mail` のサイズコマンド (`small`/`big`) は弾幕では表現できない。
 
 ## ライブEIT (番組情報)
 
@@ -71,11 +71,25 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 - `TsSectionAssembler` は PUSI=1 のとき、**pointer_field が示すバイト数を前セクションの続きとしてバッファへ足してから**新セクションに切り替える。実TSはセクションが詰めて置かれるため「長いセクションの末尾 + 次のセクションの開始」が同一パケットに入り、そのパケットは PUSI=1 + pointer_field>0 になる。これを捨てると複数パケットにまたがるセクションが丸ごと失われる (node-aribts `ariblib/packet.py` `sections()` の `buffer.extend(prev)` に相当)。`afc` は 0b01 が adaptation 無し、0b11 が adaptation あり、0b10 はペイロード無し。stuffing (先頭 0xFF) で打ち切る。
 - `LivePsiController` は PID 0x12 を組み立て**前**に抜く。フルTS (映像PES含む) をそのまま組み立てると他PIDの断片がバッファに溜まり続ける。
 
+## プレイヤー画面の共通層
+
+ライブ視聴 (`watch_screen.dart`) と録画再生 (`video_play_screen.dart`) は同じ mpv でほぼ同じ構成の二つの画面だが、映像周りの組み立ては共通ウィジェットにしてある。**破れやすい制約をここへ寄せ、画面側では mpv 固有の設定だけを書く**こと。
+
+- `player_playback_controller.dart` — `PlayerPlaybackController` (`ChangeNotifier`)。mpv の `Player`/`VideoController` を所有し、エラー回復の判定 (`player_error.dart` の純関数を呼ぶだけ)、表示アスペクト比、二重モノラル、弾幕 on/off、再生位置ストリームを持つ。`dispose` で `Player` も解放する。**Riverpod にはしない** — 下節の回転耐性の要件。同上。
+- `player_video_view.dart` — `PlayerVideoView`。`Video` + モバイル/デスクトップ両方の `MaterialVideoControls` テーマデータ + `controls` レイヤー内の弾幕スロット + 再生エラーオーバーレイを**一つ**にまとめる。向きには依存せず常に単一の `Stack` を返す。コントロールの差異は `PlayerControlsLayout` (`live` / `seekable`) で表す。ボタン行は media_kit のテーマデータが非 nullable なので、既定のままにする側は分岐で切り替える (**既定値を自前で書き写さない**)。
+- `jikkyo_danmaku_overlay.dart` — `JikkyoDanmakuLayer` が表示矩形の絞り込み、`JikkyoDanmakuOverlay` が描画。
+- `player_status_views.dart` — `PlayerPlaceholderScaffold` / `PlayerStatusOverlay` / `PlayerLoadingView` / `PlayerRetryView` / `PlayerErrorOverlay`。読み込み・再試行・戻るボタンの土台をライブ/録画で共有する。
+- `player_control_buttons.dart` — `buildPlayerTopButtonBar` が戻る→タイトル→字幕→音声→弾幕の並びを組み立てる。画質ボタンは `trailing` で渡し、**購読する `ConsumerWidget` を包む** (購読すると映像まで作り直され、コントロール自動非表示中のメニュー選択が `onSelected` に届かない)。
+- `program_info_panel.dart` — `PlayerInfoTabs` が情報パネルの `IndexedStack` + `NavigationBar` を共有 (タブ数固定の制約はここに集約)。
+- `player_error.dart` の純関数 (`isPlayerRecovered` / `hasValidVideoSize` / `videoDisplayAspectOf` / `hasValidAudioFormat`) と `player_controls_theme.dart` の純関数は移動しない。テスト対象。
+
+画面側に残るのはセッションの種類 (tap/Konomi/HLS keep-alive)、EIT 取得の有無、番組名・チャンネル送り・画質一覧だけ。
+
 ## プレイヤー画面のレイアウト
 
 映像と情報パネルの配置は `features/player/player_split_layout.dart` の `PlayerSplitLayout` に集約する (矩形計算は純関数 `playerSplitRects`)。
 
-**向きで `Row`/`Column` を出し分けない。** ウィジェットの型が変わるとその下の Element がすべて作り直され、**`_LivePlayer` / `_VideoPlayer` の State ごと破棄される**。State が持つ `Player` と `LiveSession` が解放され、PSI 取得とライブ追従が中断する。
+**向きで `Row`/`Column` を出し分けない。** ウィジェットの型が変わるとその下の Element がすべて作り直され、**`_LivePlayer` / `_VideoPlayer` の State ごと破棄される**。State が持つ `PlayerPlaybackController` (中の `Player`) と `LiveSession` が解放され、PSI 取得とライブ追従が中断する。
 
 これが **media_kit のフルスクリーンで映像が黒く止まる (音は出続ける) 直接の原因**になる。フルスクリーンは先に `Navigator` へ*同じ `VideoController` を使う新しい `Video`* を積む (`enterFullscreen`)。その後に向きが変わると (デスクトップは GTK/ネイティブフルスクリーンでウィンドウサイズが変わる → `MediaQuery` 更新、Android は `setPreferredOrientations` で回転)、通常側は破棄されて新しい `Player` で開き直すが、**フルスクリーン側は破棄済みの `VideoController` を参照したまま**になる。音声だけは作り直された `Player` から出て、結果として映像が黒いまま止まる。フルスクリーンから戻るとルートの pop で通常側の新しい `Player` が見えるので「復活」したように見える。画面回転だけでも同じ作り直しが起きる。
 
