@@ -43,8 +43,17 @@ enum PlayerControlsLayout {
 /// (2) 順序を入れ替えると映像テクスチャより下になって見えない、のどちらかで
 /// 破綻する。差し込めるのは controls レイヤーの内側だけ。
 ///
-/// コントロール自動非表示時 (`mount=false`) でもビルダーの返り値はツリーに
-/// 残るため、弾幕だけが消えることはない。
+/// **コントロール自動非表示時 (`mount=false`) でもビルダーの返り値はツリーに
+/// 残るため、弾幕だけが消えることはない。**
+///
+/// [showControls] を false にすると標準コントロールだけを外す (Android の PiP
+/// 用)。PiP ウィンドウはシステムの PiP ボタン (再生/一時停止) で操作し、画面
+/// タップでアプリへ戻るため、Flutter 側のコントロールは操作できないうえ文字も
+/// 潰れて見える。**弾幕は controls レイヤーの内側にあるので消えない。**
+///
+/// 標準コントロールのテーマデータは組み立てたまま捨てる (既定値を自前で書き
+/// 写さないという方針を守るため)。この値が false になるのは PiP 中だけで、
+/// 通常表示には戻るのでテーマデータ側の副作用は無い。
 class PlayerVideoView extends StatelessWidget {
   const PlayerVideoView({
     super.key,
@@ -59,6 +68,7 @@ class PlayerVideoView extends StatelessWidget {
     this.danmaku,
     this.errorMessage,
     this.onRetry,
+    this.showControls = true,
   }) : assert(
          layout != PlayerControlsLayout.live ||
              (livePrimaryButtonBar != null &&
@@ -104,6 +114,9 @@ class PlayerVideoView extends StatelessWidget {
 
   /// エラー表示の「再試行」。[errorMessage] が null のときは表示しない。
   final VoidCallback? onRetry;
+
+  /// 標準コントロールを表示するか。false なら映像と弾幕だけを描く。
+  final bool showControls;
 
   @override
   Widget build(BuildContext context) {
@@ -220,6 +233,7 @@ class PlayerVideoView extends StatelessWidget {
     final error = errorMessage;
     final retry = onRetry;
     final danmakuLayer = danmaku;
+    final showControls = this.showControls;
     return Stack(
       children: [
         MaterialVideoControlsTheme(
@@ -239,7 +253,8 @@ class PlayerVideoView extends StatelessWidget {
                 children: [
                   if (danmakuLayer != null)
                     Positioned.fill(child: danmakuLayer),
-                  AdaptiveVideoControls(state),
+                  // PiP 中は標準コントロールを載せない。弾幕は上に残る。
+                  if (showControls) AdaptiveVideoControls(state),
                 ],
               ),
             ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../core/pip/pip_mode.dart';
 import 'audio_switch.dart';
 
 /// プレイヤー画面の戻るボタン。ライブ視聴と録画再生で共有する。
@@ -65,6 +66,47 @@ class SubtitleToggleButton extends StatelessWidget {
         tooltip: enabled ? '字幕を非表示' : '字幕を表示',
         onPressed: onToggled,
       ),
+    );
+  }
+}
+
+/// PiP (ピクチャインピクチャ) へ移るボタン。ライブ視聴と録画再生で共有する。
+///
+/// 下部バーのフルスクリーンボタンの左に置く。
+///
+/// **対応端末の判定は非同期なので、このボタンの中でだけ行う。** PiP 中かどうか
+/// ([PipMode.active]) は購読しない — 購読すると映像の再構築に巻き込まれ、
+/// `Video` の controls ビルダーが差し替わる (設定変更と同じ理屈、`PlayerVideoView`
+/// を参照)。非 Android と PiP 非対応端末では何も描かない。
+class PipModeButton extends StatefulWidget {
+  const PipModeButton({super.key});
+
+  @override
+  State<PipModeButton> createState() => _PipModeButtonState();
+}
+
+class _PipModeButtonState extends State<PipModeButton> {
+  /// この端末が PiP に対応しているか。未判定のあいだは描かない。
+  bool? _available;
+
+  @override
+  void initState() {
+    super.initState();
+    // 問い合わせは `PipMode` がキャッシュするので、ボタンを作り直しても1回で済む。
+    PipMode.instance.available().then((available) {
+      if (!mounted) return;
+      setState(() => _available = available);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_available != true) return const SizedBox.shrink();
+    return IconButton(
+      icon: const Icon(Icons.picture_in_picture_alt_outlined),
+      color: Colors.white,
+      tooltip: 'PiP',
+      onPressed: PipMode.instance.enter,
     );
   }
 }

@@ -31,7 +31,11 @@
 
         androidPackages = pkgs.androidenv.composeAndroidPackages {
           buildToolsVersions = [ "36.0.0" ];
-          platformVersions = [ "36" ];
+          # android-34 は `simple_pip_mode` の Android モジュールが
+          # `compileSdk 34` を要求するため。AGP は要求された platform を
+          # SDK から探すが、Nix の store は読み取り専用なので 入っていないと
+          # ビルドが失敗する (「SDK ディレクトリが書けない」で止まる)。
+          platformVersions = [ "34" "36" ];
           includeCmake = true;
           includeNDK = true;
           ndkVersions = [ "28.2.13676358" ];

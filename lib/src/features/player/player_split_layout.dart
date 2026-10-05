@@ -24,11 +24,25 @@ typedef PlayerRect = ({
 /// 縦画面で映像の高さが画面の高さを超える場合は高さを詰める。矩形制約を渡す
 /// `Positioned` のままだとパネルが負の高さになり、はみ出してオーバーフロー
 /// する。パネル幅も画面幅で打ち切る。
+///
+/// [pictureInPicture] は Android の PiP ウィンドウ。通常画面より数倍小さいので
+/// 映像を全面に広げ、パネルは表示しない。**横画面の通常の計算だと PiP ウィンドウ
+/// はパネル幅 ([playerPanelWidth]) 以下なので映像幅が 0 になってしまう**ため、
+/// 向きより先にこちらで判定する。
+///
+/// 向きでも PiP でも親ウィジェットの型は変えない (要素を作り直させない)。
 ({PlayerRect video, PlayerRect info}) playerSplitRects({
   required bool isLandscape,
   required double width,
   required double height,
+  bool pictureInPicture = false,
 }) {
+  if (pictureInPicture) {
+    return (
+      video: (left: 0, top: 0, width: width, height: height),
+      info: (left: 0, top: 0, width: 0, height: 0),
+    );
+  }
   final panelWidth = math.min(playerPanelWidth, width);
   final videoWidth = isLandscape ? width - panelWidth : width;
   final videoHeight = isLandscape
@@ -47,12 +61,12 @@ typedef PlayerRect = ({
 
 /// 映像と情報パネルを並べる土台。横画面は左右、縦画面は上下。
 ///
-/// **映像の親は向きで変えない。** `Row` と `Column` で出し分けると、ウィジェット
-/// の型が変わった時点でその下の Element がすべて作り直される。`_LivePlayer` /
-/// `_VideoPlayer` は映像スロットの中に置かれており、向きが変わると State ごと
-/// 破棄される。State が持つ `Player` と再生セッション ([LiveSession]) はそこで
-/// 解放され、作り直しになる (PSI 取得とライブ追従の中断。実況コメントの接続
-/// だけ [_WatchLayoutState] 側の持ちなので保たれる)。
+/// **映像の親は向きでも PiP でも変えない。** `Row` と `Column` で出し分けると、
+/// ウィジェットの型が変わった時点でその下の Element がすべて作り直される。
+/// `_LivePlayer` / `_VideoPlayer` は映像スロットの中に置かれており、向きが変わると
+/// State ごと破棄される。State が持つ `Player` と再生セッション ([LiveSession]) は
+/// そこで解放され、作り直しになる (PSI 取得とライブ追従の中断。実況コメントの
+/// 接続だけ [_WatchLayoutState] 側の持ちなので保たれる)。
 ///
 /// これが media_kit のフルスクリーンで黒画面になる直接の原因になる。フルスクリー
 /// ンは先に `Navigator` へ**同じ `VideoController` を使う新しい `Video`** を積む
@@ -64,30 +78,36 @@ typedef PlayerRect = ({
 ///
 /// そのため `Stack` + `Positioned` で親と並び順を固定し、矩形だけ
 /// [playerSplitRects] で変える。`SafeArea` も有効辺を切り替えるだけにして、
-/// 向きによってウィジェット自身を出し分けない。
+/// 向きや PiP によってウィジェット自身を出し分けない。
 class PlayerSplitLayout extends StatelessWidget {
   const PlayerSplitLayout({
     super.key,
     required this.video,
     required this.info,
+    this.pictureInPicture = false,
   });
 
   /// 映像。レターボックス (黒帯・柱状) は黒で塗る。
   final Widget video;
 
-  /// 情報パネル。
+  /// 情報パネル。PiP 中は描画されないので呼び出し側で空を渡す。
   final Widget info;
+
+  /// Android の PiP ウィンドウにいるか。映像を全面に広げる。
+  final bool pictureInPicture;
 
   @override
   Widget build(BuildContext context) {
     final isLandscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
+    final pictureInPicture = this.pictureInPicture;
     final content = LayoutBuilder(
       builder: (context, constraints) {
         final rects = playerSplitRects(
           isLandscape: isLandscape,
           width: constraints.maxWidth,
           height: constraints.maxHeight,
+          pictureInPicture: pictureInPicture,
         );
         return Stack(
           children: [

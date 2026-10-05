@@ -110,9 +110,11 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 - `player_video_view.dart` — `PlayerVideoView`。`Video` + モバイル/デスクトップ両方の `MaterialVideoControls` テーマデータ + `controls` レイヤー内の弾幕スロット + 再生エラーオーバーレイを**一つ**にまとめる。向きには依存せず常に単一の `Stack` を返す。コントロールの差異は `PlayerControlsLayout` (`live` / `seekable`) で表す。ボタン行は media_kit のテーマデータが非 nullable なので、既定のままにする側は分岐で切り替える (**既定値を自前で書き写さない**)。
 - `jikkyo_danmaku_overlay.dart` — `JikkyoDanmakuLayer` が表示矩形の絞り込み、`JikkyoDanmakuOverlay` が store/clock 共有の描画 (ライブは受信時 birth、録画は `birthMsOf` 一括登録)。
 - `player_status_views.dart` — `PlayerPlaceholderScaffold` / `PlayerStatusOverlay` / `PlayerLoadingView` / `PlayerRetryView` / `PlayerErrorOverlay`。読み込み・再試行・戻るボタンの土台をライブ/録画で共有する。
-- `player_control_buttons.dart` — `buildPlayerTopButtonBar` が戻る→タイトル→字幕→音声→弾幕の並びを組み立てる。画質ボタンは `trailing` で渡し、**購読する `ConsumerWidget` を包む** (購読すると映像まで作り直され、コントロール自動非表示中のメニュー選択が `onSelected` に届かない)。
+- `player_control_buttons.dart` — `buildPlayerTopButtonBar` が戻る→タイトルの並びを組み立て、`PipModeButton` が下部バーの PiP ボタン (対応可否を非同期に解決し、非対応なら描かない) を持つ。画質ボタンは `trailing` で渡し、**購読する `ConsumerWidget` を包む** (購読すると映像まで作り直され、コントロール自動非表示中のメニュー選択が `onSelected` に届かない)。
 - `program_info_panel.dart` — `PlayerInfoTabs` が情報パネルの `IndexedStack` + `NavigationBar` を共有 (タブ数固定の制約はここに集約)。
 - `player_error.dart` の純関数 (`isPlayerRecovered` / `hasValidVideoSize` / `videoDisplayAspectOf` / `hasValidAudioFormat`) と `player_controls_theme.dart` の純関数は移動しない。テスト対象。
+- `watch_screen.dart` のチャンネル送り純関数 (`channelIdsOfSameType` / `channelZapId`) も移動しない。標準コントロールのボタンと PiP ウィンドウのボタンが同じ規則を使う。テスト対象。
+- **視聴画面への遷移は `pushReplacement` を使う (`zapToChannel`)。** `/watch/:channelId` はシェル外・root Navigator 上の1ページとして積まれるので、`go` だとページスタック全体が置き換わり下にテレビ画面が残らない。戻る対象がなくなって **Android のシステム戻る でアプリが閉じてしまう** (画面左上の戻るボタンは `canPop` が false なので `go('/tv')` にフォールバックして動くため気づきにくい。実測した症状)。`push` だと前の視聴画面がスタックに残り mpv と `LiveSession` が解放されない。テレビ一覧からの 진입は `push` (`tv_screen.dart`)、チャンネル切替 (標準コントロール・情報パネル・PiP ウィンドウすべて) は `zapToChannel` に集約する。
 
 画面側に残るのはセッションの種類 (tap/Konomi/HLS keep-alive)、EIT 取得の有無、番組名・チャンネル送り・画質一覧だけ。
 
@@ -125,6 +127,24 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 これが **media_kit のフルスクリーンで映像が黒く止まる (音は出続ける) 直接の原因**になる。フルスクリーンは先に `Navigator` へ*同じ `VideoController` を使う新しい `Video`* を積む (`enterFullscreen`)。その後に向きが変わると (デスクトップは GTK/ネイティブフルスクリーンでウィンドウサイズが変わる → `MediaQuery` 更新、Android は `setPreferredOrientations` で回転)、通常側は破棄されて新しい `Player` で開き直すが、**フルスクリーン側は破棄済みの `VideoController` を参照したまま**になる。音声だけは作り直された `Player` から出て、結果として映像が黒いまま止まる。フルスクリーンから戻るとルートの pop で通常側の新しい `Player` が見えるので「復活」したように見える。画面回転だけでも同じ作り直しが起きる。
 
 `SafeArea` で囲む場合も `isLandscape ? content : SafeArea(child: content)` と**戻り値の型を変えない**。有効辺 (`left`/`top`/…) を切り替えるだけにする。
+
+## PiP (Android)
+
+`simple_pip_mode` を使う。状態の持ち主は `core/pip/pip_mode.dart` の `PipMode.instance` (プラットフォーム機能なので `core` 置き、Dynamic Color と同じ流儀)。ライブ視聴・録画再生の両対応で、ボタンは下部バーの**フルスクリーンボタンの左** (`PipModeButton`、下部バーの並びは「字幕 → 設定 → PiP → フルスクリーン」)。
+
+**`SimplePip` のインスタンスは1個だけ。** コンストラクタが `puntito.simple_pip_mode` のメソッドハンドラを `setMethodCallHandler` で上書きするため、複数作ると最後に作ったものだけが PiP コールバックを受ける。
+
+- **Android 以外では `SimplePip` を呼ばない** (`Platform.isAndroid` ガードが `PipMode` にある)。`isPipAvailable` も含めて他のOSで呼ぶと `MissingPluginException` になる。ボタンの対応可否判定はボタンの中で非同期に解決し、非対応なら描かない (`PipMode.active` も購読しない — 購読すると映像の再構築に巻き込まれる)。
+- **`PipWidget` は使わない。** `child`/`pipChild` を入れ替えるとその下のウィジェット型が変わり、`_LivePlayer` / `_VideoPlayer` の State ごと破棄される (上節と同じ理屈)。`PipMode.active` を `ValueListenableBuilder` で購読し、矩形と情報パネルの有無だけを変える (`_buildLayout(pictureInPicture)` に切り出すのは両分岐で同じ型の木を返すため)。
+- **矩形は `playerSplitRects` の `pictureInPicture` に集約する** (`PlayerSplitLayout` も同じ引数を持つ)。PiP ウィンドウはパネル幅 400 未満なので、横画面の通常の計算だと映像幅が 0 になる。判定は向きより先に行う。
+- **PiP 中は情報パネルを描かない** (`SizedBox.shrink()`)。不可視のまま載せると PSI 更新 / コメント一覧の作り直しを続けているため。
+- **PiP 中は標準コントロールだけ外す** (`PlayerVideoView` の `showControls: false`)。controls レイヤーの内側から `AdaptiveVideoControls` を外すだけなので**弾幕は残る**。PiP ウィンドウ内の Flutter 側コントロールは操作できない (画面タップはシステムが処理してアプリに戻る) うえ文字が潰れるため。PiP 入退室で controls クロージャが1回だけ差し替わり mpv の表示パラメータ通知が飛ぶ (設定変更と同じ理屈。一瞬止まるのは許容)。
+- **PiP ウィンドウのボタン (RemoteAction)** は `enable(actions:)` で選ぶ。ライブは `PipActionsLayout.media` (前チャンネル・再生/一時停止・次チャンネル)、録画は `mediaOnlyPause`。操作は `PipMode.onAction` を受けて mpv に反映する。ライブの前/次は標準コントロールのチャンネル送りと同じ純関数 (`channelZapId` / `channelIdsOfSameType`、`watch_screen.dart`) で行き先を求めて `zapToChannel` で `pushReplacement` する (`_LivePlayer` は PiP ハンドラからのみ `ref.read` で一覧を取るため `ConsumerStatefulWidget`、購読はしない)。`reportPlaying` で play/pause アイコンを再生状態に合わせる。
+- **`enterPipMode` は `setPipActionsLayout` の後に呼ぶ。** ネイティブ側がその時点のボタン一覧を `PictureInPictureParams` に焼き込むため、先に設定しないとボタンが出ない。
+- **自動 PiP (ホームキーで自動的に PiP へ入る / API 31+) はプレイヤー画面の mount/unmount に素直に付ける** (設定項目は持たない)。ただし **`enable` / `disable` は `owner` (普通は `this`) を必ず渡す**。チャンネル切替は `go` で視聴画面ごと置き換えるため **新旧画面の破棄順が固定できない** — キーの付け替え (画質変更) は「新 `initState` → 旧 `dispose`」だが、ルート入れ替えは逆になりうる。素直に実装すると **新画面が mount した直後に旧画面の `disable` が走り、`setAutoPipMode` が空のボタン一覧で `PictureInPictureParams` を作り直して「PiP ウィンドウの3つのボタンが消える」** (実測した症状)。`disable` は `identical(_owner, owner)` で現在の持ち主かを見てから外し、解除は次のイベントループに回す (`Timer(Duration.zero, …)`、間に `enable` が来たらキャンセルする)。回帰テストは `test/pip_mode_test.dart` (非 Android では `Platform.isAndroid` が false でネイティブ呼び出しが起きないため、`enable`/`disable` の状態機械をそのまま検証できる)。
+- PiP 中は Activity が pause されるが stop はしないので Flutter の `AppLifecycleState` は `inactive`。media_kit `Video` の `pauseUponEnteringBackgroundMode` は `paused`/`detached` でしか止まらないため再生は保たれる。縮小も SurfaceProducer のバッファが映像サイズ固定 + `FittedBox(contain)` なので、PiP ウィンドウに VV されるだけ (VV → 単にスケールされる)。
+- Android 側の必須変更は2つ: `AndroidManifest.xml` の activity に `android:supportsPictureInPicture="true"`、`MainActivity` を `PipCallbackHelperActivityWrapper` に継承する (コールバックは `onPictureInPictureModeChanged` からのみ届く。`configureFlutterEngine` の `super` がラッパーの実装になり、`DynamicColorBridge` の据付はその後に書く)。
+
 
 ## Conventions
 
@@ -175,4 +195,6 @@ Compose Material 3 の `dynamicLightColorScheme()` / `dynamicDarkColorScheme()` 
 - **`canvas_danmaku` を直すには参照先の差し替えが要る。** `pubspec.yaml` は git 依存の rev ピン留めなので、`../canvas_danmaku` を直しても解決先は `~/.pub-cache/git/canvas_danmaku-<rev>/` のままで反映されない。作業中は `pubspec_overrides.yaml` (gitignore 済み) で path 参照に差し替える。フォークを push して `pubspec.yaml` の `ref:` を上げたら **override を削除し、`pubspec.lock` を git 依存の記載に戻す** — 残しておくと lock が `../canvas_danmaku` を指し、`flake.nix` の fileset にそのパスが無く `nix build` が落ちる。
 - **`canvas_danmaku` の rev を上げたら `flake.nix` の `gitHashes` も更新する。** `buildFlutterApplication` は git 依存を `fetchgit` (固定出力) で取るので、`gitHashes.canvas_danmaku` は rev ごとの木ハッシュ。古いままだと `nix build` が hash mismatch で落ちる。新しい値は `hash = pkgs.lib.fakeHash` で `nix build` してエラー出力の `got:` を使う (空文字でも.hash を教えてくれる)。
 - Both backends are plain-HTTP LAN servers. Android is fine — `android/app/src/main/AndroidManifest.xml` already declares `INTERNET` **and** `usesCleartextTraffic="true"`, and `ios`/`macos` `Info.plist` declare `NSAllowsLocalNetworking` (local network only; internet-bound cleartext stays blocked by ATS).
-- No CI config exists; verification is local `flutter analyze` + `flutter test` (both currently clean).
+- **Android プラグインの `compileSdk` に注意。** プラグインは自分の `compileSdk` を要求し、AGP は SDK Raises に該当プラットフォームを探しにいく。Nix の store は読み取り専用なので 入っていないと「SDK ディレクトリが書けない」でビルドが失敗する。`simple_pip_mode` は `compileSdk 34` を要求するため `flake.nix` の `platformVersions` に `"34"` を入れてある。**新しい Android プラグインを追加したら `compileSdk` を確認して、必要なら `platformVersions` に追加する。** Gradle 側 (根の `android/build.gradle.kts`) から上書きすると AGP 9 では `It is too late to set compileSdk` で弾かれる (評価中に設定するとプラグイン自身の `android {}` に上書きされる) ので、フラグ側を直すこと。
+- `simple_pip_mode` は Kotlin Gradle Plugin を適用するため、ビルド時に「Future versions of Flutter will fail to build …」の警告が出る。`android/gradle.properties` の `android.builtInKotlin=false` があるので今は通る。警告はそのままにしてよい (解消するにはプラグイン側が Built-in Kotlin 対応化する必要があり、`packages/` へ vendor することになる)。
+- No CI config exists; verification is local `flutter analyze` + `flutter test` (both currently clean). Android 側の確認は `direnv exec . flutter build apk --debug`。

@@ -7,7 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:simple_pip_mode/actions/pip_action.dart';
+import 'package:simple_pip_mode/actions/pip_actions_layout.dart';
 
+import '../../core/pip/pip_mode.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/widgets/program_detail_body.dart';
 import '../../domain/entities/video_program.dart';
@@ -33,6 +36,9 @@ import 'program_info_panel.dart';
 
 /// 弾幕時計と再生位置の許容ずれ。外挿で滑らかに進め、超えたら補正する。
 const _danmakuDriftThresholdMs = 400;
+
+/// PiP ウィンドウの ±10 秒送り。`mediaWithSeek10` 相当のボタンに使う。
+const _pipSeekStep = Duration(seconds: 10);
 
 /// 弾幕ストアの保持期間。番組尺 + 余裕 (横流し・静止の表示期間分を十分上回る)。
 int _danmakuRetentionMs(VideoProgram video) {
@@ -215,6 +221,15 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   void initState() {
     super.initState();
     _sessionId = generateVideoSessionId();
+    // PiP ウィンドウのボタン (再生/一時停止) と自動 PiP を有効にする。解除は
+    // `dispose` 側 ([PipMode.disable] のコメントを参照)。
+    unawaited(
+      PipMode.instance.enable(
+        owner: this,
+        actions: PipActionsLayout.mediaOnlyPause,
+        onAction: _onPipAction,
+      ),
+    );
     try {
       _stream = ref.read(videoRepositoryProvider).getVideoStream(
         videoId: widget.video.id,
@@ -290,9 +305,36 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   }
 
   /// 再生状態に弾幕時計を追従させる。開始・停滞解消時は再生位置に合わせ直す。
+  ///
+  /// PiP ウィンドウの play/pause ボタンの状態もここで合わせる。
   void _onPlayingForDanmaku(bool playing) {
+    PipMode.instance.reportPlaying(playing);
     _playingForDanmaku = playing;
     _syncDanmakuRunning();
+  }
+
+  /// PiP ウィンドウのボタン操作を mpv に反映する。
+  ///
+  /// 録画はシーク可能なので ±10 秒の送りも扱うが、PiP ウィンドウには
+  /// 再生/一時停止だけを出す ([enable] で `mediaOnlyPause` を指定するため、
+  /// 他の操作は来ない)。
+  void _onPipAction(PipAction action) {
+    final player = _playback.player;
+    switch (action) {
+      case PipAction.play:
+        unawaited(player.play());
+      case PipAction.pause:
+        unawaited(player.pause());
+      case PipAction.rewind:
+        unawaited(player.seek(player.state.position - _pipSeekStep));
+      case PipAction.forward:
+        unawaited(player.seek(player.state.position + _pipSeekStep));
+      case PipAction.previous:
+      case PipAction.next:
+      case PipAction.live:
+        // PiP ウィンドウにはこれらは出さない。
+        break;
+    }
   }
 
   /// バッファ (`paused-for-cache`) に弾幕時計を追従させる。停滞中は映像と
@@ -331,6 +373,10 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     _playingSub?.cancel();
     _bufferingSub?.cancel();
     _danmakuPositionSub?.cancel();
+    // 自動 PiP と PiP ウィンドウのボタンを戻す。停止の待たずに抜ける。
+    // 画質変更で新旧画面の破棄順が入れ替わっても壊れないよう、`owner` で同一性
+    // を判別する ([PipMode.disable] を参照)。
+    unawaited(PipMode.instance.disable(owner: this));
     _pastComments.dispose();
     _danmakuClock.dispose();
     _danmakuStore.dispose();
@@ -348,12 +394,23 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
         ),
       );
     }
+    // PiP への入退室を購読する。向きと同じく親を差し替えず、矩形と情報パネルの
+    // 有無だけを変える (`PipWidget` のように `child`/`pipChild` を入れ替えると
+    // この State と mpv のプレイヤーが失われる)。
+    return ValueListenableBuilder<bool>(
+      valueListenable: PipMode.instance.active,
+      builder: (context, pictureInPicture, _) =>
+          _buildLayout(pictureInPicture),
+    );
+  }
+
+  Widget _buildLayout(bool pictureInPicture) {
     final pastComments = _pastComments;
     final video = ListenableBuilder(
       listenable: _playback,
       builder: (context, _) {
-        // 下部バーは「字幕 → 設定 → フルスクリーン」の並び。録画の下端は
-        // media_kit の既定構成に字幕・設定を足す。
+        // 下部バーは「字幕 → 設定 → PiP → フルスクリーン」の並び。録画の下端は
+        // media_kit の既定構成に字幕・設定・PiP を足す。
         Widget settingsButton() => _VideoSettingsButton(
           player: _playback.player,
           dualMonoChannel: _playback.dualMonoChannel,
@@ -370,6 +427,9 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
             backFallbackPath: '/videos',
           ),
           layout: PlayerControlsLayout.seekable,
+          // PiP 中は標準コントロールを出さない (操作はシステムの PiP ボタンと
+          // 画面タップで戻ることになり、Flutter 側では触れないため)。
+          showControls: !pictureInPicture,
           seekableBottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
@@ -378,6 +438,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
               onToggled: _playback.toggleSubtitles,
             ),
             settingsButton(),
+            const PipModeButton(),
             const MaterialFullscreenButton(),
           ],
           seekableDesktopBottomButtonBar: [
@@ -392,46 +453,55 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
               onToggled: _playback.toggleSubtitles,
             ),
             settingsButton(),
+            const PipModeButton(),
             const MaterialDesktopFullscreenButton(),
           ],
-        danmaku: pastComments.isSupported
-            ? JikkyoDanmakuLayer(
-                displayAspect: _playback.videoDisplayAspect,
-                child: JikkyoDanmakuOverlay(
-                  controller: pastComments,
-                  store: _danmakuStore,
-                  clock: _danmakuClock,
-                  preferences: _playback.danmakuPreferences,
-                  birthMsOf: (comment) => danmakuBirthMsOf(
-                    comment: comment,
-                    syncStart: pastComments.syncStart,
+          danmaku: pastComments.isSupported
+              ? JikkyoDanmakuLayer(
+                  displayAspect: _playback.videoDisplayAspect,
+                  child: JikkyoDanmakuOverlay(
+                    controller: pastComments,
+                    store: _danmakuStore,
+                    clock: _danmakuClock,
+                    preferences: _playback.danmakuPreferences,
+                    birthMsOf: (comment) => danmakuBirthMsOf(
+                      comment: comment,
+                      syncStart: pastComments.syncStart,
+                    ),
                   ),
-                ),
-              )
-            : null,
-        errorMessage: _playback.errorMessage,
-        onRetry: _open,
+                )
+              : null,
+          errorMessage: _playback.errorMessage,
+          onRetry: _open,
         );
       },
-    );
-    // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。映像側で
-    // 購読するとタブ切替のたびに映像 (`Video`) まで作り直され、内部の表示
-    // パラメータ通知が飛んで映像・弾幕が一瞬止まる (ライブの `_WatchInfoPanel`
-    // と同じ理由)。
-    final info = Container(
-      color: Theme.of(context).colorScheme.surface,
-      child: _PlayInfoPanel(
-        video: widget.video,
-        comments: pastComments,
-        syncStart: pastComments.syncStart,
-        positionStream: _playback.position,
-      ),
     );
     // 映像は黒帯、情報パネルはテーマの地色で描画する。向きで `Row`/`Column` を
     // 出し分けると映像のサブツリーごと破棄される (画面回転と、media_kit の
     // フルスクリーンでウィンドウサイズが変わる°) ので [PlayerSplitLayout] に
     // 任せる (同ウィジェットのコメントを参照)。
-    return PlayerSplitLayout(video: video, info: info);
+    //
+    // PiP 中は情報パネルを描かない。不可視のまま載せるとコメント一覧が再生位置
+    // 通知のたびに作り直し・移動を続け、映像のフレームを奪うため。
+    return PlayerSplitLayout(
+      pictureInPicture: pictureInPicture,
+      video: video,
+      info: pictureInPicture
+          ? const SizedBox.shrink()
+          : Container(
+              color: Theme.of(context).colorScheme.surface,
+              // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。
+              // 映像側で購読するとタブ切替のたびに映像 (`Video`) まで作り直され、
+              // 内部の表示パラメータ通知が飛んで映像・弾幕が一瞬止まる (ライブの
+              // `_WatchInfoPanel` と同じ理由)。
+              child: _PlayInfoPanel(
+                video: widget.video,
+                comments: pastComments,
+                syncStart: pastComments.syncStart,
+                positionStream: _playback.position,
+              ),
+            ),
+    );
   }
 }
 

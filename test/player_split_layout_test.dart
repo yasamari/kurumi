@@ -59,4 +59,34 @@ void main() {
       expect(rects.info.width, 300);
     });
   });
+
+  group('PiP ウィンドウの配置', () {
+    test('映像を画面全面に広げパネルは表示しない', () {
+      final rects = playerSplitRects(
+        isLandscape: true,
+        width: 480,
+        height: 270,
+        pictureInPicture: true,
+      );
+      expect(rects.video.left, 0);
+      expect(rects.video.top, 0);
+      expect(rects.video.width, 480);
+      expect(rects.video.height, 270);
+      expect(rects.info.width, 0);
+      expect(rects.info.height, 0);
+    });
+
+    test('縦向きの PiP でも映像は潰れない', () {
+      // 向きより先に PiP を判定する。横画面の通常の計算だとパネル幅で埋まるため、
+      // PiP ウィンドウ幅がパネル幅以下だと映像幅が 0 になってしまう。
+      final rects = playerSplitRects(
+        isLandscape: true,
+        width: 320,
+        height: 180,
+        pictureInPicture: true,
+      );
+      expect(rects.video.width, 320);
+      expect(rects.video.height, 180);
+    });
+  });
 }

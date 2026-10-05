@@ -67,6 +67,12 @@ dependencies:
   # アドレス受け渡しのみで、Dart 製コールバックは作らない。
   ffi: ^2.1.4
 
+  # Android の PiP (ピクチャインピクチャ)。ライブ視聴・録画再生の画面から
+  # PiP へ移行し、ホームキーで自動的に PiP へ入る (自動 PiP は API 31+)。
+  # 状態は lib/src/core/pip/pip_mode.dart の PipMode が1インスタンスで持ち、
+  # Android 以外では呼ばない。
+  simple_pip_mode: ^1.1.0
+
 # Android の libmpv を自前のビルドに差し替える。
 # media_kit_libs_android_video は Android プラットフォームのみの対象で、
 # .jar を Gradle 時に GitHub Releases から取得する。同梱版は upstream の

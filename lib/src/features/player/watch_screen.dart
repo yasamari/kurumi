@@ -7,7 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:simple_pip_mode/actions/pip_action.dart';
+import 'package:simple_pip_mode/actions/pip_actions_layout.dart';
 
+import '../../core/pip/pip_mode.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/network/dio_provider.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
@@ -15,6 +18,7 @@ import '../../data/ts/audio_layout.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/channel_item.dart';
+import '../../domain/entities/channel_type.dart';
 import '../../domain/entities/live_stream.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
@@ -109,6 +113,55 @@ class WatchScreen extends ConsumerWidget {
   }
 }
 
+/// 同一チャンネル種別内 (地デジなら地デジのみ) のチャンネル ID を表示順に並べる。
+///
+/// 前/次チャンネル切替の行き先はこれで求めた並びに対して計算する。
+List<String> channelIdsOfSameType(List<ChannelItem> items, ChannelType type) {
+  return items
+      .where((item) => item.channel.channelType == type)
+      .map((item) => item.channel.id)
+      .toList();
+}
+
+/// 前/次チャンネル切替の行き先のチャンネル ID。
+///
+/// [channelIds] の順序で移動し、末尾では反対端に回り込む。切替できないとき
+/// (候補が1件以下・現在チャンネルが一覧に無い) は null。
+///
+/// 標準コントロールのボタンと PiP ウィンドウのボタンが同じ規則を共有する。
+String? channelZapId(
+  List<String> channelIds,
+  String currentId, {
+  required bool isNext,
+}) {
+  if (channelIds.length <= 1) return null;
+  final index = channelIds.indexOf(currentId);
+  if (index < 0) return null;
+  final target =
+      isNext
+          ? (index + 1) % channelIds.length
+          : (index - 1 + channelIds.length) % channelIds.length;
+  return channelIds[target];
+}
+
+/// チャンネルを切り替える。
+///
+/// 視聴画面はシェル外・root Navigator 上の1ページとして積まれているので、
+/// **`pushReplacement` で「自分自身」だけを差し替える。**
+///
+/// - `go` だとページスタック**全体**が置き換わり、下にテレビ画面が残らない。
+///   戻る対象がなくなって、**Android のシステム戻る でアプリが閉じてしまう**
+///   (画面左上の戻るボタンは `canPop` が false なので `go('/tv')` に
+///   フォールバックするので動く一方、システム側だけが落ちる。実測した症状)。
+/// - `push` だと前の視聴画面がスタックに残り、破棄されないので mpv のプレイヤー
+///   と再生セッション ([LiveSession])、実況コメントのソケットが解放されない。
+///
+/// 差し替えは新しい page key で行うため、旧視聴画面の State は確実に dispose
+/// される (新旧の破棄順は `owner` の同一性で吸収する — [PipMode.disable] を参照)。
+void zapToChannel(BuildContext context, String channelId) {
+  context.pushReplacement('/watch/$channelId');
+}
+
 /// 前/次チャンネル切替ボタン (デスクトップ下部バー・モバイル中央ボタン用)。
 ///
 /// 同一チャンネル種別内 (地デジなら地デジのみ) の順序で移動し、末尾では
@@ -122,28 +175,17 @@ class _ChannelZapButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final items = ref.watch(nowOnAirChannelsProvider).value;
     final ids =
-        ref.watch(nowOnAirChannelsProvider).value
-            ?.where(
-              (item) => item.channel.channelType == channel.channelType,
-            )
-            .map((item) => item.channel.id)
-            .toList() ??
-        const [];
-    final index = ids.indexOf(channel.id);
-    final enabled = ids.length > 1 && index >= 0;
+        items == null
+            ? const <String>[]
+            : channelIdsOfSameType(items, channel.channelType);
+    final target = channelZapId(ids, channel.id, isNext: isNext);
     return IconButton(
       icon: Icon(isNext ? Icons.skip_next : Icons.skip_previous),
       color: Colors.white,
       tooltip: isNext ? '次のチャンネル' : '前のチャンネル',
-      onPressed: enabled
-          ? () {
-              final nextIndex = isNext
-                  ? (index + 1) % ids.length
-                  : (index - 1 + ids.length) % ids.length;
-              context.go('/watch/${ids[nextIndex]}');
-            }
-          : null,
+      onPressed: target == null ? null : () => zapToChannel(context, target),
     );
   }
 }
@@ -392,6 +434,17 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
 
   @override
   Widget build(BuildContext context) {
+    // PiP への入退室を購読する。向きと同じく親を差し替えず、矩形と情報パネルの
+    // 有無だけを変える (`PipWidget` のように `child`/`pipChild` を入れ替えると
+    // `_LivePlayer` の State が破棄され、mpv と PSI 取得が落ちる)。
+    return ValueListenableBuilder<bool>(
+      valueListenable: PipMode.instance.active,
+      builder: (context, pictureInPicture, _) =>
+          _buildLayout(pictureInPicture),
+    );
+  }
+
+  Widget _buildLayout(bool pictureInPicture) {
     // セッション開設 (tap起動) 中は映像側だけ読み込み表示し、
     // 情報パネルは出したままにする。
     final video = widget.stream.when(
@@ -409,6 +462,7 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
         return _LivePlayer(
           // URLが変わったらPlayerを作り直す (画質切替対応)。
           key: ValueKey(live.url.toString()),
+          pictureInPicture: pictureInPicture,
           sessionFactory: (player) => _liveSessionFactory(
             ref,
             player: player,
@@ -450,27 +504,37 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
         );
       },
     );
-    final info = Container(
-      color: Theme.of(context).colorScheme.surface,
-      child: ValueListenableBuilder<LivePsiController?>(
-        valueListenable: _psiNotifier,
-        builder: (context, psi, _) {
-          return _WatchInfoPanel(
-            item: widget.item,
-            controller: _jikkyo,
-            psi: psi,
-            // チャンネルの切替は `go` で視聴画面ごと置き換える。旧画面の Player と
-            // 実況コメント・番組情報のソケットはこれで解放される。
-            onChannelSelected: (id) => context.go('/watch/$id'),
-          );
-        },
-      ),
-    );
     // 映像は黒帯、情報パネルはテーマの地色で描画する。向きで `Row`/`Column` を
     // 出し分けると映像のサブツリーごと破棄される (画面回転と、media_kit の
     // フルスクリーンでウィンドウサイズが変わる°) ので [PlayerSplitLayout] に
     // 任せる (同ウィジェットのコメントを参照)。
-    return PlayerSplitLayout(video: video, info: info);
+    //
+    // PiP 中は情報パネルを描かない。不可視のまま載せると PSI の更新ごとに
+    // 作り直され続けるうえ、録画側と同じくコメント一覧が再生位置通知でフレームを
+    // 奪うため (録画側はコメント一覧、ライブ側は PSI 更新が該当)。
+    return PlayerSplitLayout(
+      pictureInPicture: pictureInPicture,
+      video: video,
+      info: pictureInPicture
+          ? const SizedBox.shrink()
+          : Container(
+              color: Theme.of(context).colorScheme.surface,
+              child: ValueListenableBuilder<LivePsiController?>(
+                valueListenable: _psiNotifier,
+                builder: (context, psi, _) {
+                  return _WatchInfoPanel(
+                    item: widget.item,
+                    controller: _jikkyo,
+                    psi: psi,
+                    // チャンネルの切替は視聴画面だけを差し替える。旧画面の
+                    // Player と実況コメント・番組情報のソケットはこれで解放される
+                    // ([zapToChannel] のコメントを参照)。
+                    onChannelSelected: (id) => zapToChannel(context, id),
+                  );
+                },
+              ),
+            ),
+    );
   }
 }
 
@@ -508,13 +572,16 @@ Future<LiveSession> _liveSessionFactory(
 /// 再生セッション ([LiveSession]) と EIT 取得 ([LivePsiController]) だけ
 /// ここが持つ。実況コメントの接続は外側 ([_WatchLayoutState]) が持つ。
 ///
-/// Riverpod は使わない。画質の購読は [_LiveQualityButton]、情報パネルのタブ
+/// **購読はしない。** 画質の購読は [_LiveSettingsButton]、情報パネルのタブ
 /// 選択は [_WatchInfoPanel] がそれぞれ持つため、ここでは購読するものが無い。
-/// セッションを持ち直す必要があるため `StatefulWidget` にする。
-class _LivePlayer extends StatefulWidget {
+/// PiP ウィンドウのチャンネル送りだけ `ref.read` で一覧を取り出す (build の
+/// 外側なので何も作り直さない)。
+/// セッションを持ち直す必要があるため `ConsumerStatefulWidget` にする。
+class _LivePlayer extends ConsumerStatefulWidget {
   const _LivePlayer({
     super.key,
     required this.sessionFactory,
+    required this.pictureInPicture,
     required this.item,
     required this.title,
     required this.showQualityMenu,
@@ -531,6 +598,9 @@ class _LivePlayer extends StatefulWidget {
 
   /// 再生セッション (mpvが開くURL+EIT用パケット列) を開く。
   final LiveSessionFactory sessionFactory;
+
+  /// Android の PiP ウィンドウにいるか。標準コントロールを隠す。
+  final bool pictureInPicture;
 
   /// 番組情報パネルに表示するチャンネル+番組。
   final ChannelItem item;
@@ -566,10 +636,10 @@ class _LivePlayer extends StatefulWidget {
   final ValueChanged<bool> onSubtitlesEnabledChanged;
 
   @override
-  State<_LivePlayer> createState() => _LivePlayerState();
+  ConsumerState<_LivePlayer> createState() => _LivePlayerState();
 }
 
-class _LivePlayerState extends State<_LivePlayer> {
+class _LivePlayerState extends ConsumerState<_LivePlayer> {
   late final PlayerPlaybackController _playback = PlayerPlaybackController(
     seekToLiveEdgeOnResume: true,
     initialDanmakuPreferences: widget.danmakuPreferences,
@@ -611,6 +681,15 @@ class _LivePlayerState extends State<_LivePlayer> {
   @override
   void initState() {
     super.initState();
+    // PiP ウィンドウのボタン (前/次チャンネル・再生/一時停止) と自動 PiP を有効に
+    // する。解除は `dispose` 側 ([PipMode.disable] のコメントを参照)。
+    unawaited(
+      PipMode.instance.enable(
+        owner: this,
+        actions: PipActionsLayout.media,
+        onAction: _onPipAction,
+      ),
+    );
     // `playing` はキャッシュ停滞で変わらないため、停滞検出は別途購読する。
     _playingSub = _playback.player.stream.playing.listen(_onPlayingForDanmaku);
     _bufferingSub = _playback.player.stream.buffering.listen(
@@ -621,13 +700,54 @@ class _LivePlayerState extends State<_LivePlayer> {
 
   /// 再生状態に弾幕時計を追従させる。再開時は一時停止中の壁時計分だけ
   /// 進めてライブエッジに追従させる (停止中のコメントが一斉に現れないよう)。
+  ///
+  /// PiP ウィンドウの play/pause ボタンの状態もここで合わせる。
   void _onPlayingForDanmaku(bool playing) {
+    PipMode.instance.reportPlaying(playing);
     if (!mounted) return;
     if (!playing && _playingForDanmaku) {
       _pausedAt = DateTime.now();
     }
     _playingForDanmaku = playing;
     _syncDanmakuRunning();
+  }
+
+  /// PiP ウィンドウのボタン操作を mpv とチャンネル切替に反映する。
+  ///
+  /// 前/次は標準コントロールのチャンネル送りと同じ規則
+  /// ([channelZapId]) で `go` する。視聴画面ごと置き換わるため、旧画面の
+  /// セッションと PSI 取得は解放される。
+  void _onPipAction(PipAction action) {
+    final player = _playback.player;
+    switch (action) {
+      case PipAction.play:
+        unawaited(player.play());
+      case PipAction.pause:
+        unawaited(player.pause());
+      case PipAction.previous:
+        _zapChannel(isNext: false);
+      case PipAction.next:
+        _zapChannel(isNext: true);
+      case PipAction.live:
+      case PipAction.rewind:
+      case PipAction.forward:
+        // PiP ウィンドウにはこれらは出さない (`PipActionsLayout.media`)。
+        break;
+    }
+  }
+
+  /// PiP ウィンドウのチャンネル送り。行き先が無いときは何もしない。
+  void _zapChannel({required bool isNext}) {
+    if (!mounted) return;
+    final items = ref.read(nowOnAirChannelsProvider).value;
+    if (items == null) return;
+    final target = channelZapId(
+      channelIdsOfSameType(items, widget.item.channel.channelType),
+      widget.item.channel.id,
+      isNext: isNext,
+    );
+    if (target == null) return;
+    zapToChannel(context, target);
   }
 
   /// バッファ (`paused-for-cache`) に弾幕時計を追従させる。停滞中は映像と
@@ -757,6 +877,10 @@ class _LivePlayerState extends State<_LivePlayer> {
     // 視聴画面を離れたときにソケットを閉じる (_jikkyo は外側が所有する)。
     _playingSub?.cancel();
     _bufferingSub?.cancel();
+    // 自動 PiP と PiP ウィンドウのボタンを戻す。停止の待たずに抜ける。
+    // チャンネル切替で新旧画面の破棄順が入れ替わっても壊れないよう、`owner` で
+    // 同一性を判別する ([PipMode.disable] を参照)。
+    unawaited(PipMode.instance.disable(owner: this));
     _psi?.dispose();
     _psi = null;
     _audioLayout.dispose();
@@ -809,6 +933,9 @@ class _LivePlayerState extends State<_LivePlayer> {
             backFallbackPath: '/tv',
           ),
           layout: PlayerControlsLayout.live,
+          // PiP 中は標準コントロールを出さない (操作はシステムの PiP ボタンと
+          // 画面タップで戻ることになり、Flutter 側では触れないため)。
+          showControls: !widget.pictureInPicture,
           livePrimaryButtonBar: [
             const Spacer(flex: 2),
             _ChannelZapButton(
@@ -821,7 +948,7 @@ class _LivePlayerState extends State<_LivePlayer> {
             _ChannelZapButton(channel: widget.item.channel, isNext: true),
             const Spacer(flex: 2),
           ],
-          // 下部バーは「字幕 → 設定 → フルスクリーン」の並び。
+          // 下部バーは「字幕 → 設定 → PiP → フルスクリーン」の並び。
           liveBottomButtonBar: [
             const Spacer(),
             SubtitleToggleButton(
@@ -829,6 +956,7 @@ class _LivePlayerState extends State<_LivePlayer> {
               onToggled: _playback.toggleSubtitles,
             ),
             settingsButton(),
+            const PipModeButton(),
             const MaterialFullscreenButton(),
           ],
           liveDesktopBottomButtonBar: [
@@ -845,6 +973,7 @@ class _LivePlayerState extends State<_LivePlayer> {
               onToggled: _playback.toggleSubtitles,
             ),
             settingsButton(),
+            const PipModeButton(),
             const MaterialDesktopFullscreenButton(),
           ],
           danmaku: jikkyo.isSupported
