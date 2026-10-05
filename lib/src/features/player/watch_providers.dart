@@ -39,7 +39,7 @@ class WatchInfoTab extends _$WatchInfoTab {
   /// タブを切り替える。範囲外の値は無視する。
   void select(int index) {
     if (index < ProgramInfoPanel.programTab ||
-        index > ProgramInfoPanel.commentTab) {
+        index > ProgramInfoPanel.captureTab) {
       return;
     }
     if (state == index) return;

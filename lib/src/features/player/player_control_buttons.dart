@@ -70,6 +70,49 @@ class SubtitleToggleButton extends StatelessWidget {
   }
 }
 
+/// キャプチャ (mpv のスクリーンショット) ボタン。ライブ視聴と録画再生で共有する。
+///
+/// 字幕ボタンの左に置く。撮像・保存は呼び出し側が行い、ここでは表示と入力
+/// だけを受け持つ ([SubtitleToggleButton] と同じく購読物を持たないため、
+/// 映像の再構築に影響しない)。
+class CaptureButton extends StatelessWidget {
+  const CaptureButton({super.key, required this.onPressed});
+
+  /// 押下時に呼ぶ。
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.photo_camera_outlined),
+      color: Colors.white,
+      tooltip: 'キャプチャ',
+      onPressed: onPressed,
+    );
+  }
+}
+
+/// 弾幕付きキャプチャボタン。表示中の弾幕を重ねて保存する。
+///
+/// キャプチャボタンの左に置く。弾幕が無いときは通常キャプチャとして保存
+/// する (通知はしない)。
+class DanmakuCaptureButton extends StatelessWidget {
+  const DanmakuCaptureButton({super.key, required this.onPressed});
+
+  /// 押下時に呼ぶ。
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.photo_camera_back_outlined),
+      color: Colors.white,
+      tooltip: '弾幕付きキャプチャ',
+      onPressed: onPressed,
+    );
+  }
+}
+
 /// 情報パネル (番組情報・実況コメント) の表示を切り替えるボタン。
 ///
 /// デスクトップの下部バーで、PiP ボタンの位置に置く。PiP は Android 専用で

@@ -360,6 +360,8 @@ class JikkyoDanmakuLayer extends StatelessWidget {
     super.key,
     required this.displayAspect,
     required this.child,
+    this.repaintKey,
+    this.capturePixelRatio,
   });
 
   /// 映像の表示アスペクト比 (幅 / 高さ)。未確定なら null。
@@ -368,10 +370,55 @@ class JikkyoDanmakuLayer extends StatelessWidget {
   /// 矩形内に描くウィジェット ([JikkyoDanmakuOverlay])。
   final Widget child;
 
+  /// 弾幕付きキャプチャ用の撮像境界のキー。
+  ///
+  /// 弾幕レイヤーの**内側** (表示矩形そのもの) に [RepaintBoundary] を置く。
+  /// 外側に置くとレターボックス分も撮像され、mpv 撮像 (黒帯なし) との合成で
+  /// ズレる。内側なら両者は同じ矩形なので 1:1 で重なる。
+  ///
+  /// 所有者は store/clock と同じく回転で生き残る State
+  /// (`_WatchLayoutState` / `_VideoPlayerState`) が持ち、ここでは参照する
+  /// だけ。null のときは撮像しない。
+  final GlobalKey? repaintKey;
+
+  /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
+  ///
+  /// 弾幕エンジンは `MediaQuery.devicePixelRatio` の解像度で文字をラスタ化
+  /// するため、そのまま撮像・引き伸ばし合成すると DPR=1 の環境 (Linux) で
+  /// ぼやける。撮像の直前だけこの値 (mpv 撮像の幅 / 境界の論理幅) を立て、
+  /// エンジンに等倍の解像度で描き直させてから撮像し、直後に null へ戻す。
+  /// 配置・軌道は DPR 非依存のため表示内容は変わらない (エンジンの
+  /// `didChangeDependencies` は画像キャッシュだけ落とす)。
+  ///
+  /// 所有者は [repaintKey] と同じ State が持つ。購読はこの層の中だけに閉じ、
+  /// 映像の再構築に巻き込まない。
+  final ValueListenable<double?>? capturePixelRatio;
+
   @override
   Widget build(BuildContext context) {
     final aspect = displayAspect;
     if (aspect == null) return const SizedBox.shrink();
-    return Align(child: AspectRatio(aspectRatio: aspect, child: child));
+    final repaintKey = this.repaintKey;
+    Widget content = child;
+    final capturePixelRatio = this.capturePixelRatio;
+    if (capturePixelRatio != null) {
+      content = ValueListenableBuilder<double?>(
+        valueListenable: capturePixelRatio,
+        builder: (context, ratio, cachedChild) {
+          if (ratio == null) return cachedChild!;
+          final data = MediaQuery.of(context);
+          if (data.devicePixelRatio == ratio) return cachedChild!;
+          return MediaQuery(
+            data: data.copyWith(devicePixelRatio: ratio),
+            child: cachedChild!,
+          );
+        },
+        child: child,
+      );
+    }
+    if (repaintKey != null) {
+      content = RepaintBoundary(key: repaintKey, child: content);
+    }
+    return Align(child: AspectRatio(aspectRatio: aspect, child: content));
   }
 }

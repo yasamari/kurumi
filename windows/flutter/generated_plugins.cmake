@@ -5,6 +5,7 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   audio_service_win
   dynamic_color
+  gal
   media_kit_libs_windows_video
   media_kit_video
 )

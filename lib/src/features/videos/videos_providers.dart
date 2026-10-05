@@ -179,7 +179,7 @@ class VideoPlayQuality extends _$VideoPlayQuality {
   }
 }
 
-/// 録画再生画面の情報タブ。永続化しない。0=番組情報、1=コメント。
+/// 録画再生画面の情報タブ。永続化しない。0=番組情報、1=コメント、2=キャプチャ。
 ///
 /// 再生画面の `Row` / `Column` 切り替えの内側にあるため、選択を保つには
 /// この keepAlive provider が持つ必要がある (ライブの
@@ -191,7 +191,7 @@ class VideoInfoTab extends _$VideoInfoTab {
 
   /// タブを切り替える。範囲外の値は無視する。
   void select(int index) {
-    if (index < 0 || index > 1 || state == index) return;
+    if (index < 0 || index > 2 || state == index) return;
     state = index;
   }
 }

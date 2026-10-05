@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
@@ -34,6 +35,7 @@ import 'jikkyo_danmaku_overlay.dart';
 import 'live_psi_controller.dart';
 import 'live_session.dart';
 import 'mpv_options.dart';
+import 'player_capture.dart';
 import 'player_control_buttons.dart';
 import 'player_playback_controller.dart';
 import 'player_providers.dart';
@@ -204,6 +206,7 @@ class _WatchInfoPanel extends ConsumerWidget {
     required this.item,
     required this.controller,
     required this.onChannelSelected,
+    required this.captures,
     this.psi,
   });
 
@@ -220,6 +223,9 @@ class _WatchInfoPanel extends ConsumerWidget {
   /// チャンネル切替タブでチャンネルを選んだときのコールバック。
   final ValueChanged<String> onChannelSelected;
 
+  /// キャプチャ一覧の通知元。[_WatchLayoutState] が所有する。
+  final ValueListenable<List<CaptureEntry>> captures;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final psi = this.psi;
@@ -230,6 +236,7 @@ class _WatchInfoPanel extends ConsumerWidget {
       onDestinationSelected: (index) =>
           ref.read(watchInfoTabProvider.notifier).select(index),
       onChannelSelected: onChannelSelected,
+      captures: captures,
       livePresent: psi?.present,
       liveFollowing: psi?.following,
     );
@@ -416,6 +423,18 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
   /// 最新の EIT[p/f] 取得状態。`_LivePlayerState` が開設のたびに更新する。
   final ValueNotifier<LivePsiController?> _psiNotifier = ValueNotifier(null);
 
+  /// キャプチャ一覧。チャンネル切り替えで破棄される (セッション内のみ保持)。
+  final ValueNotifier<List<CaptureEntry>> _captures = ValueNotifier([]);
+
+  /// 弾幕付きキャプチャ用の撮像境界のキー。回転で生き残る位置で持つ。
+  final GlobalKey _danmakuBoundaryKey = GlobalKey();
+
+  /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
+  /// 購読は弾幕の層の中だけ ([JikkyoDanmakuLayer] 参照)。
+  final ValueNotifier<double?> _danmakuCapturePixelRatio = ValueNotifier(
+    null,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -433,6 +452,8 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
     _danmakuClock.dispose();
     _danmakuStore.dispose();
     _psiNotifier.dispose();
+    _captures.dispose();
+    _danmakuCapturePixelRatio.dispose();
     super.dispose();
   }
 
@@ -482,6 +503,9 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
           danmakuStore: _danmakuStore,
           danmakuClock: _danmakuClock,
           psiNotifier: _psiNotifier,
+          danmakuBoundaryKey: _danmakuBoundaryKey,
+          danmakuCapturePixelRatio: _danmakuCapturePixelRatio,
+          captures: _captures,
           danmakuPreferences: danmakuPreferencesOf(settings),
           subtitlesEnabled:
               settings?.subtitlesEnabled ?? defaultSubtitlesEnabled,
@@ -535,6 +559,7 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
               // 実況コメント・番組情報のソケットはこれで解放される
               // ([zapToChannel] のコメントを参照)。
               onChannelSelected: (id) => zapToChannel(context, id),
+              captures: _captures,
             );
           },
         ),
@@ -595,6 +620,9 @@ class _LivePlayer extends ConsumerStatefulWidget {
     required this.danmakuStore,
     required this.danmakuClock,
     required this.psiNotifier,
+    required this.danmakuBoundaryKey,
+    required this.danmakuCapturePixelRatio,
+    required this.captures,
     required this.danmakuPreferences,
     required this.subtitlesEnabled,
     required this.onDanmakuPreferencesChanged,
@@ -626,6 +654,16 @@ class _LivePlayer extends ConsumerStatefulWidget {
 
   /// 最新の EIT[p/f] 取得状態の通知先。[_WatchLayoutState] が持つ。
   final ValueNotifier<LivePsiController?> psiNotifier;
+
+  /// 弾幕付きキャプチャ用の撮像境界のキー。[_WatchLayoutState] が所有する。
+  final GlobalKey danmakuBoundaryKey;
+
+  /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
+  /// [_WatchLayoutState] が所有する。
+  final ValueNotifier<double?> danmakuCapturePixelRatio;
+
+  /// キャプチャ一覧の通知先。[_WatchLayoutState] が持つ。
+  final ValueNotifier<List<CaptureEntry>> captures;
 
   /// 弾幕の表示設定の初期値。永続化済みの値 ([_WatchLayoutState] が
   /// `AppSettings` から読んで渡す)。
@@ -807,6 +845,75 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     } else {
       clock.setRunning(false);
     }
+  }
+
+  /// キャプチャを実行する。成功時は通知せず、キャプチャタブへ追加する。
+  ///
+  /// 撮影時の番組情報 (EIT[p/f] の現在番組) をスナップショットして EXIF に
+  /// 入れる。EIT 未受信時はチャンネル名と撮影時刻で埋める。
+  void _capture({required bool withDanmaku}) {
+    final at = DateTime.now();
+    final present = _psi?.present;
+    final startAt = present?.startAt ?? at;
+    final endAt = present?.endAt ?? at;
+    unawaited(
+      runPlayerCapture(
+        context: context,
+        player: _playback.player,
+        withDanmaku: withDanmaku,
+        danmakuBoundaryKey: widget.danmakuBoundaryKey,
+        danmakuVisible:
+            _jikkyo.isSupported &&
+            _playback.danmakuPreferences.value.enabled &&
+            _playback.videoDisplayAspect != null,
+        capturePixelRatio: widget.danmakuCapturePixelRatio,
+        metadata: CaptureMetadata(
+          capturedAt: at,
+          playbackPositionSec: present == null
+              ? 0
+              : at.difference(startAt).inMilliseconds / 1000,
+          networkId: widget.item.channel.networkId,
+          serviceId: widget.item.channel.serviceId,
+          eventId: present?.eventId ?? 0,
+          title: present?.title ?? widget.title,
+          description: present?.description ?? '',
+          startAt: startAt,
+          endAt: endAt,
+          durationSec: present == null
+              ? 0
+              : endAt.difference(startAt).inSeconds,
+          isCaptionComposited: _playback.subtitlesEnabled.value,
+        ),
+        onCaptured: (entry) {
+          if (!mounted) return;
+          widget.captures.value = appendCaptureEntry(
+            widget.captures.value,
+            entry,
+          );
+        },
+      ),
+    );
+  }
+
+  /// キーボードショートカット。`c` でキャプチャ、`v` で弾幕付きキャプチャ。
+  ///
+  /// media_kit のフルスクリーンは別ルートになるためここでは効かず、
+  /// ボタンを使う。設定メニューを開いている間はフォーカスが移るため
+  /// 誤爆しない。
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    // 長押しのリピートでは連写しない。
+    if (event is KeyRepeatEvent || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyC) {
+      _capture(withDanmaku: false);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyV) {
+      _capture(withDanmaku: true);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
   }
 
   JikkyoCommentController get _jikkyo => widget.controller;
@@ -996,8 +1103,13 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
           onDanmakuPreferencesChanged: _playback.setDanmakuPreferences,
           showQualityMenu: widget.showQualityMenu,
         );
-        return PlayerVideoView(
-          videoController: _playback.videoController,
+        // キーボードショートカット (`c` / `v`) を受ける。プレイヤー画面に
+        // テキスト入力は無いためフォーカス競合は起きない。
+        return Focus(
+          autofocus: true,
+          onKeyEvent: _onKeyEvent,
+          child: PlayerVideoView(
+            videoController: _playback.videoController,
           topButtonBar: buildPlayerTopButtonBar(
             title: widget.title,
             backFallbackPath: '/tv',
@@ -1018,10 +1130,15 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
             _ChannelZapButton(channel: widget.item.channel, isNext: true),
             const Spacer(flex: 2),
           ],
-          // 下部バーは「字幕 → 設定 → PiP → フルスクリーン」の並び。
+          // 下部バーは「キャプチャ → 弾幕付きキャプチャ → 字幕 → 設定 →
+          // PiP → フルスクリーン」の並び。
           // (デスクトップは PiP の代わりに情報パネルの表示切替が入る)
           liveBottomButtonBar: [
             const Spacer(),
+            CaptureButton(onPressed: () => _capture(withDanmaku: false)),
+            DanmakuCaptureButton(
+              onPressed: () => _capture(withDanmaku: true),
+            ),
             SubtitleToggleButton(
               enabled: _playback.subtitlesEnabled,
               onToggled: _playback.toggleSubtitles,
@@ -1039,6 +1156,10 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
             _ChannelZapButton(channel: widget.item.channel, isNext: true),
             const MaterialDesktopVolumeButton(),
             const Spacer(),
+            CaptureButton(onPressed: () => _capture(withDanmaku: false)),
+            DanmakuCaptureButton(
+              onPressed: () => _capture(withDanmaku: true),
+            ),
             SubtitleToggleButton(
               enabled: _playback.subtitlesEnabled,
               onToggled: _playback.toggleSubtitles,
@@ -1056,6 +1177,8 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
           danmaku: jikkyo.isSupported
               ? JikkyoDanmakuLayer(
                   displayAspect: _playback.videoDisplayAspect,
+                  repaintKey: widget.danmakuBoundaryKey,
+                  capturePixelRatio: widget.danmakuCapturePixelRatio,
                   child: JikkyoDanmakuOverlay(
                     controller: jikkyo,
                     store: widget.danmakuStore,
@@ -1066,6 +1189,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
               : null,
           errorMessage: _playback.errorMessage,
           onRetry: _open,
+          ),
         );
       },
     );

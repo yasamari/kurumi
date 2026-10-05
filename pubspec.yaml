@@ -86,6 +86,9 @@ dependencies:
       ref: 8ad650c6eb487208b9861d44755c8e58db061c88
   # Linux の MPRIS 実装 (federated plugin。依存追加だけで自動登録される)。
   audio_service_mpris: ^0.2.1
+  gal: ^2.3.3
+  gal_linux: ^0.1.2
+  image: ^4.10.1
 
 # Android の libmpv を自前のビルドに差し替える。
 # media_kit_libs_android_video は Android プラットフォームのみの対象で、

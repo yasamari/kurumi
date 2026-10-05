@@ -24,6 +24,10 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>キャプチャ画像を写真ライブラリに保存するために使用します。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>キャプチャ画像をアルバムに保存するために使用します。</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

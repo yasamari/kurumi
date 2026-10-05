@@ -1,11 +1,14 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/widgets/program_detail_body.dart';
 import '../../domain/entities/channel_item.dart';
 import '../../domain/entities/tv_program.dart';
+import 'capture_list_panel.dart';
 import 'channel_switch_panel.dart';
 import 'comment_list_panel.dart';
 import 'jikkyo_comment_source.dart';
+import 'player_capture.dart';
 
 /// 情報パネル下端のナビゲーションバーの高さ。
 const playerInfoTabsHeight = 64.0;
@@ -82,8 +85,8 @@ class PlayerInfoTabs extends StatelessWidget {
 /// 自身でスクロールする (`SingleChildScrollView`)。呼び出し側は縦画面なら
 /// 映像の下の `Expanded` に、横画面なら映像の右の固定幅ボックスに置く。
 ///
-/// 下端に [NavigationBar] を置き、番組情報・チャンネル切替・実況コメントを
-/// 切り替える (土台は [PlayerInfoTabs])。
+/// 下端に [NavigationBar] を置き、番組情報・チャンネル切替・実況コメント・
+/// キャプチャを切り替える (土台は [PlayerInfoTabs])。
 ///
 /// **タブの選択状態は持たない** (制御コンポーネント)。このウィジェットは
 /// 視聴画面の `Row` / `Column` 切り替えの内側に置かれるため、画面の向きが変わると
@@ -97,6 +100,7 @@ class ProgramInfoPanel extends StatelessWidget {
     required this.selectedIndex,
     required this.onDestinationSelected,
     required this.onChannelSelected,
+    required this.captures,
     this.livePresent,
     this.liveFollowing,
   });
@@ -106,7 +110,8 @@ class ProgramInfoPanel extends StatelessWidget {
   /// 実況コメントの取得状態。呼び出し側 (`_WatchLayoutState`) が所有する。
   final JikkyoCommentSource controller;
 
-  /// 選択中のタブ。[programTab] / [channelTab] / [commentTab] のいずれか。
+  /// 選択中のタブ。
+  /// [programTab] / [channelTab] / [commentTab] / [captureTab] のいずれか。
   final int selectedIndex;
 
   /// タブ選択時のコールバック。
@@ -114,6 +119,10 @@ class ProgramInfoPanel extends StatelessWidget {
 
   /// チャンネル切替タブでチャンネルを選んだときのコールバック。
   final ValueChanged<String> onChannelSelected;
+
+  /// キャプチャ一覧の通知元。呼び出し側 (`_WatchLayoutState`) が所有する。
+  /// 購読はキャプチャタブの中だけに行う (映像の再構築に巻き込まないため)。
+  final ValueListenable<List<CaptureEntry>> captures;
 
   /// ライブEIT[p/f] 由来の現在番組。未受信時は取得中表示になる。
   final TvProgram? livePresent;
@@ -125,11 +134,12 @@ class ProgramInfoPanel extends StatelessWidget {
   static const programTab = 0;
   static const channelTab = 1;
   static const commentTab = 2;
+  static const captureTab = 3;
 
   @override
   Widget build(BuildContext context) {
     return PlayerInfoTabs(
-      tabCount: 3,
+      tabCount: 4,
       selectedIndex: selectedIndex,
       onDestinationSelected: onDestinationSelected,
       destinations: const [
@@ -147,6 +157,11 @@ class ProgramInfoPanel extends StatelessWidget {
           icon: Icon(Icons.chat_bubble_outline),
           selectedIcon: Icon(Icons.chat_bubble),
           label: 'コメント',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.photo_library_outlined),
+          selectedIcon: Icon(Icons.photo_library),
+          label: 'キャプチャ',
         ),
       ],
       children: [
@@ -179,6 +194,12 @@ class ProgramInfoPanel extends StatelessWidget {
         // ウィジェットは破棄されるため)。
         if (selectedIndex == commentTab)
           CommentListPanel(controller: controller)
+        else
+          const SizedBox.shrink(),
+        // キャプチャタブが選択されている間だけ載せる。不可視の画像デコードを
+        // 避けるため (コメントタブと同じ)。
+        if (selectedIndex == captureTab)
+          CaptureListPanel(captures: captures)
         else
           const SizedBox.shrink(),
       ],

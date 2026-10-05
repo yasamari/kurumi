@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:canvas_danmaku/canvas_danmaku.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:media_kit/media_kit.dart';
@@ -22,6 +24,7 @@ import '../../domain/repositories/tv_repository.dart';
 import '../../domain/repositories/video_repository.dart';
 import '../videos/videos_providers.dart';
 import 'audio_switch.dart';
+import 'capture_list_panel.dart';
 import 'comment_list_panel.dart';
 import 'danmaku_settings.dart';
 import 'jikkyo_comment_source.dart';
@@ -29,6 +32,7 @@ import 'jikkyo_danmaku_item.dart';
 import 'jikkyo_danmaku_overlay.dart';
 import 'jikkyo_past_comment_controller.dart';
 import 'mpv_options.dart';
+import 'player_capture.dart';
 import 'player_control_buttons.dart';
 import 'player_playback_controller.dart';
 import 'player_providers.dart';
@@ -232,6 +236,18 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   bool _playingForDanmaku = false;
   bool _bufferingForDanmaku = false;
 
+  /// キャプチャ一覧。画質切替で破棄される (セッション内のみ保持)。
+  final ValueNotifier<List<CaptureEntry>> _captures = ValueNotifier([]);
+
+  /// 弾幕付きキャプチャ用の撮像境界のキー。回転で生き残る位置で持つ。
+  final GlobalKey _danmakuBoundaryKey = GlobalKey();
+
+  /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
+  /// 購読は弾幕の層の中だけ ([JikkyoDanmakuLayer] 参照)。
+  final ValueNotifier<double?> _danmakuCapturePixelRatio = ValueNotifier(
+    null,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -389,6 +405,66 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     }
   }
 
+  /// キャプチャを実行する。成功時は通知せず、キャプチャタブへ追加する。
+  ///
+  /// 番組情報は録画メタデータ、再生位置は現在の mpv 位置から取る。
+  void _capture({required bool withDanmaku}) {
+    final video = widget.video;
+    final at = DateTime.now();
+    final channel = video.channel;
+    unawaited(
+      runPlayerCapture(
+        context: context,
+        player: _playback.player,
+        withDanmaku: withDanmaku,
+        danmakuBoundaryKey: _danmakuBoundaryKey,
+        danmakuVisible:
+            _pastComments.isSupported &&
+            _playback.danmakuPreferences.value.enabled &&
+            _playback.videoDisplayAspect != null,
+        capturePixelRatio: _danmakuCapturePixelRatio,
+        metadata: CaptureMetadata(
+          capturedAt: at,
+          playbackPositionSec:
+              _playback.player.state.position.inMilliseconds / 1000,
+          networkId: channel?.networkId ?? 0,
+          serviceId: channel?.serviceId ?? 0,
+          eventId: video.id,
+          title: video.title,
+          description: video.description,
+          startAt: video.startAt,
+          endAt: video.endAt,
+          durationSec: video.endAt.difference(video.startAt).inSeconds,
+          isCaptionComposited: _playback.subtitlesEnabled.value,
+        ),
+        onCaptured: (entry) {
+          if (!mounted) return;
+          _captures.value = appendCaptureEntry(_captures.value, entry);
+        },
+      ),
+    );
+  }
+
+  /// キーボードショートカット。`c` でキャプチャ、`v` で弾幕付きキャプチャ。
+  ///
+  /// media_kit のフルスクリーンは別ルートになるためここでは効かず、
+  /// ボタンを使う。
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    // 長押しのリピートでは連写しない。
+    if (event is KeyRepeatEvent || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyC) {
+      _capture(withDanmaku: false);
+      return KeyEventResult.handled;
+    }
+    if (event.logicalKey == LogicalKeyboardKey.keyV) {
+      _capture(withDanmaku: true);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
   /// 再生位置に弾幕時計を追従させる。外挿とのずれが開いたら補正する
   /// (シーク時は大きくずれるため、そのまま時計が飛ぶ)。
   void _onPositionForDanmaku(Duration position) {
@@ -464,6 +540,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     _pastComments.dispose();
     _danmakuClock.dispose();
     _danmakuStore.dispose();
+    _captures.dispose();
+    _danmakuCapturePixelRatio.dispose();
     _playback.dispose();
     super.dispose();
   }
@@ -495,8 +573,9 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     final video = ListenableBuilder(
       listenable: _playback,
       builder: (context, _) {
-        // 下部バーは「字幕 → 設定 → PiP → フルスクリーン」の並び。録画の下端は
-        // media_kit の既定構成に字幕・設定・PiP を足す。
+        // 下部バーは「キャプチャ → 弾幕付きキャプチャ → 字幕 → 設定 →
+        // PiP → フルスクリーン」の並び。録画の下端は
+        // media_kit の既定構成にキャプチャ・字幕・設定・PiP を足す。
         // (デスクトップは PiP の代わりに情報パネルの表示切替が入る)
         Widget settingsButton() => _VideoSettingsButton(
           player: _playback.player,
@@ -507,8 +586,13 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           onDanmakuPreferencesChanged: _playback.setDanmakuPreferences,
           quality: widget.quality,
         );
-        return PlayerVideoView(
-          videoController: _playback.videoController,
+        // キーボードショートカット (`c` / `v`) を受ける。プレイヤー画面に
+        // テキスト入力は無いためフォーカス競合は起きない。
+        return Focus(
+          autofocus: true,
+          onKeyEvent: _onKeyEvent,
+          child: PlayerVideoView(
+            videoController: _playback.videoController,
           topButtonBar: buildPlayerTopButtonBar(
             title: widget.video.title,
             backFallbackPath: '/videos',
@@ -520,6 +604,10 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           seekableBottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
+            CaptureButton(onPressed: () => _capture(withDanmaku: false)),
+            DanmakuCaptureButton(
+              onPressed: () => _capture(withDanmaku: true),
+            ),
             SubtitleToggleButton(
               enabled: _playback.subtitlesEnabled,
               onToggled: _playback.toggleSubtitles,
@@ -535,6 +623,10 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
             const MaterialDesktopVolumeButton(),
             const MaterialDesktopPositionIndicator(),
             const Spacer(),
+            CaptureButton(onPressed: () => _capture(withDanmaku: false)),
+            DanmakuCaptureButton(
+              onPressed: () => _capture(withDanmaku: true),
+            ),
             SubtitleToggleButton(
               enabled: _playback.subtitlesEnabled,
               onToggled: _playback.toggleSubtitles,
@@ -552,6 +644,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           danmaku: pastComments.isSupported
               ? JikkyoDanmakuLayer(
                   displayAspect: _playback.videoDisplayAspect,
+                  repaintKey: _danmakuBoundaryKey,
+                  capturePixelRatio: _danmakuCapturePixelRatio,
                   child: JikkyoDanmakuOverlay(
                     controller: pastComments,
                     store: _danmakuStore,
@@ -566,6 +660,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
               : null,
           errorMessage: _playback.errorMessage,
           onRetry: _open,
+          ),
         );
       },
     );
@@ -595,6 +690,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           comments: pastComments,
           syncStart: pastComments.syncStart,
           positionStream: _playback.position,
+          captures: _captures,
         ),
       ),
     );
@@ -654,12 +750,12 @@ class _VideoSettingsButton extends ConsumerWidget {
   }
 }
 
-/// 録画再生画面用の情報パネル。番組情報と実況コメントの2タブ。
+/// 録画再生画面用の情報パネル。番組情報と実況コメント、キャプチャの3タブ。
 ///
 /// チャンネル切替タブは無い (録画はチャンネル送りしない)。
 /// 選択位置は `videoInfoTabProvider` (keepAlive) が持つ。
 /// コメント一覧は再生位置に追従する ([CommentListPanel] の録画モード)。
-/// コメントタブは選択されている間だけ載せる。不可視のまま載せると再生位置
+/// コメント・キャプチャタブは選択されている間だけ載せる。不可視のまま載せると再生位置
 /// 通知のたびに作り直し・移動を続けて映像のフレームを奪う (ライブの
 /// [ProgramInfoPanel] と同じ)。番組情報は静的なので載せたままにする
 /// (スクロール位置の保持のため。ライブと同じ)。
@@ -669,6 +765,7 @@ class _PlayInfoPanel extends ConsumerWidget {
     required this.comments,
     required this.syncStart,
     required this.positionStream,
+    required this.captures,
   });
 
   final VideoProgram video;
@@ -680,11 +777,14 @@ class _PlayInfoPanel extends ConsumerWidget {
   /// 再生位置のストリーム。
   final Stream<Duration> positionStream;
 
+  /// キャプチャ一覧の通知元。この画面の State が所有する。
+  final ValueListenable<List<CaptureEntry>> captures;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedIndex = ref.watch(videoInfoTabProvider);
     return PlayerInfoTabs(
-      tabCount: 2,
+      tabCount: 3,
       selectedIndex: selectedIndex,
       onDestinationSelected: (index) =>
           ref.read(videoInfoTabProvider.notifier).select(index),
@@ -698,6 +798,11 @@ class _PlayInfoPanel extends ConsumerWidget {
           icon: Icon(Icons.chat_bubble_outline),
           selectedIcon: Icon(Icons.chat_bubble),
           label: 'コメント',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.photo_library_outlined),
+          selectedIcon: Icon(Icons.photo_library),
+          label: 'キャプチャ',
         ),
       ],
       children: [
@@ -720,6 +825,11 @@ class _PlayInfoPanel extends ConsumerWidget {
             syncStart: syncStart,
             positionStream: positionStream,
           )
+        else
+          const SizedBox.shrink(),
+        // キャプチャタブも選択中だけ載せる (不可視の画像デコードを避けるため)。
+        if (selectedIndex == 2)
+          CaptureListPanel(captures: captures)
         else
           const SizedBox.shrink(),
       ],
