@@ -75,6 +75,53 @@ IconData commentJumpIcon({
       : Icons.arrow_upward;
 }
 
+/// ライブ一覧で今回新たに末尾へ足された件数を返す純粋関数.
+///
+/// 一覧はコメ番 `no` の昇順 (末尾が最新) のため、[prevMaxNo] より大きい
+/// コメ番が末尾から連続する分だけが新着になる。上限
+/// ([jikkyoCommentBufferSize]) 到達時は同数だけ先頭から捨てられるため、
+/// この件数が追従アニメーションの距離の目安になる。初回 ([prevLength] が
+/// 0 以下) は全件を新着とみなす。
+int countAppendedLiveComments({
+  required List<JikkyoComment> comments,
+  required int prevLength,
+  required int prevMaxNo,
+}) {
+  if (comments.isEmpty) return 0;
+  if (prevLength <= 0) return comments.length;
+  var added = 0;
+  for (var i = comments.length - 1; i >= 0; i--) {
+    if (comments[i].no > prevMaxNo) {
+      added++;
+    } else {
+      break;
+    }
+  }
+  return added;
+}
+
+/// 上限到達で先頭を捨てた分だけスクロール位置を先に戻す量 (論理ピクセル) を
+/// 返す純粋関数.
+///
+/// 末端追従中に先頭が捨てられると、同じオフセットのまま可視内容が前に進んで
+/// しまい、末端への `animateTo` の距離がほぼ 0 になって追従のアニメーション
+/// が消える (新着が瞬時に出たように見える)。捨てた高さの分だけ先に戻して
+/// から末端へ動かすと、新着の高さ分のアニメーションが復活する。行高は可変
+/// のため平均で見積もる (全高 = maxScrollExtent + viewportDimension)。
+/// 補正が要らないときは 0 を返す。
+double liveCapCompensationShift({
+  required double maxScrollExtent,
+  required double viewportDimension,
+  required int prevLength,
+  required int droppedCount,
+}) {
+  if (prevLength <= 0 || droppedCount <= 0) return 0;
+  if (!(maxScrollExtent > 0) || !(viewportDimension > 0)) return 0;
+  final average = (maxScrollExtent + viewportDimension) / prevLength;
+  if (!(average > 0)) return 0;
+  return average * droppedCount;
+}
+
 /// ニコニコ実況コメントの一覧表示。
 ///
 /// コメント本文と投稿時刻のみを表示する。色・サイズ・位置は `mail` コマンドから
@@ -164,6 +211,17 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// プログラム側のスクロール中にスクロール通知を無視するための旗。
   bool _programmatic = false;
 
+  /// 上限補正の先戻し中にスクロール通知を無視するための旗。
+  ///
+  /// [_compensateLiveCap] の `jumpTo` から次フレームの末端移動までの間に
+  /// 届く通知をユーザー操作と誤検出しないためのもの。[_programmatic] とは
+  /// 別に持つ (末端移動が不要で終わる場合に旗を残さないため)。
+  bool _compensating = false;
+
+  /// ライブ一覧の前回反映時の件数と最大コメ番。上限到達時の補正に使う。
+  int _prevLiveLength = 0;
+  int _prevLiveMaxNo = 0;
+
   /// ライブの末端へのアニメーション移動の世代。連続する新着で前のアニメーション
   /// が残っている間に次が始まるため、古い完了で旗を戻さないよう数える。
   int _livePinGeneration = 0;
@@ -186,6 +244,9 @@ class _CommentListPanelState extends State<CommentListPanel> {
     _positions.itemPositions.addListener(_onPositionsChanged);
     _positionSub = widget.positionStream?.listen(_onPosition);
     _lastDue = _dueCount();
+    final initial = widget.controller.state.comments;
+    _prevLiveLength = initial.length;
+    _prevLiveMaxNo = initial.isEmpty ? 0 : initial.last.no;
     // ライブは初回配置の直後に末端 (最新) へ寄せる。通常リストの初期位置は
     // 先頭 (最古) のため、この1回が無いと新着まで最古が表示され続ける。
     // 初回は映像の読み込みと重なるためアニメーションせず瞬時に寄せる。
@@ -203,6 +264,9 @@ class _CommentListPanelState extends State<CommentListPanel> {
       oldWidget.controller.removeListener(_onCommentsChanged);
       widget.controller.addListener(_onCommentsChanged);
       _lastDue = _dueCount();
+      final current = widget.controller.state.comments;
+      _prevLiveLength = current.length;
+      _prevLiveMaxNo = current.isEmpty ? 0 : current.last.no;
     }
     if (oldWidget.positionStream != widget.positionStream) {
       _positionSub?.cancel();
@@ -252,7 +316,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// 距離が開いたらユーザー操作による離脱とみなす。
   bool _onScrollNotification(ScrollNotification notification) {
     if (_isPlayback || notification is! ScrollUpdateNotification) return false;
-    if (_programmatic) return false;
+    if (_programmatic || _compensating) return false;
     if (!_following) return false;
     final metrics = notification.metrics;
     if (metrics.maxScrollExtent - metrics.pixels > liveFollowEndThreshold) {
@@ -323,7 +387,10 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// コメントの増減を反映し、追従中なら表示位置を保つ。
   ///
   /// ライブは追記で伸びた末端へ寄せ直し、最新コメントを常に一番下に据える。
-  /// 既存行の添字と内容は不変のため、再構築では新着行だけが配置される。
+  /// 上限 ([jikkyoCommentBufferSize]) 前は既存行の添字と内容は不変のため、
+  /// 再構築では新着行だけが配置される。上限到達時は先頭が捨てられて同じ
+  /// オフセットでは可視内容が前に進むため、[_compensateLiveCap] で捨てた分
+  /// だけ先に戻してから作り直す。
   ///
   /// スクロール自体は次フレームに寄せる ([_scheduleLivePin]/[_schedulePin])。
   /// 通知中に同期して動かすと配置確定前の計測で不要な移動を招くため。
@@ -331,14 +398,23 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// 古い完了を無効化するため、旗を戻し損ねて追従が切れない。
   void _onCommentsChanged() {
     if (!mounted) return;
-    if (_isPlayback) _lastDue = _dueCount();
+    if (_isPlayback) {
+      _lastDue = _dueCount();
+      setState(() {});
+      if (!_following) return;
+      _schedulePin();
+      return;
+    }
+    // ライブは上限で先頭が捨てられる分を先に戻してから作り直す
+    // ([_compensateLiveCap])。通知時点では配置が古いままなので、この時点の
+    // `jumpTo` は古い内容に対する移動になる。
+    _compensateLiveCap();
+    final comments = widget.controller.state.comments;
+    _prevLiveLength = comments.length;
+    _prevLiveMaxNo = comments.isEmpty ? 0 : comments.last.no;
     setState(() {});
     if (!_following) return;
-    if (_isPlayback) {
-      _schedulePin();
-    } else {
-      _scheduleLivePin();
-    }
+    _scheduleLivePin();
   }
 
   /// 再生位置の進行を反映する。
@@ -412,9 +488,54 @@ class _CommentListPanelState extends State<CommentListPanel> {
     _pinScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _pinScheduled = false;
+      // 先戻しの抑止はここまで。末端への移動が不要で終わっても旗を残さない。
+      _compensating = false;
       if (!mounted || _isPlayback || !_following) return;
       _pinLiveToEnd();
     });
+  }
+
+  /// 上限到達で先頭から捨てられる分だけスクロール位置を先に戻す。
+  ///
+  /// 末端追従中に先頭が捨てられると、同じオフセットのまま可視内容が前に進んで
+  /// しまい、次フレームの末端への移動距離がほぼ 0 になって追従の
+  /// アニメーションが消える (新着が瞬時に出たように見える)。捨てる高さの分
+  /// だけ先に戻しておくと、直後の build での入れ替わりと打ち消して可視内容が
+  /// 保たれ、末端への移動が新着の高さ分だけ復活する。行高は可変のため平均で
+  /// 見積もる ([liveCapCompensationShift])。
+  ///
+  /// 通知時点では配置が古いままのため、ここでの `jumpTo` は古い内容に対する
+  /// 移動になり、新しい内容の1フレーム目からずれた表示は出ない。進行中の
+  /// 末端アニメーションは世代で無効化する。
+  void _compensateLiveCap() {
+    if (!_following || !_liveScroll.hasClients) return;
+    final comments = widget.controller.state.comments;
+    if (comments.isEmpty) return;
+    final added = countAppendedLiveComments(
+      comments: comments,
+      prevLength: _prevLiveLength,
+      prevMaxNo: _prevLiveMaxNo,
+    );
+    if (added <= 0) return;
+    final dropped = _prevLiveLength + added - comments.length;
+    if (dropped <= 0) return;
+    final position = _liveScroll.position;
+    final shift = liveCapCompensationShift(
+      maxScrollExtent: position.maxScrollExtent,
+      viewportDimension: position.viewportDimension,
+      prevLength: _prevLiveLength,
+      droppedCount: dropped,
+    );
+    if (shift <= 0) return;
+    // 進行中の末端アニメーションを無効化し、先戻しの移動中の通知を
+    // ユーザー操作と誤検出しないよう抑止する。抑止の解除は次フレームの
+    // 予約側 ([_scheduleLivePin]) で行う。
+    _livePinGeneration++;
+    _compensating = true;
+    var target = position.pixels - shift;
+    if (target < position.minScrollExtent) target = position.minScrollExtent;
+    if (target > position.maxScrollExtent) target = position.maxScrollExtent;
+    _liveScroll.jumpTo(target);
   }
 
   /// 追従スクロールを次フレームに予約する。同一フレーム内の複数回到着は
