@@ -110,7 +110,8 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 - `player_video_view.dart` — `PlayerVideoView`。`Video` + モバイル/デスクトップ両方の `MaterialVideoControls` テーマデータ + `controls` レイヤー内の弾幕スロット + 再生エラーオーバーレイを**一つ**にまとめる。向きには依存せず常に単一の `Stack` を返す。コントロールの差異は `PlayerControlsLayout` (`live` / `seekable`) で表す。ボタン行は media_kit のテーマデータが非 nullable なので、既定のままにする側は分岐で切り替える (**既定値を自前で書き写さない**)。
 - `jikkyo_danmaku_overlay.dart` — `JikkyoDanmakuLayer` が表示矩形の絞り込み、`JikkyoDanmakuOverlay` が store/clock 共有の描画 (ライブは受信時 birth、録画は `birthMsOf` 一括登録)。
 - `player_status_views.dart` — `PlayerPlaceholderScaffold` / `PlayerStatusOverlay` / `PlayerLoadingView` / `PlayerRetryView` / `PlayerErrorOverlay`。読み込み・再試行・戻るボタンの土台をライブ/録画で共有する。
-- `player_control_buttons.dart` — `buildPlayerTopButtonBar` が戻る→タイトルの並びを組み立て、`PipModeButton` が下部バーの PiP ボタン (対応可否を非同期に解決し、非対応なら描かない) を持つ。画質ボタンは `trailing` で渡し、**購読する `ConsumerWidget` を包む** (購読すると映像まで作り直され、コントロール自動非表示中のメニュー選択が `onSelected` に届かない)。
+- `player_control_buttons.dart` — `buildPlayerTopButtonBar` が戻る→タイトルの並びを組み立て、`PipModeButton` が下部バーの PiP ボタン (対応可否を非同期に解決し、非対応なら描かない)、`InfoPanelToggleButton` が情報パネルの表示切替ボタン (デスクトップ専用) を持つ。どちらも notifier を参照だけ受け把自己的サブツリーの中で購読する。画質ボタンは `trailing` で渡し、**購読する `ConsumerWidget` を包む** (購読すると映像まで作り直され、コントロール自動非表示中のメニュー選択が `onSelected` に届かない)。
+- `player_providers.dart` — `infoPanelVisibilityProvider` (keepAlive) が情報パネルの表示状態を持つ。`ref.watch` するのは**インスタンス**で値を購読しない — 画面側で値を購読すると画面全体の build が回り、直下の `video` が新しいウィジェットインスタンスになって映像 (`PlayerVideoView`) まで作り直される。
 - `program_info_panel.dart` — `PlayerInfoTabs` が情報パネルの `IndexedStack` + `NavigationBar` を共有 (タブ数固定の制約はここに集約)。
 - `player_error.dart` の純関数 (`isPlayerRecovered` / `hasValidVideoSize` / `videoDisplayAspectOf` / `hasValidAudioFormat`) と `player_controls_theme.dart` の純関数は移動しない。テスト対象。
 - `watch_screen.dart` のチャンネル送り純関数 (`channelIdsOfSameType` / `channelZapId`) も移動しない。標準コントロールのボタンと PiP ウィンドウのボタンが同じ規則を使う。テスト対象。
@@ -128,6 +129,10 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 `SafeArea` で囲む場合も `isLandscape ? content : SafeArea(child: content)` と**戻り値の型を変えない**。有効辺 (`left`/`top`/…) を切り替えるだけにする。
 
+**情報パネルの表示切替 (`infoVisible`) も `PlayerSplitLayout` 自身が購読する。** 画面側で購読する (`ref.watch(infoPanelVisibilityProvider.select(...))` など) と画面全体の build が回り、直下の `video` が新しいウィジェットインスタンスになって映像が作り直される。ここで購読すれば `video` は同じインスタンスのままなので `Element.updateChild` が短絡する。値を画面側から読ませないのが要点。
+
+**パネルは「載せない」ことで隠す。** `info` を渡したうえで、PiP 中と `infoVisible == false` のときは `Stack` に載せない — 矩形を 0 にしただけで載せると子ツリーが組まれたまま PSI 更新・コメント一覧の作り直しを裏で続けてしまう。`infoVisible` は**デスクトップ平台的だけ従う** (`isDesktopPlatform`)。モバイルは情報パネルが映像の下にあり、`AdaptiveVideoControls` もプラットフォーム判定で標準コントロールを替える (デスクトップだけ `MaterialDesktopVideoControls`) ので、切り替えボタンの載る場所が無い。切替ボタンはデスクトップ下部バーの PiP ボタンの位置に置いた (PiP は Android 専用なので非 Android ではこのボタンだけが出る)。
+
 ## PiP (Android)
 
 `simple_pip_mode` を使う。状態の持ち主は `core/pip/pip_mode.dart` の `PipMode.instance` (プラットフォーム機能なので `core` 置き、Dynamic Color と同じ流儀)。ライブ視聴・録画再生の両対応で、ボタンは下部バーの**フルスクリーンボタンの左** (`PipModeButton`、下部バーの並びは「字幕 → 設定 → PiP → フルスクリーン」)。
@@ -136,8 +141,8 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 - **Android 以外では `SimplePip` を呼ばない** (`Platform.isAndroid` ガードが `PipMode` にある)。`isPipAvailable` も含めて他のOSで呼ぶと `MissingPluginException` になる。ボタンの対応可否判定はボタンの中で非同期に解決し、非対応なら描かない (`PipMode.active` も購読しない — 購読すると映像の再構築に巻き込まれる)。
 - **`PipWidget` は使わない。** `child`/`pipChild` を入れ替えるとその下のウィジェット型が変わり、`_LivePlayer` / `_VideoPlayer` の State ごと破棄される (上節と同じ理屈)。`PipMode.active` を `ValueListenableBuilder` で購読し、矩形と情報パネルの有無だけを変える (`_buildLayout(pictureInPicture)` に切り出すのは両分岐で同じ型の木を返すため)。
-- **矩形は `playerSplitRects` の `pictureInPicture` に集約する** (`PlayerSplitLayout` も同じ引数を持つ)。PiP ウィンドウはパネル幅 400 未満なので、横画面の通常の計算だと映像幅が 0 になる。判定は向きより先に行う。
-- **PiP 中は情報パネルを描かない** (`SizedBox.shrink()`)。不可視のまま載せると PSI 更新 / コメント一覧の作り直しを続けているため。
+- **矩形は `playerSplitRects` の `pictureInPicture` / `infoVisible` に集約する** (`PlayerSplitLayout` も同じ引数を持つ)。PiP ウィンドウはパネル幅 400 未満なので、横画面の通常の計算だと映像幅が 0 になる。判定は向きより先に行う。
+- **PiP 中は情報パネルを描かない** (`PlayerSplitLayout` が載せない。`SizedBox.shrink()` を渡す必要なし)。不可視のまま載せると PSI 更新 / コメント一覧の作り直しを続けているため。
 - **PiP 中は標準コントロールだけ外す** (`PlayerVideoView` の `showControls: false`)。controls レイヤーの内側から `AdaptiveVideoControls` を外すだけなので**弾幕は残る**。PiP ウィンドウ内の Flutter 側コントロールは操作できない (画面タップはシステムが処理してアプリに戻る) うえ文字が潰れるため。PiP 入退室で controls クロージャが1回だけ差し替わり mpv の表示パラメータ通知が飛ぶ (設定変更と同じ理屈。一瞬止まるのは許容)。
 - **PiP ウィンドウのボタン (RemoteAction)** は `enable(actions:)` で選ぶ。ライブは `PipActionsLayout.media` (前チャンネル・再生/一時停止・次チャンネル)、録画は `mediaOnlyPause`。操作は `PipMode.onAction` を受けて mpv に反映する。ライブの前/次は標準コントロールのチャンネル送りと同じ純関数 (`channelZapId` / `channelIdsOfSameType`、`watch_screen.dart`) で行き先を求めて `zapToChannel` で `pushReplacement` する (`_LivePlayer` は PiP ハンドラからのみ `ref.read` で一覧を取るため `ConsumerStatefulWidget`、購読はしない)。`reportPlaying` で play/pause アイコンを再生状態に合わせる。
 - **`enterPipMode` は `setPipActionsLayout` の後に呼ぶ。** ネイティブ側がその時点のボタン一覧を `PictureInPictureParams` に焼き込むため、先に設定しないとボタンが出ない。

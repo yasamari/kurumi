@@ -28,6 +28,7 @@ import 'jikkyo_past_comment_controller.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
 import 'player_playback_controller.dart';
+import 'player_providers.dart';
 import 'player_settings_menu.dart';
 import 'player_split_layout.dart';
 import 'player_status_views.dart';
@@ -406,11 +407,14 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
 
   Widget _buildLayout(bool pictureInPicture) {
     final pastComments = _pastComments;
+    // 値ではなく notifier を参照だけ渡す (購読はボタンとレイアウトの中だけ)。
+    final infoPanel = ref.watch(infoPanelVisibilityProvider);
     final video = ListenableBuilder(
       listenable: _playback,
       builder: (context, _) {
         // 下部バーは「字幕 → 設定 → PiP → フルスクリーン」の並び。録画の下端は
         // media_kit の既定構成に字幕・設定・PiP を足す。
+        // (デスクトップは PiP の代わりに情報パネルの表示切替が入る)
         Widget settingsButton() => _VideoSettingsButton(
           player: _playback.player,
           dualMonoChannel: _playback.dualMonoChannel,
@@ -454,6 +458,12 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
             ),
             settingsButton(),
             const PipModeButton(),
+            // デスクトップでは PiP ボタン (Android 専用) の場所 情報パネルを
+            // 隠すボタンになる。
+            InfoPanelToggleButton(
+              visible: infoPanel.visible,
+              onToggled: infoPanel.toggle,
+            ),
             const MaterialDesktopFullscreenButton(),
           ],
           danmaku: pastComments.isSupported
@@ -481,26 +491,29 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     // フルスクリーンでウィンドウサイズが変わる°) ので [PlayerSplitLayout] に
     // 任せる (同ウィジェットのコメントを参照)。
     //
-    // PiP 中は情報パネルを描かない。不可視のまま載せるとコメント一覧が再生位置
-    // 通知のたびに作り直し・移動を続け、映像のフレームを奪うため。
+    // パネルは常に渡す。**表示しないとき (PiP 中・デスクトップでパネルを隠した
+    // とき) は `PlayerSplitLayout` が載せない** — 矩形を 0 にしただけで載せると
+    // 子ツリーが組まれたまま、コメント一覧が再生位置通知のたびに作り直し・移動を
+    // 続けて映像のフレームを奪う。
     return PlayerSplitLayout(
       pictureInPicture: pictureInPicture,
+      // 値ではなく notifier を渡す。`PlayerSplitLayout` 自身が購読するため、
+      // ここではレイアウトだけが変わって映像は作り直されない。
+      infoVisible: ref.watch(infoPanelVisibilityProvider).visible,
       video: video,
-      info: pictureInPicture
-          ? const SizedBox.shrink()
-          : Container(
-              color: Theme.of(context).colorScheme.surface,
-              // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。
-              // 映像側で購読するとタブ切替のたびに映像 (`Video`) まで作り直され、
-              // 内部の表示パラメータ通知が飛んで映像・弾幕が一瞬止まる (ライブの
-              // `_WatchInfoPanel` と同じ理由)。
-              child: _PlayInfoPanel(
-                video: widget.video,
-                comments: pastComments,
-                syncStart: pastComments.syncStart,
-                positionStream: _playback.position,
-              ),
-            ),
+      info: Container(
+        color: Theme.of(context).colorScheme.surface,
+        // 情報パネルはタブ選択だけを購読する別ウィジェットに切り出す。
+        // 映像側で購読するとタブ切替のたびに映像 (`Video`) まで作り直され、
+        // 内部の表示パラメータ通知が飛んで映像・弾幕が一瞬止まる (ライブの
+        // `_WatchInfoPanel` と同じ理由)。
+        child: _PlayInfoPanel(
+          video: widget.video,
+          comments: pastComments,
+          syncStart: pastComments.syncStart,
+          positionStream: _playback.position,
+        ),
+      ),
     );
   }
 }

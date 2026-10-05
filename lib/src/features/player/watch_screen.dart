@@ -33,6 +33,7 @@ import 'live_session.dart';
 import 'mpv_options.dart';
 import 'player_control_buttons.dart';
 import 'player_playback_controller.dart';
+import 'player_providers.dart';
 import 'player_settings_menu.dart';
 import 'player_split_layout.dart';
 import 'player_status_views.dart';
@@ -509,31 +510,32 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
     // フルスクリーンでウィンドウサイズが変わる°) ので [PlayerSplitLayout] に
     // 任せる (同ウィジェットのコメントを参照)。
     //
-    // PiP 中は情報パネルを描かない。不可視のまま載せると PSI の更新ごとに
-    // 作り直され続けるうえ、録画側と同じくコメント一覧が再生位置通知でフレームを
-    // 奪うため (録画側はコメント一覧、ライブ側は PSI 更新が該当)。
+    // パネルは常に渡す。**表示しないとき (PiP 中・デスクトップでパネルを隠した
+    // とき) は `PlayerSplitLayout` が載せない** — 矩形を 0 にしただけで載せると
+    // 子ツリーが組まれたまま、PSI 更新やコメント一覧の作り直しを裏で続ける。
     return PlayerSplitLayout(
       pictureInPicture: pictureInPicture,
+      // 値ではなく notifier を渡す。`PlayerSplitLayout` 自身が購読するため、
+      // ここではレイアウトだけが変わって映像は作り直されない。
+      infoVisible: ref.watch(infoPanelVisibilityProvider).visible,
       video: video,
-      info: pictureInPicture
-          ? const SizedBox.shrink()
-          : Container(
-              color: Theme.of(context).colorScheme.surface,
-              child: ValueListenableBuilder<LivePsiController?>(
-                valueListenable: _psiNotifier,
-                builder: (context, psi, _) {
-                  return _WatchInfoPanel(
-                    item: widget.item,
-                    controller: _jikkyo,
-                    psi: psi,
-                    // チャンネルの切替は視聴画面だけを差し替える。旧画面の
-                    // Player と実況コメント・番組情報のソケットはこれで解放される
-                    // ([zapToChannel] のコメントを参照)。
-                    onChannelSelected: (id) => zapToChannel(context, id),
-                  );
-                },
-              ),
-            ),
+      info: Container(
+        color: Theme.of(context).colorScheme.surface,
+        child: ValueListenableBuilder<LivePsiController?>(
+          valueListenable: _psiNotifier,
+          builder: (context, psi, _) {
+            return _WatchInfoPanel(
+              item: widget.item,
+              controller: _jikkyo,
+              psi: psi,
+              // チャンネルの切替は視聴画面だけを差し替える。旧画面の Player と
+              // 実況コメント・番組情報のソケットはこれで解放される
+              // ([zapToChannel] のコメントを参照)。
+              onChannelSelected: (id) => zapToChannel(context, id),
+            );
+          },
+        ),
+      ),
     );
   }
 }
@@ -911,6 +913,8 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       );
     }
     final jikkyo = _jikkyo;
+    // 値ではなく notifier を参照だけ渡す (購読はボタンとレイアウトの中だけ)。
+    final infoPanel = ref.watch(infoPanelVisibilityProvider);
     return ListenableBuilder(
       listenable: _playback,
       builder: (context, _) {
@@ -949,6 +953,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
             const Spacer(flex: 2),
           ],
           // 下部バーは「字幕 → 設定 → PiP → フルスクリーン」の並び。
+          // (デスクトップは PiP の代わりに情報パネルの表示切替が入る)
           liveBottomButtonBar: [
             const Spacer(),
             SubtitleToggleButton(
@@ -974,6 +979,12 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
             ),
             settingsButton(),
             const PipModeButton(),
+            // デスクトップでは PiP ボタン (Android 専用) の場所 情報パネルを
+            // 隠すボタンになる。
+            InfoPanelToggleButton(
+              visible: infoPanel.visible,
+              onToggled: infoPanel.toggle,
+            ),
             const MaterialDesktopFullscreenButton(),
           ],
           danmaku: jikkyo.isSupported

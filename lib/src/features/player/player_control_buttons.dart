@@ -70,6 +70,44 @@ class SubtitleToggleButton extends StatelessWidget {
   }
 }
 
+/// 情報パネル (番組情報・実況コメント) の表示を切り替えるボタン。
+///
+/// デスクトップの下部バーで、PiP ボタンの位置に置く。PiP は Android 専用で
+/// デスクトップでは描かれないので、実質このボタンだけが出る。
+///
+/// [visible] の通知を購読するのはこのボタンの中だけ。購読する側の State を
+/// 映像の再構築に巻き込ませないため ([SubtitleToggleButton] と同じ理屈)。
+class InfoPanelToggleButton extends StatelessWidget {
+  const InfoPanelToggleButton({
+    super.key,
+    required this.visible,
+    required this.onToggled,
+  });
+
+  /// パネルを表示しているかどうかの通知元。
+  final ValueListenable<bool> visible;
+
+  /// 押下時に呼ぶ。表示状態は通知元側が更新する。
+  final VoidCallback onToggled;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: visible,
+      builder: (context, visible, _) => IconButton(
+        // 表示中なら「分割を畳む」、非表示中なら「サイドバーを出す」向きの
+        // アイコン。ツールチップで動作を明示する。
+        icon: Icon(
+          visible ? Icons.vertical_split : Icons.view_sidebar_outlined,
+        ),
+        color: Colors.white,
+        tooltip: visible ? '情報パネルを隠す' : '情報パネルを表示',
+        onPressed: onToggled,
+      ),
+    );
+  }
+}
+
 /// PiP (ピクチャインピクチャ) へ移るボタン。ライブ視聴と録画再生で共有する。
 ///
 /// 下部バーのフルスクリーンボタンの左に置く。

@@ -89,4 +89,49 @@ void main() {
       expect(rects.video.height, 180);
     });
   });
+
+  group('情報パネルを隠したときの配置', () {
+    test('横画面では映像を画面幅いっぱいにする', () {
+      final rects = playerSplitRects(
+        isLandscape: true,
+        width: 1920,
+        height: 1080,
+        infoVisible: false,
+      );
+      expect(rects.video.width, 1920);
+      expect(rects.video.height, 1080);
+      expect(rects.info.width, 0);
+      expect(rects.info.height, 0);
+    });
+
+    test('縦画面でも映像が画面上部に留まらず全面を使う', () {
+      final rects = playerSplitRects(
+        isLandscape: false,
+        width: 1080,
+        height: 1920,
+        infoVisible: false,
+      );
+      expect(rects.video.width, 1080);
+      expect(rects.video.height, 1920);
+      expect(rects.info.top, 0);
+      expect(rects.info.height, 0);
+    });
+
+    test('パネルを隠すのは PiP と同じ矩形になる', () {
+      final pip = playerSplitRects(
+        isLandscape: false,
+        width: 1080,
+        height: 1920,
+        pictureInPicture: true,
+      );
+      final hidden = playerSplitRects(
+        isLandscape: false,
+        width: 1080,
+        height: 1920,
+        infoVisible: false,
+      );
+      expect(hidden.video, pip.video);
+      expect(hidden.info, pip.info);
+    });
+  });
 }
