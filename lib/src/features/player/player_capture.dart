@@ -336,6 +336,20 @@ Future<Uint8List?> takePlayerScreenshot(Player player) {
   );
 }
 
+/// 撮像に使う弾幕境界のキーを選ぶ。
+///
+/// 通常表示とフルスクリーンで撮像境界のキーを分けている
+/// (`JikkyoDanmakuLayer`) ため、フルスクリーン側が組まれている間はそちらを
+/// 優先する。どちらも無ければ null。
+GlobalKey? activeDanmakuBoundaryKey(
+  GlobalKey? boundaryKey,
+  GlobalKey? fullscreenBoundaryKey,
+) {
+  final fullscreen = fullscreenBoundaryKey;
+  if (fullscreen?.currentContext != null) return fullscreen;
+  return boundaryKey;
+}
+
 /// 弾幕レイヤーの `RepaintBoundary` の論理サイズを返す。
 ///
 /// 境界が無いときは null。
@@ -423,6 +437,7 @@ Future<void> runPlayerCapture({
   required Player player,
   required bool withDanmaku,
   GlobalKey? danmakuBoundaryKey,
+  GlobalKey? fullscreenDanmakuBoundaryKey,
   required bool danmakuVisible,
   ValueNotifier<double?>? capturePixelRatio,
   required CaptureMetadata metadata,
@@ -449,7 +464,10 @@ Future<void> runPlayerCapture({
   // 弾幕の撮像は表示中のときだけ試みる。撮れなければ通常保存する
   // (通知はしない)。
   Uint8List? overlay;
-  final boundaryKey = danmakuBoundaryKey;
+  final boundaryKey = activeDanmakuBoundaryKey(
+    danmakuBoundaryKey,
+    fullscreenDanmakuBoundaryKey,
+  );
   final ratioNotifier = capturePixelRatio;
   if (withDanmaku && danmakuVisible && boundaryKey != null) {
     var overrideSet = false;

@@ -429,6 +429,12 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
   /// 弾幕付きキャプチャ用の撮像境界のキー。回転で生き残る位置で持つ。
   final GlobalKey _danmakuBoundaryKey = GlobalKey();
 
+  /// フルスクリーン側の撮像境界のキー。通常表示とフルスクリーンは同じ
+  /// `controls` ビルダーから別サブツリーとして同時に組まれるため、同じ
+  /// [GlobalKey] を両方に置くと通常側の弾幕がフルスクリーン復帰後に消える
+  /// (`JikkyoDanmakuLayer` 参照)。回転で生き残る位置で持つ。
+  final GlobalKey _danmakuFullscreenBoundaryKey = GlobalKey();
+
   /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
   /// 購読は弾幕の層の中だけ ([JikkyoDanmakuLayer] 参照)。
   final ValueNotifier<double?> _danmakuCapturePixelRatio = ValueNotifier(
@@ -504,6 +510,7 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
           danmakuClock: _danmakuClock,
           psiNotifier: _psiNotifier,
           danmakuBoundaryKey: _danmakuBoundaryKey,
+          danmakuFullscreenBoundaryKey: _danmakuFullscreenBoundaryKey,
           danmakuCapturePixelRatio: _danmakuCapturePixelRatio,
           captures: _captures,
           danmakuPreferences: danmakuPreferencesOf(settings),
@@ -621,6 +628,7 @@ class _LivePlayer extends ConsumerStatefulWidget {
     required this.danmakuClock,
     required this.psiNotifier,
     required this.danmakuBoundaryKey,
+    required this.danmakuFullscreenBoundaryKey,
     required this.danmakuCapturePixelRatio,
     required this.captures,
     required this.danmakuPreferences,
@@ -657,6 +665,9 @@ class _LivePlayer extends ConsumerStatefulWidget {
 
   /// 弾幕付きキャプチャ用の撮像境界のキー。[_WatchLayoutState] が所有する。
   final GlobalKey danmakuBoundaryKey;
+
+  /// フルスクリーン側の撮像境界のキー。[_WatchLayoutState] が所有する。
+  final GlobalKey danmakuFullscreenBoundaryKey;
 
   /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
   /// [_WatchLayoutState] が所有する。
@@ -862,6 +873,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
         player: _playback.player,
         withDanmaku: withDanmaku,
         danmakuBoundaryKey: widget.danmakuBoundaryKey,
+        fullscreenDanmakuBoundaryKey: widget.danmakuFullscreenBoundaryKey,
         danmakuVisible:
             _jikkyo.isSupported &&
             _playback.danmakuPreferences.value.enabled &&
@@ -1178,6 +1190,8 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
               ? JikkyoDanmakuLayer(
                   displayAspect: _playback.videoDisplayAspect,
                   repaintKey: widget.danmakuBoundaryKey,
+                  fullscreenRepaintKey:
+                      widget.danmakuFullscreenBoundaryKey,
                   capturePixelRatio: widget.danmakuCapturePixelRatio,
                   child: JikkyoDanmakuOverlay(
                     controller: jikkyo,

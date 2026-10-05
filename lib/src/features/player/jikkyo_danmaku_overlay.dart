@@ -4,6 +4,7 @@ import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../data/nx_jikkyo/jikkyo_comment.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
@@ -361,6 +362,7 @@ class JikkyoDanmakuLayer extends StatelessWidget {
     required this.displayAspect,
     required this.child,
     this.repaintKey,
+    this.fullscreenRepaintKey,
     this.capturePixelRatio,
   });
 
@@ -381,6 +383,17 @@ class JikkyoDanmakuLayer extends StatelessWidget {
   /// だけ。null のときは撮像しない。
   final GlobalKey? repaintKey;
 
+  /// フルスクリーン側の撮像境界のキー。
+  ///
+  /// media_kit のフルスクリーンは同じ `controls` ビルダーから別サブツリーを
+  /// 組むため、通常表示とフルスクリーンが一時的に同時に存在する。両方に同じ
+  /// [GlobalKey] を置くと、後から組まれた方が Element を奪い、配下の
+  /// [JikkyoDanmakuOverlay] の State ごと持っていく。フルスクリーンを閉じると
+  /// 奪われた State が破棄され、通常側は作り直されないまま残るため弾幕が
+  /// 消える (コメント購読もその State と一緒に死ぬ)。通常表示と
+  /// フルスクリーンで別のキーを持ち、描画位置 ([isFullscreen]) で使い分ける。
+  final GlobalKey? fullscreenRepaintKey;
+
   /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
   ///
   /// 弾幕エンジンは `MediaQuery.devicePixelRatio` の解像度で文字をラスタ化
@@ -398,7 +411,11 @@ class JikkyoDanmakuLayer extends StatelessWidget {
   Widget build(BuildContext context) {
     final aspect = displayAspect;
     if (aspect == null) return const SizedBox.shrink();
-    final repaintKey = this.repaintKey;
+    // 通常表示とフルスクリーンで撮像境界のキーを使い分ける (上記コメント参照)。
+    // 同一キーでの重複を避けるため、フルスクリーン側は [fullscreenRepaintKey]
+    // だけを見る (null なら境界なし)。
+    final repaintKey =
+        isFullscreen(context) ? fullscreenRepaintKey : this.repaintKey;
     Widget content = child;
     final capturePixelRatio = this.capturePixelRatio;
     if (capturePixelRatio != null) {

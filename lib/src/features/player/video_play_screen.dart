@@ -242,6 +242,12 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   /// 弾幕付きキャプチャ用の撮像境界のキー。回転で生き残る位置で持つ。
   final GlobalKey _danmakuBoundaryKey = GlobalKey();
 
+  /// フルスクリーン側の撮像境界のキー。通常表示とフルスクリーンは同じ
+  /// `controls` ビルダーから別サブツリーとして同時に組まれるため、同じ
+  /// [GlobalKey] を両方に置くと通常側の弾幕がフルスクリーン復帰後に消える
+  /// (`JikkyoDanmakuLayer` 参照)。回転で生き残る位置で持つ。
+  final GlobalKey _danmakuFullscreenBoundaryKey = GlobalKey();
+
   /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
   /// 購読は弾幕の層の中だけ ([JikkyoDanmakuLayer] 参照)。
   final ValueNotifier<double?> _danmakuCapturePixelRatio = ValueNotifier(
@@ -418,6 +424,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
         player: _playback.player,
         withDanmaku: withDanmaku,
         danmakuBoundaryKey: _danmakuBoundaryKey,
+        fullscreenDanmakuBoundaryKey: _danmakuFullscreenBoundaryKey,
         danmakuVisible:
             _pastComments.isSupported &&
             _playback.danmakuPreferences.value.enabled &&
@@ -645,6 +652,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
               ? JikkyoDanmakuLayer(
                   displayAspect: _playback.videoDisplayAspect,
                   repaintKey: _danmakuBoundaryKey,
+                  fullscreenRepaintKey: _danmakuFullscreenBoundaryKey,
                   capturePixelRatio: _danmakuCapturePixelRatio,
                   child: JikkyoDanmakuOverlay(
                     controller: pastComments,
