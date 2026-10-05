@@ -166,4 +166,71 @@ void main() {
       0,
     );
   });
+
+  test('上限の先戻しは静止中の追従でのみ行う', () {
+    // 末端で静止して新着で先頭が捨てられるときだけ先戻しする。
+    expect(
+      shouldCompensateLiveCap(
+        following: true,
+        animating: false,
+        added: 2,
+        dropped: 2,
+        shift: 20,
+      ),
+      isTrue,
+    );
+    // 末端へのアニメーション実行中は先戻ししない。後ろへ引くたびに到着が
+    // 遠のき、流れが続く限り末端に着地できなくなるため。
+    expect(
+      shouldCompensateLiveCap(
+        following: true,
+        animating: true,
+        added: 2,
+        dropped: 2,
+        shift: 20,
+      ),
+      isFalse,
+    );
+    // 非追従・新着なし・捨てなし・量なしでは先戻ししない。
+    expect(
+      shouldCompensateLiveCap(
+        following: false,
+        animating: false,
+        added: 2,
+        dropped: 2,
+        shift: 20,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldCompensateLiveCap(
+        following: true,
+        animating: false,
+        added: 0,
+        dropped: 0,
+        shift: 20,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldCompensateLiveCap(
+        following: true,
+        animating: false,
+        added: 2,
+        dropped: 0,
+        shift: 0,
+      ),
+      isFalse,
+    );
+    expect(
+      shouldCompensateLiveCap(
+        following: true,
+        animating: false,
+        added: 2,
+        dropped: 2,
+        shift: 0,
+      ),
+      isFalse,
+    );
+  });
 }

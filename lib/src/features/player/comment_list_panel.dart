@@ -122,6 +122,25 @@ double liveCapCompensationShift({
   return average * droppedCount;
 }
 
+/// 上限補正の先戻しを行うかを返す純粋関数.
+///
+/// 末端へのアニメーション (`animateTo`) の最中に届いた新着では先戻しを
+/// しない。後ろへ引くたびに到着が遠のき、流れが続く限り末端に着地できなく
+/// なるため (追従再開ボタンで末端まで戻れない主因)。その場合は次フレームの
+/// 末端移動が新しい末端を目標に取り直すので、前向きの移動だけで収束する。
+/// 先戻しが要るのは末端で静止しているときだけ。
+bool shouldCompensateLiveCap({
+  required bool following,
+  required bool animating,
+  required int added,
+  required int dropped,
+  required double shift,
+}) {
+  if (!following || animating) return false;
+  if (added <= 0 || dropped <= 0) return false;
+  return shift > 0;
+}
+
 /// ニコニコ実況コメントの一覧表示。
 ///
 /// コメント本文と投稿時刻のみを表示する。色・サイズ・位置は `mail` コマンドから
@@ -225,6 +244,14 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// ライブの末端へのアニメーション移動の世代。連続する新着で前のアニメーション
   /// が残っている間に次が始まるため、古い完了で旗を戻さないよう数える。
   int _livePinGeneration = 0;
+
+  /// 末端へのアニメーション (`animateTo`) の実行中か。
+  ///
+  /// 実行中の新着では上限補正の先戻し ([_compensateLiveCap]) を行わない。
+  /// 後ろへ引くたびに到着が遠のき、流れが続く限り末端に着地できなくなる
+  /// (追従再開ボタンで末端まで戻れない主因)。次フレームの末端移動が新しい
+  /// 末端を目標に取り直すため、前向きの移動だけで収束する。
+  bool _livePinAnimating = false;
 
   /// 追従スクロールの post-frame 予約があるか。同一フレーム内の複数回の
   /// コメント到着を1回のスクロールに束ねる。
@@ -465,6 +492,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
     }
     final generation = ++_livePinGeneration;
     _programmatic = true;
+    _livePinAnimating = true;
     unawaited(
       _liveScroll
           .animateTo(
@@ -475,7 +503,10 @@ class _CommentListPanelState extends State<CommentListPanel> {
           .then((_) {
         // 連続する新着で次の移動が始まっていたら旗を保つ。古い完了で戻すと
         // 移動中の通知をユーザー操作と誤検出して追従を切ってしまう。
-        if (generation == _livePinGeneration) _programmatic = false;
+        if (generation == _livePinGeneration) {
+          _programmatic = false;
+          _livePinAnimating = false;
+        }
       }),
     );
   }
@@ -505,10 +536,13 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// 見積もる ([liveCapCompensationShift])。
   ///
   /// 通知時点では配置が古いままのため、ここでの `jumpTo` は古い内容に対する
-  /// 移動になり、新しい内容の1フレーム目からずれた表示は出ない。進行中の
-  /// 末端アニメーションは世代で無効化する。
+  /// 移動になり、新しい内容の1フレーム目からずれた表示は出ない。末端への
+  /// アニメーションの実行中は先戻しをしない ([shouldCompensateLiveCap])。
+  /// 後ろへ引くたびに到着が遠のき、流れが続く限り末端に着地できなくなる
+  /// ため (追従再開ボタンで末端まで戻れない主因)。進行中の末端
+  /// アニメーションは世代で無効化する。
   void _compensateLiveCap() {
-    if (!_following || !_liveScroll.hasClients) return;
+    if (!_liveScroll.hasClients) return;
     final comments = widget.controller.state.comments;
     if (comments.isEmpty) return;
     final added = countAppendedLiveComments(
@@ -516,9 +550,7 @@ class _CommentListPanelState extends State<CommentListPanel> {
       prevLength: _prevLiveLength,
       prevMaxNo: _prevLiveMaxNo,
     );
-    if (added <= 0) return;
     final dropped = _prevLiveLength + added - comments.length;
-    if (dropped <= 0) return;
     final position = _liveScroll.position;
     final shift = liveCapCompensationShift(
       maxScrollExtent: position.maxScrollExtent,
@@ -526,7 +558,15 @@ class _CommentListPanelState extends State<CommentListPanel> {
       prevLength: _prevLiveLength,
       droppedCount: dropped,
     );
-    if (shift <= 0) return;
+    if (!shouldCompensateLiveCap(
+      following: _following,
+      animating: _livePinAnimating,
+      added: added,
+      dropped: dropped,
+      shift: shift,
+    )) {
+      return;
+    }
     // 進行中の末端アニメーションを無効化し、先戻しの移動中の通知を
     // ユーザー操作と誤検出しないよう抑止する。抑止の解除は次フレームの
     // 予約側 ([_scheduleLivePin]) で行う。
