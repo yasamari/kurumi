@@ -32,10 +32,17 @@
         androidPackages = pkgs.androidenv.composeAndroidPackages {
           buildToolsVersions = [ "36.0.0" ];
           # android-34 は `simple_pip_mode` の Android モジュールが
-          # `compileSdk 34` を要求するため。AGP は要求された platform を
-          # SDK から探すが、Nix の store は読み取り専用なので 入っていないと
-          # ビルドが失敗する (「SDK ディレクトリが書けない」で止まる)。
-          platformVersions = [ "34" "36" ];
+          # `compileSdk 34` を要求するため。android-35 は `audio_service` の
+          # Android モジュールが `compileSdk 35` を要求するため。AGP は要求された
+          # platform を SDK から探すが、Nix の store は読み取り専用なので
+          # 入っていないとビルドが失敗する (「SDK ディレクトリが書けない」で止まる)。
+          platformVersions = [ "34" "35" "36" ];
+          # 3.22.1 は AGP 既定の CMake 版。`jni` (path_provider_android 経由の
+          # 推移的依存) の Android モジュールが版指定なしで要求するため。
+          # 入っていないと AGP が read-only な SDK へ導入しようとして落ちる
+          # (platformVersions と同じ構図)。`latest` (4.1.2) はアプリ自身の
+          # externalNativeBuild が pin しているため残す。
+          cmakeVersions = [ "3.22.1" "latest" ];
           includeCmake = true;
           includeNDK = true;
           ndkVersions = [ "28.2.13676358" ];
@@ -216,6 +223,8 @@
           gitHashes = {
             canvas_danmaku =
               "sha256-WO+T8DGDbBHU7ffdiEv1a5f87+yOHLg+ukhsrFTvAqw=";
+            audio_service_win =
+              "sha256-OZq2waTr0WLJ6uki/VLdUBdDdui25PvXnMNFohs7gjs=";
           };
 
           nativeBuildInputs = [ pkgs.copyDesktopItems ];

@@ -11,6 +11,9 @@ import 'package:simple_pip_mode/actions/pip_action.dart';
 import 'package:simple_pip_mode/actions/pip_actions_layout.dart';
 
 import '../../core/pip/pip_mode.dart';
+import '../../core/media/kurumi_audio_handler.dart';
+import '../../core/media/media_control_target.dart';
+import '../../core/media/now_playing_item.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/network/dio_provider.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
@@ -680,6 +683,12 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
   /// 一時停止に入った壁時計。再開時に進んだ分だけ時計を進める。
   DateTime? _pausedAt;
 
+  /// EIT[p/f] から得た現在番組のイベント ID。番組切り替わりの検出用。
+  ///
+  /// システム通知の番組名を追従させるためだけに持つ。映像の再構築には
+  /// 関与しない ([_publishLiveItem] 参照)。
+  int? _liveProgramEventId;
+
   @override
   void initState() {
     super.initState();
@@ -692,6 +701,19 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
         onAction: _onPipAction,
       ),
     );
+    // システムのメディア操作 (通知・MPRIS・SMTC) の委譲先として登録する。
+    // 解除は `dispose` 側 ([MediaControls.detach] のコメントを参照)。
+    MediaControls.instance.attach(
+      owner: this,
+      target: _LiveMediaTarget(
+        onPlay: () => _playback.player.play(),
+        onPause: () => _playback.player.pause(),
+        onZapNext: () => _zapChannel(isNext: true),
+        onZapPrevious: () => _zapChannel(isNext: false),
+      ),
+    );
+    _publishLiveItem();
+    _reportLiveState();
     // `playing` はキャッシュ停滞で変わらないため、停滞検出は別途購読する。
     _playingSub = _playback.player.stream.playing.listen(_onPlayingForDanmaku);
     _bufferingSub = _playback.player.stream.buffering.listen(
@@ -712,6 +734,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     }
     _playingForDanmaku = playing;
     _syncDanmakuRunning();
+    _reportLiveState();
   }
 
   /// PiP ウィンドウのボタン操作を mpv とチャンネル切替に反映する。
@@ -759,6 +782,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     if (!mounted) return;
     _bufferingForDanmaku = buffering;
     _syncDanmakuRunning();
+    _reportLiveState();
   }
 
   void _syncDanmakuRunning() {
@@ -802,6 +826,42 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
         _playback.selectAudio(const DualMonoChoice(DualMonoChannel.main)),
       );
     }
+  }
+
+  /// EIT[p/f] の現在番組が切り替わったら、システム通知の番組名を追従させる。
+  ///
+  /// [_syncAudioLayout] と同じ PSI 通知で検出する。`notifyListeners` は起こさず、
+  /// 通知への配信だけを行う (映像の再構築に巻き込まないため)。
+  void _syncLiveProgram() {
+    final present = _psi?.present;
+    if (present?.eventId == _liveProgramEventId) return;
+    _liveProgramEventId = present?.eventId;
+    _publishLiveItem();
+  }
+
+  /// 現在の番組情報をシステム通知へ配信する。アルバムアートはチャンネルロゴ。
+  ///
+  /// EIT 未受信時はチャンネル名だけを載せる。`notifyListeners` は起こさない。
+  void _publishLiveItem() {
+    final handler = systemMediaHandler;
+    if (handler == null) return;
+    final channel = widget.item.channel;
+    handler.publishItem(
+      liveMediaItem(
+        channelId: channel.id,
+        channelTitle: widget.title,
+        programTitle: _psi?.present?.title,
+        artUri: artUriOf(channel.logoUrl),
+      ),
+    );
+  }
+
+  /// 再生・停滞状態をシステム通知へ配信する。`notifyListeners` は起こさない。
+  void _reportLiveState() {
+    systemMediaHandler?.reportLive(
+      playing: _playingForDanmaku,
+      buffering: _bufferingForDanmaku,
+    );
   }
 
   /// mpvオプションを適用してから映像を開く。
@@ -857,6 +917,7 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       packets: session.packets,
     )..start();
     _psi!.addListener(_syncAudioLayout);
+    _psi!.addListener(_syncLiveProgram);
     widget.psiNotifier.value = _psi;
     setState(() => _sessionLoading = false);
     // stream tap (`kurumi-ts://`) は media_kit が temp playlist 経由
@@ -879,6 +940,11 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
     // 視聴画面を離れたときにソケットを閉じる (_jikkyo は外側が所有する)。
     _playingSub?.cancel();
     _bufferingSub?.cancel();
+    // システムのメディア操作の委譲を外す。本当に画面を離れたときだけ通知を
+    // 消す (チャンネル切替では新画面が登録済みのため何もしない)。
+    if (MediaControls.instance.detach(owner: this)) {
+      systemMediaHandler?.deactivate();
+    }
     // 自動 PiP と PiP ウィンドウのボタンを戻す。停止の待たずに抜ける。
     // チャンネル切替で新旧画面の破棄順が入れ替わっても壊れないよう、`owner` で
     // 同一性を判別する ([PipMode.disable] を参照)。
@@ -1004,4 +1070,43 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
       },
     );
   }
+}
+
+/// ライブ視聴のシステムメディア操作の委譲先。
+///
+/// 再生・停止は mpv、前/次は標準コントロールと同じチャンネル送り
+/// ([channelZapId]) に流す。シークはライブでは対応しない。
+class _LiveMediaTarget implements MediaControlTarget {
+  _LiveMediaTarget({
+    required this.onPlay,
+    required this.onPause,
+    required this.onZapNext,
+    required this.onZapPrevious,
+  });
+
+  final Future<void> Function() onPlay;
+  final Future<void> Function() onPause;
+  final void Function() onZapNext;
+  final void Function() onZapPrevious;
+
+  @override
+  Future<void> play() => onPlay();
+
+  @override
+  Future<void> pause() => onPause();
+
+  @override
+  Future<void> seekTo(Duration position) async {}
+
+  @override
+  Future<void> zapToNext() async => onZapNext();
+
+  @override
+  Future<void> zapToPrevious() async => onZapPrevious();
+
+  @override
+  bool get supportsSeek => false;
+
+  @override
+  bool get supportsZap => true;
 }

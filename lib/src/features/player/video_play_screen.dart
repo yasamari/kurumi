@@ -11,6 +11,9 @@ import 'package:simple_pip_mode/actions/pip_action.dart';
 import 'package:simple_pip_mode/actions/pip_actions_layout.dart';
 
 import '../../core/pip/pip_mode.dart';
+import '../../core/media/kurumi_audio_handler.dart';
+import '../../core/media/media_control_target.dart';
+import '../../core/media/now_playing_item.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/widgets/program_detail_body.dart';
 import '../../domain/entities/video_program.dart';
@@ -213,6 +216,17 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<bool>? _bufferingSub;
   StreamSubscription<Duration>? _danmakuPositionSub;
+  StreamSubscription<Duration>? _durationSub;
+
+  /// mpv から届いた再生尺。システム通知の [MediaItem.duration] に載せる。
+  Duration? _videoDuration;
+
+  /// システム通知への位置報告の最終時刻。連続配信にしないための間引き用。
+  DateTime _lastSystemMediaReport = DateTime.fromMillisecondsSinceEpoch(0);
+
+  /// システム通知への位置報告の間隔。audio_service 側で外挿されるため、
+  /// 細かい追従は要らず、この間隔での補正で足りる。
+  static const _systemMediaReportInterval = Duration(seconds: 5);
 
   /// 弾幕時計の駆動条件の最新値 ([danmakuClockShouldRun] の入力)。
   bool _playingForDanmaku = false;
@@ -242,6 +256,18 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     }
     _pastComments = JikkyoPastCommentController(video: widget.video);
     _pastComments.start();
+    // システムのメディア操作 (通知・MPRIS・SMTC) の委譲先として登録する。
+    // 解除は `dispose` 側 ([MediaControls.detach] のコメントを参照)。
+    MediaControls.instance.attach(
+      owner: this,
+      target: _VideoMediaTarget(
+        onPlay: () => _playback.player.play(),
+        onPause: () => _playback.player.pause(),
+        onSeek: (position) => _playback.player.seek(position),
+      ),
+    );
+    _publishVideoItem();
+    _reportVideoState();
     // 弾幕時計は再生位置に追従させる。位置通知の間は壁時計で外挿して滑らかに
     // 進め、ずれが開いたら補正する。一時停止・バッファ中は凍結する。
     _playingSub = _playback.player.stream.playing.listen(_onPlayingForDanmaku);
@@ -249,6 +275,9 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
         _playback.player.stream.buffering.listen(_onBufferingForDanmaku);
     _danmakuPositionSub =
         _playback.player.stream.position.listen(_onPositionForDanmaku);
+    // 再生尺が分かり次第、システム通知の番組情報と再生状態に反映する。
+    _durationSub =
+        _playback.player.stream.duration.listen(_onDurationForSystemMedia);
     if (_stream != null) {
       _startKeepAlive();
       _initialize();
@@ -312,6 +341,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     PipMode.instance.reportPlaying(playing);
     _playingForDanmaku = playing;
     _syncDanmakuRunning();
+    _reportVideoState();
   }
 
   /// PiP ウィンドウのボタン操作を mpv に反映する。
@@ -343,6 +373,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   void _onBufferingForDanmaku(bool buffering) {
     _bufferingForDanmaku = buffering;
     _syncDanmakuRunning();
+    _reportVideoState();
   }
 
   void _syncDanmakuRunning() {
@@ -366,6 +397,52 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     if (drift.abs() > _danmakuDriftThresholdMs) {
       _danmakuClock.seekTo(position.inMilliseconds);
     }
+    // システム通知の位置は間引いて補正する。連続配信はしない
+    // ([KurumiAudioHandler.reportVideo] のコメントを参照)。
+    final now = DateTime.now();
+    if (now.difference(_lastSystemMediaReport) > _systemMediaReportInterval) {
+      _lastSystemMediaReport = now;
+      _reportVideoState(position: position);
+    }
+  }
+
+  /// 再生尺が分かったら、システム通知の番組情報と再生状態に反映する。
+  ///
+  /// `notifyListeners` は起こさず、通知への配信だけを行う (映像の再構築に
+  /// 巻き込まないため)。
+  void _onDurationForSystemMedia(Duration duration) {
+    if (!mounted) return;
+    if (duration == _videoDuration) return;
+    _videoDuration = duration;
+    _publishVideoItem();
+    _reportVideoState();
+  }
+
+  /// 現在の番組情報をシステム通知へ配信する。アルバムアートはサムネイル。
+  ///
+  /// `notifyListeners` は起こさない。
+  void _publishVideoItem() {
+    final handler = systemMediaHandler;
+    if (handler == null) return;
+    final video = widget.video;
+    handler.publishItem(
+      videoMediaItem(
+        videoId: video.id,
+        title: video.title,
+        channelName: video.channel?.name,
+        artUri: artUriOf(video.thumbnailUrl),
+        duration: _videoDuration,
+      ),
+    );
+  }
+
+  /// 再生・停滞状態をシステム通知へ配信する。`notifyListeners` は起こさない。
+  void _reportVideoState({Duration? position}) {
+    systemMediaHandler?.reportVideo(
+      playing: _playingForDanmaku,
+      buffering: _bufferingForDanmaku,
+      position: position ?? _playback.player.state.position,
+    );
   }
 
   @override
@@ -374,6 +451,12 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     _playingSub?.cancel();
     _bufferingSub?.cancel();
     _danmakuPositionSub?.cancel();
+    _durationSub?.cancel();
+    // システムのメディア操作の委譲を外す。本当に画面を離れたときだけ通知を
+    // 消す (画質切替では新画面が登録済みのため何もしない)。
+    if (MediaControls.instance.detach(owner: this)) {
+      systemMediaHandler?.deactivate();
+    }
     // 自動 PiP と PiP ウィンドウのボタンを戻す。停止の待たずに抜ける。
     // 画質変更で新旧画面の破棄順が入れ替わっても壊れないよう、`owner` で同一性
     // を判別する ([PipMode.disable] を参照)。
@@ -642,4 +725,40 @@ class _PlayInfoPanel extends ConsumerWidget {
       ],
     );
   }
+}
+
+/// 録画再生のシステムメディア操作の委譲先。
+///
+/// 再生・停止・シークは mpv に流す。チャンネル送りは録画では対応しない。
+class _VideoMediaTarget implements MediaControlTarget {
+  _VideoMediaTarget({
+    required this.onPlay,
+    required this.onPause,
+    required this.onSeek,
+  });
+
+  final Future<void> Function() onPlay;
+  final Future<void> Function() onPause;
+  final Future<void> Function(Duration position) onSeek;
+
+  @override
+  Future<void> play() => onPlay();
+
+  @override
+  Future<void> pause() => onPause();
+
+  @override
+  Future<void> seekTo(Duration position) => onSeek(position);
+
+  @override
+  Future<void> zapToNext() async {}
+
+  @override
+  Future<void> zapToPrevious() async {}
+
+  @override
+  bool get supportsSeek => true;
+
+  @override
+  bool get supportsZap => false;
 }

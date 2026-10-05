@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'src/core/licenses/app_licenses.dart';
+import 'src/core/media/kurumi_audio_handler.dart';
 import 'src/core/router/router.dart';
 import 'src/core/theme/app_theme.dart';
 import 'src/core/theme/dynamic_color.dart';
@@ -13,6 +14,13 @@ Future<void> main() async {
   registerAppLicenses();
   // media_kit のネイティブ初期化。Linux 等で必須。
   MediaKit.ensureInitialized();
+  // システムのメディア操作 (Android 通知・Linux MPRIS・Windows SMTC) の受付。
+  // 非対応環境では無効化し、起動自体は続ける (PiP と同じく best-effort)。
+  try {
+    await initSystemMedia();
+  } catch (_) {
+    // プラグインが無い・D-Bus が無い等の環境。通知操作なしで動作する。
+  }
   // Android では Compose Material 3 の ColorScheme をそのまま受け取る。
   // 初回フレームで既定色が不过来、取得できるまで待ってから描画を始める。
   final dynamicColorSchemes = await loadDynamicColorSchemes();

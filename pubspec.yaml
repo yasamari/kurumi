@@ -73,6 +73,20 @@ dependencies:
   # Android 以外では呼ばない。
   simple_pip_mode: ^1.1.0
 
+  # システムのメディア操作 (通知・ロック画面・MPRIS・SMTC・ヘッドセット) に対応する。
+  # 再生実体は mpv のまま、操作の受付と状態の配信だけを担う
+  # (`lib/src/core/media/` 参照)。
+  audio_service: ^0.18.19
+  # Windows の SMTC 実装。pub 版ではなく Predidit のフォークを使う
+  # (ローカルファイルのアート対応・複数ウィンドウ時のクラッシュ修正・
+  # Windows プラグインの C++20 ビルド修正を含む)。rev ピン留めで再現性を保つ。
+  audio_service_win:
+    git:
+      url: https://github.com/Predidit/audio_service_win
+      ref: 8ad650c6eb487208b9861d44755c8e58db061c88
+  # Linux の MPRIS 実装 (federated plugin。依存追加だけで自動登録される)。
+  audio_service_mpris: ^0.2.1
+
 # Android の libmpv を自前のビルドに差し替える。
 # media_kit_libs_android_video は Android プラットフォームのみの対象で、
 # .jar を Gradle 時に GitHub Releases から取得する。同梱版は upstream の
