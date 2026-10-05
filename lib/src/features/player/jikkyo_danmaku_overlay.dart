@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../data/nx_jikkyo/jikkyo_comment.dart';
 import '../../data/nx_jikkyo/jikkyo_comment_list.dart';
@@ -152,6 +153,8 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
     if (option.fontSize != _measuredFontSize) {
       _measuredFontSize = option.fontSize;
       widget.store.resetMeasurements();
+      // 測定キャッシュを落としたこともストアの通知なので、次のフレームを立てる。
+      _ensureFrame();
     }
     for (final controller in _controllers) {
       controller.updateOption(option);
@@ -172,6 +175,27 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
   static String _commentKey(JikkyoComment comment) =>
       '${comment.threadId}:${comment.no}';
 
+  /// **ストア更新のあと、次のフレームを必ず立てる。**
+  ///
+  /// `DanmakuScreen` はストアの通知を受けて**描画されるフレームの最後**で起き
+  /// 上がる (`_requestWake` が `SchedulerBinding.addPostFrameCallback` を
+  /// 使う)。post-frame callback は描画されたフレームでしか走らないため、
+  /// フレームが立たないままでは起き上がりが永久に届かない。
+  ///
+  /// 弾幕が1つも無い間はビューも ticker も止まっている (エンジンの「Ticker
+  /// 自動停止」の最適化)。他に dirty なものが無ければフレーム自体継がず、
+  /// **コメントがストアに溜まり続けるのに描画されない**。次に何かがフレームを
+  /// 立てたとき (情報パネルのタブ切替・操作オーバーレイの表示など) ようやく
+  /// 描画されるため、「何か操作するまで弾幕が出ない」という症状になる。
+  /// Android は映像テクスチャの更新が常にフレームを立てるので表面化しにくいが、
+  /// Linux/Wayland ではそのまま出る (実測)。
+  ///
+  /// 本来はエンジンの `_requestWake` に `ensureVisualUpdate()` を足すべきところ
+  /// だが、ストアを書く当の層が「次のフレームが立つ」ことを保証する形にした
+  /// ほうが確実で、フォークを持ち上げて revision を上げる必要も無い。
+  /// 各地点での通知は 1 フレームへまとめられる (`_wakeScheduled` で合流)。
+  void _ensureFrame() => SchedulerBinding.instance.ensureVisualUpdate();
+
   void _onLiveComment(JikkyoComment comment) {
     // 受信時の時計値を birth にする。store へ直接登録するため、
     // `DanmakuScreen` 未構築 (無効時) でも捨てずに保持される。
@@ -184,6 +208,7 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
       ),
       key: _commentKey(comment),
     );
+    _ensureFrame();
   }
 
   void _onSourceChanged() {
@@ -203,10 +228,12 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
         ),
         widget.clock.nowMs,
       );
+      _ensureFrame();
     } else if (state.status == JikkyoCommentStatus.connecting) {
       // 取得し直し: 古い登録を捨て、完了時に取り直す。
       _addedState = null;
       widget.store.clear();
+      _ensureFrame();
     }
   }
 

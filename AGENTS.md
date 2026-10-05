@@ -80,6 +80,8 @@ Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKon
 
 なお alive 窓のカーソルは添字ではなく **birth 処理済み境界** (`lowerBoundBirth` で毎回引く)。`prune` が出生順リストの先頭を落とした分だけ添字がずれると、新着弾幕を黙って落とす。回帰テストは `test/danmaku_track_stability_test.dart` (窓管理を再現して高流量を回し、飛行中の行の変化数と「後から作った view との一致」を見る)。`test/danmaku_engine_test.dart` は個別の純関数。
 
+**ストア更新後は `SchedulerBinding.instance.ensureVisualUpdate()` で次のフレームを立てる** (`JikkyoDanmakuOverlay._ensureFrame`)。ビューはストアの通知を受けて **`addPostFrameCallback` (= 描画されたフレームの最後) で起き上がる** ので、フレームが立たないままでは起き上がりが永久に届かない。弾幕が1つも無い間は ticker も止まっており (**Ticker 自動停止** の最適化)、他に dirty なものが無ければフレーム自体が立たない → コメントがストアに溜まり続けるのに描画されず、「情報パネルのタブ切替や操作オーバーレイの表示など何かをするまで弾幕が出ない」という症状になる (Linux/Wayland で実測。Android は映像テクスチャの更新が常にフレームを立てるため表面化しにくい)。本来はエンジンの `_requestWake` を直すところだが、ストアを書く当の層が ensure している。
+
 **描画状態 (`DanmakuStore`) と時計は映像の `Stack` の外に持つ。** media_kit のフルスクリーンは同じ `controls` ビルダーで別ルートに新しい `Video` を積むため、`DanmakuScreen` が2つになる。両方に同じ store/clock を渡すと、同じ時計窓を描くので切替時に描画中の弾幕が消えない。回転も同様 (作り直されたviewが時計窓から描き直す)。所有者はライブが `_WatchLayoutState`、録画が `_VideoPlayerState` (どちらも回転で生き残る)。コメント二重購読 (通常+全画面) は store の重複排除キーで吸収する。store の画像キャッシュは共有で、view 側で破棄しない (重複破棄は null 化で冪等だが、他viewの表示中テクスチャを消さないこと)。
 
 - ライブ: 受信時の時計値を birth にする。保持は直近60秒 (`_liveDanmakuRetentionMs`)。バッファ (`paused-for-cache`、`player.stream.buffering`) 中と一時停止中は時計を凍結する (`danmakuClockShouldRun` の純関数)。バッファ解消は壁時計から再開し (再生位置の基準が無いため合わせ直しはしない)、一時停止の再開は停止中の壁時計分だけ進めて (`danmakuLiveResumeMs` の純関数) ライブエッジに追従させる。
