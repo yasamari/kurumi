@@ -1115,10 +1115,13 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
           onDanmakuPreferencesChanged: _playback.setDanmakuPreferences,
           showQualityMenu: widget.showQualityMenu,
         );
-        // キーボードショートカット (`c` / `v`) を受ける。プレイヤー画面に
-        // テキスト入力は無いためフォーカス競合は起きない。
+        // キーボードショートカット (`c` / `v`) を受ける。フォーカスは奪わず
+        // media_kit 標準の操作 (左右矢印のシークやスペースの一時停止) に譲る。
+        // `autofocus` で奪うと内側の controls の `CallbackShortcuts` より
+        // 手前でフォーカスし、標準操作が効かなくなる。`canRequestFocus: false`
+        // なら祖先としてバブリングだけ受け、内側の操作と両立する。
         return Focus(
-          autofocus: true,
+          canRequestFocus: false,
           onKeyEvent: _onKeyEvent,
           child: PlayerVideoView(
             videoController: _playback.videoController,
