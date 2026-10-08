@@ -15,7 +15,7 @@ T _$identity<T>(T value) => value;
 /// @nodoc
 mixin _$JikkyoComment {
 
-/// 対象のスレッド ID。NX-Jikkyo は文字列で送ってくる。
+/// 対象のスレッド ID。数値の文字列表現のほか、過去ログAPIの番組ID形式も入る。
  String get threadId;/// コメ番。スレッド内で単調増加し、**欠番があり得る**。
 ///
 /// NX-Jikkyo は接続ごとの送信キュー (上限200件) が溢れると古いコメントを
@@ -240,7 +240,7 @@ class _JikkyoComment implements JikkyoComment {
   const _JikkyoComment({required this.threadId, required this.no, required this.vpos, required this.postedAt, required this.content, required this.userId, required this.mail, this.premium = false, this.anonymity = false, this.yourPost = false});
   
 
-/// 対象のスレッド ID。NX-Jikkyo は文字列で送ってくる。
+/// 対象のスレッド ID。数値の文字列表現のほか、過去ログAPIの番組ID形式も入る。
 @override final  String threadId;
 /// コメ番。スレッド内で単調増加し、**欠番があり得る**。
 ///

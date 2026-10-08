@@ -28,6 +28,12 @@ class ChannelLogo extends StatelessWidget {
           child: Image.network(
             url,
             fit: BoxFit.cover,
+            // 表示サイズに合わせた解像度でデコードする。フル解像度のまま
+            // 局数分並べると初回表示のデコード・テクスチャ転送が重くなる
+            // (番組表ヘッダーなど)。
+            cacheWidth: (width *
+                    MediaQuery.devicePixelRatioOf(context))
+                .round(),
             errorBuilder: (context, error, stackTrace) => const SizedBox(),
           ),
         ),

@@ -121,6 +121,40 @@ class EpgDao extends DatabaseAccessor<EpgDatabase> with _$EpgDaoMixin {
         .getSingleOrNull();
   }
 
+  /// 番組表用: 指定バックエンドの全チャンネルを取得APIの応答順で返す。
+  Future<List<EpgChannel>> timetableChannels({
+    required String sourceBackend,
+  }) {
+    return (select(epgChannels)
+          ..where((c) => c.sourceBackend.equals(sourceBackend))
+          ..orderBy([(c) => OrderingTerm(expression: c.sortOrder)]))
+        .get();
+  }
+
+  /// 番組表用: `[startMs, endMs)` と重なる番組を返す。
+  ///
+  /// 境界に掛かる番組は期間をはみ出して返る。表示時のクランプは
+  /// 呼び出し側で行う。`epg_programs_span` インデックスで引く。
+  Future<List<EpgProgram>> timetablePrograms({
+    required String sourceBackend,
+    required int startMs,
+    required int endMs,
+  }) {
+    return (select(epgPrograms)
+          ..where(
+            (p) =>
+                p.sourceBackend.equals(sourceBackend) &
+                p.startAtMs.isSmallerThanValue(endMs) &
+                p.endAtMs.isBiggerThanValue(startMs),
+          )
+          ..orderBy([
+            (p) => OrderingTerm(expression: p.networkId),
+            (p) => OrderingTerm(expression: p.serviceId),
+            (p) => OrderingTerm(expression: p.startAtMs),
+          ]))
+        .get();
+  }
+
   /// 指定バックエンド・URLの同期状態を返す。なければ null。
   Future<EpgSyncMetaData?> getSyncMeta({
     required String sourceBackend,

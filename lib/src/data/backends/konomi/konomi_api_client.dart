@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 
 import 'konomi_dtos.dart';
 import 'konomi_live.dart';
+import 'konomi_timetable_dtos.dart';
 import 'konomi_video_dtos.dart';
 
 /// KonomiTV RESTクライアント。`dio.options.baseUrl` は正規化済み前提。
@@ -13,6 +14,24 @@ class KonomiApiClient {
   Future<KonomiChannelsResponse> getChannels() async {
     final response = await _dio.get<Map<String, dynamic>>('/api/channels');
     return KonomiChannelsResponse.fromJson(response.data ?? {});
+  }
+
+  /// 番組表を取得する。`[start, end)` の期間を指定する。
+  ///
+  /// サーバー側で期間外の番組は含まれないが、境界に掛かる番組は期間を
+  /// はみ出して返る。呼び出し側で範囲判定すること。
+  Future<KonomiTimetableResponse> getTimetable({
+    required DateTime start,
+    required DateTime end,
+  }) async {
+    final response = await _dio.get<Map<String, dynamic>>(
+      '/api/programs/timetable',
+      queryParameters: {
+        'start_time': start.toIso8601String(),
+        'end_time': end.toIso8601String(),
+      },
+    );
+    return KonomiTimetableResponse.fromJson(response.data ?? {});
   }
 
   /// 接続テスト用。200以外・到達不能は例外送出する。
