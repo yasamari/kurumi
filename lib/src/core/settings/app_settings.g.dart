@@ -57,7 +57,7 @@ final class AppSettingsProvider
   AppSettings create() => AppSettings();
 }
 
-String _$appSettingsHash() => r'9b6f4f20a8a3ad7ea293e195852a39e51908cde0';
+String _$appSettingsHash() => r'9094fd798b7358da7d013276aa435a3ed48c9c12';
 
 /// SharedPreferences backed のアプリ設定。
 ///

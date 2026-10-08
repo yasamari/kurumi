@@ -11,6 +11,7 @@ class AppSettingsState {
     this.danmakuOpacity = defaultDanmakuOpacity,
     this.danmakuSpeed = defaultDanmakuSpeed,
     this.subtitlesEnabled = defaultSubtitlesEnabled,
+    this.epgRefreshIntervalHours = defaultEpgRefreshIntervalHours,
   });
 
   /// 弾幕は既定で表示する。
@@ -30,6 +31,15 @@ class AppSettingsState {
   /// で視聴しても意図せず描画されるのを避ける。字幕が見たい人は画面上の字幕
   /// ボタンで各自オンにする。
   static const bool defaultSubtitlesEnabled = false;
+
+  /// EPGキャッシュの更新間隔の既定値 (時間)。
+  static const int defaultEpgRefreshIntervalHours = 6;
+
+  /// EPGキャッシュの更新間隔の最小値 (時間)。
+  static const int minEpgRefreshIntervalHours = 1;
+
+  /// EPGキャッシュの更新間隔の最大値 (時間)。
+  static const int maxEpgRefreshIntervalHours = 24;
 
   final BackendType backendType;
   final String mirakurunBaseUrl;
@@ -52,6 +62,10 @@ class AppSettingsState {
   /// 字幕を表示するかどうか。false のときは mpv に `sid=no` を適用する。
   final bool subtitlesEnabled;
 
+  /// EPGキャッシュの更新間隔 (時間)。1〜24。
+  /// Mirakurun 等の全量取得型バックエンドにのみ使う。
+  final int epgRefreshIntervalHours;
+
   /// 現在選択中バックエンドのベースURL。
   String get activeBaseUrl => switch (backendType) {
         BackendType.mirakurun => mirakurunBaseUrl,
@@ -70,6 +84,7 @@ class AppSettingsState {
     double? danmakuOpacity,
     double? danmakuSpeed,
     bool? subtitlesEnabled,
+    int? epgRefreshIntervalHours,
   }) {
     return AppSettingsState(
       backendType: backendType ?? this.backendType,
@@ -80,6 +95,16 @@ class AppSettingsState {
       danmakuOpacity: danmakuOpacity ?? this.danmakuOpacity,
       danmakuSpeed: danmakuSpeed ?? this.danmakuSpeed,
       subtitlesEnabled: subtitlesEnabled ?? this.subtitlesEnabled,
+      epgRefreshIntervalHours:
+          epgRefreshIntervalHours ?? this.epgRefreshIntervalHours,
     );
   }
+}
+
+/// EPGキャッシュの更新間隔を1〜24時間に丸める純粋関数。
+int clampEpgRefreshIntervalHours(int hours) {
+  return hours.clamp(
+    AppSettingsState.minEpgRefreshIntervalHours,
+    AppSettingsState.maxEpgRefreshIntervalHours,
+  );
 }

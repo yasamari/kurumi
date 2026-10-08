@@ -60,6 +60,38 @@ void main() {
     expect(settings.subtitlesEnabled, isTrue);
   });
 
+  test('EPG更新間隔だけを変えても Dio とリポジトリは作り直されない', () async {
+    final container = openContainer();
+    await container.read(appSettingsProvider.future);
+
+    final dio = container.read(backendDioProvider);
+    final tvRepository = container.read(tvRepositoryProvider);
+    final videoRepository = container.read(videoRepositoryProvider);
+
+    await container
+        .read(appSettingsProvider.notifier)
+        .setEpgRefreshIntervalHours(12);
+
+    expect(identical(container.read(backendDioProvider), dio), isTrue);
+    expect(identical(container.read(tvRepositoryProvider), tvRepository), isTrue);
+    expect(
+      identical(container.read(videoRepositoryProvider), videoRepository),
+      isTrue,
+    );
+    // 保存自体は反映されている (範囲外は丸める)。
+    expect(
+      container.read(appSettingsProvider).value!.epgRefreshIntervalHours,
+      12,
+    );
+    await container
+        .read(appSettingsProvider.notifier)
+        .setEpgRefreshIntervalHours(99);
+    expect(
+      container.read(appSettingsProvider).value!.epgRefreshIntervalHours,
+      24,
+    );
+  });
+
   test('バックエンドのベースURLを変えると Dio とリポジトリは作り直される', () async {
     final container = openContainer();
     await container.read(appSettingsProvider.future);

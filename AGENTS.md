@@ -40,6 +40,21 @@ Key invariants when adding a backend (Mirakurun, KonomiTV, EDCB…): implement `
 
 Filtering logic lives in pure functions (`buildMirakurunChannelItems`, `buildKonomiChannelItems`) with `DateTime now` / `baseUrl` injected — keep it that way so it stays unit-testable.
 
+## EPGキャッシュ (Drift)
+
+Mirakurun (`/api/programs` 約10MB・期間絞り不可) の全量取得を減らすため、EPGを Drift (sqlite) に蓄積する (`lib/src/data/epg/`)。KonomiTV (`/api/channels` 軽量) は対象外で都度取得のまま。
+
+- テーブルは `EpgChannels` / `EpgPrograms` / `EpgSyncMeta`。行の鍵は放送の同一性 (`sourceBackend`, network_id, service_id, [+ event_id])。複数バックエンド同時保持のため全行が `sourceBackend` (`BackendType.name`) を持つ。ロゴ・視聴URLは baseUrl を含むため保存せず `remoteId` から読出時に組み立てる。FTS5 は作っていない (検索UI後回しのため。`title` の index だけ下地)。
+- 取得 (`EpgFetcher` + `mirakurunEpgSyncProvider`) と表示 (`nowOnAirChannelsProvider`) は分離する。取得は使用中バックエンドがMirakurunのときだけ、更新間隔 (`AppSettingsState.epgRefreshIntervalHours`、既定6時間・1〜24) ごとのタイマーで行う。番組JSONのパースは worker isolate。表示の再計算は通信を起こさない (Mirakurun はDB再読出、KonomiTV は都度再取得)。Pull-to-refresh も再計算のみ。
+- **一覧の更新は番組境界に合わせる。** `nowOnAirChannelsProvider` は計算後に次回境界 (`nextChannelListTickMs`: 現在番組の終了・次番組の開始のうち未来で最も早いもの。なければ60秒後。純粋関数でテスト対象) への one-shot タイマーを張り、自分を invalidate する。固定間隔の時刻 provider は置かない。KonomiTV も同じタイマーで定期再取得する (サーバー時刻ずれの暴走防止に最短30秒の下限あり)。
+- **毎分の再計算を `liveStream` に波及させない。** `liveStream` が `nowOnAirChannelsProvider.future` を購読すると毎分 loading を経由し、`_LivePlayer` (key がURL) が作り直されて mpv が開き直される。Mirakurun のチャンネル解決は時刻非依存の `mirakurunEpgChannelProvider` (チャンネル行の one-shot 読出) を噛ませる。KonomiTV は従来通り一覧キャッシュから解決する。
+- **一覧とストリームの `when` には `skipLoadingOnReload: true` と `skipLoadingOnRefresh: true` を付ける** (テレビ画面・視聴画面・チャンネル切替パネル＋視聴画面の `liveStream` 2箇所)。再計算・裏更新・KonomiTV の境界再取得のたびに `AsyncLoading` に戻すと、視聴画面では映像スロットが `PlayerLoadingView` に差し替わり **`_LivePlayerState` ごと破棄されて何もしていなくてもmpvが開き直される**。前回データを出し続ければ、番組境界の表示更新だけが通り、映像は保たれる (画質切替はURLキーで作り直されるため影響しない)。初回読み込みとエラー表示はそのまま残る。
+- **進捗バーは自律更新ウィジェットにする** (`ProgramProgressBar`: 1秒 Timer で自分だけ作り直す)。カード全体の再構築に載せると境界更新の瞬間しか進まずカクつく。
+- テレビ欄の present/next・重複排除・除外・順序は1発SQL (`EpgDao.nowOnAir` の `customSelect`。`?` は出現順束縛) に寄せ、Dart 側は行→エンティティ変換だけにする。`.drift` ファイルは使わない (ビルド設定の追加が不要なため)。
+- **provider の公開型に Drift 生成クラスを使わない。** `EpgSyncMetaData` を `@Riverpod` 関数の戻り値にすると riverpod_generator が `InvalidTypeException` で落ちる。手書きの `EpgSyncState` を返すこと。
+- 生成コードの `allTables` は `allSchemaEntities` を参照するため、`allSchemaEntities` の override で `allTables` を使うと再帰する。テーブルは明示すること。
+- Linux ではシステムの libsqlite3 を dlopen するため、`flake.nix` に `pkgs.sqlite` (buildInputs 共有の `mediaKitLinuxDeps`＋`runtimeDependencies`) と devShell の `LD_LIBRARY_PATH` が要る。`flutter test` のインメモリDBも同ライブラリを要求する。Android は `sqlite3_flutter_libs` が同梱するため追加対応不要 (ただし `compileSdk` 要求の確認は AGENTS.md の Gotchas 通り)。
+
 ## 実況コメント (NX-Jikkyo)
 
 接続先は `data/nx_jikkyo/jikkyo_endpoints.dart` の `nxJikkyoBaseUrl` で**コードに固定**。設定画面には出さない (ユーザーが選択済み)。
@@ -197,7 +212,8 @@ Compose Material 3 の `dynamicLightColorScheme()` / `dynamicDarkColorScheme()` 
 
 ## Gotchas
 
-- `flake.nix` builds from an explicit `fileset` (`analysis_options.yaml`, `lib`, `linux`, `packages`, `pubspec.yaml`, `pubspec.lock`, launcher icon). Adding `test/`, `assets/`, or new platform dirs requires updating that list or `nix build` breaks. `packages/` は `dependency_overrides` の path 依存なので、ここを抜くと Android ビルド以外でも `pub get` が失敗する。
+- `flake.nix` builds from an explicit `fileset` (`analysis_options.yaml`, `lib`, `linux`, `packages`, `pubspec.yaml`, `pubspec.lock`, launcher icon). Adding `test/`, `assets/`, or new platform dirs requires updating that list or `nix build` breaks. `packages/` は `dependency_overrides` の path 依存なので、ここを抜くと Android ビルド以外でも `pub get` が失敗する。Nix flake は git 未追跡ファイルを見ないため、**新規ファイルを追加したら `git add` (ステージで可) しないと `nix build` に入らない**。
+- pub の `sqlite3` は `3.5.0` に固定する (`pubspec.yaml` の直接依存)。固定 nixpkgs の package-source-builder が知る版のみ使える。`sqlite3_flutter_libs` / `sqlcipher_flutter_libs` の +eol 版はネイティブコードなしの stub のため、既定ビルダーが失敗する。`flake.nix` の `customSourceBuilders` で素通しにしている (実行時の sqlite は `pkgs.sqlite` を使う)。
 - `pubspec.lock` に path 依存が `relative: true` で記録される。`packages/` 以下の相対パスを変えたら lock を作り直す。
 - **`canvas_danmaku` を直すには参照先の差し替えが要る。** `pubspec.yaml` は git 依存の rev ピン留めなので、`../canvas_danmaku` を直しても解決先は `~/.pub-cache/git/canvas_danmaku-<rev>/` のままで反映されない。作業中は `pubspec_overrides.yaml` (gitignore 済み) で path 参照に差し替える。フォークを push して `pubspec.yaml` の `ref:` を上げたら **override を削除し、`pubspec.lock` を git 依存の記載に戻す** — 残しておくと lock が `../canvas_danmaku` を指し、`flake.nix` の fileset にそのパスが無く `nix build` が落ちる。
 - **`canvas_danmaku` の rev を上げたら `flake.nix` の `gitHashes` も更新する。** `buildFlutterApplication` は git 依存を `fetchgit` (固定出力) で取るので、`gitHashes.canvas_danmaku` は rev ごとの木ハッシュ。古いままだと `nix build` が hash mismatch で落ちる。新しい値は `hash = pkgs.lib.fakeHash` で `nix build` してエラー出力の `got:` を使う (空文字でも.hash を教えてくれる)。

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../domain/entities/channel_item.dart';
 import '../utils/time_format.dart';
 import 'channel_logo.dart';
+import 'program_progress_bar.dart';
 import 'program_symbol_text.dart';
 
 /// チャンネルカード。デザイン差し替え時はこのファイルのみ変更する。
@@ -33,7 +34,6 @@ class ChannelCard extends StatelessWidget {
     final theme = Theme.of(context);
     final nowOnAir = item.nowOnAir;
     final nextUp = item.nextUp;
-    final now = DateTime.now();
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -104,12 +104,9 @@ class ChannelCard extends StatelessWidget {
               ],
               if (nowOnAir != null) ...[
                 const SizedBox(height: 8),
-                LinearProgressIndicator(
-                  value: programProgress(
-                    nowOnAir.startAt,
-                    nowOnAir.endAt,
-                    now,
-                  ),
+                ProgramProgressBar(
+                  startAt: nowOnAir.startAt,
+                  endAt: nowOnAir.endAt,
                 ),
               ],
             ],

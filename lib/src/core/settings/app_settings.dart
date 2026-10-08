@@ -24,6 +24,7 @@ class AppSettings extends _$AppSettings {
   static const _keyDanmakuOpacity = 'danmaku_opacity';
   static const _keyDanmakuSpeed = 'danmaku_speed';
   static const _keySubtitlesEnabled = 'subtitles_enabled';
+  static const _keyEpgRefreshIntervalHours = 'epg_refresh_interval_hours';
 
   @override
   Future<AppSettingsState> build() async {
@@ -48,6 +49,10 @@ class AppSettings extends _$AppSettings {
       subtitlesEnabled:
           prefs.getBool(_keySubtitlesEnabled) ??
           AppSettingsState.defaultSubtitlesEnabled,
+      epgRefreshIntervalHours: clampEpgRefreshIntervalHours(
+        prefs.getInt(_keyEpgRefreshIntervalHours) ??
+            AppSettingsState.defaultEpgRefreshIntervalHours,
+      ),
     );
   }
 
@@ -104,5 +109,14 @@ class AppSettings extends _$AppSettings {
     await prefs.setBool(_keySubtitlesEnabled, enabled);
     final current = await future;
     state = AsyncData(current.copyWith(subtitlesEnabled: enabled));
+  }
+
+  /// EPGキャッシュの更新間隔 (時間) を保存する。範囲外は1〜24に丸める。
+  Future<void> setEpgRefreshIntervalHours(int hours) async {
+    final clamped = clampEpgRefreshIntervalHours(hours);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_keyEpgRefreshIntervalHours, clamped);
+    final current = await future;
+    state = AsyncData(current.copyWith(epgRefreshIntervalHours: clamped));
   }
 }

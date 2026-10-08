@@ -188,6 +188,10 @@
           libxrandr
           libxscrnsaver
           zlib
+          # EPGキャッシュ (Drift) が Linux ではシステムの libsqlite3 を dlopen
+          # する。`flutter run` / `flutter test` 時の解決用
+          # (LD_LIBRARY_PATH は下の devShell で通す)。
+          sqlite
         ];
 
         icon = ./android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png;
@@ -227,6 +231,15 @@
               "sha256-OZq2waTr0WLJ6uki/VLdUBdDdui25PvXnMNFohs7gjs=";
           };
 
+          # `sqlcipher_flutter_libs` / `sqlite3_flutter_libs` の +eol 版は
+          # ネイティブコードを含まない stub のため、nixpkgs 既定のビルダー
+          # (CMakeLists.txt を前提にする) が失敗する。そのまま使う。
+          # 実行時の sqlite は `pkgs.sqlite` (runtimeDependencies) を使う。
+          customSourceBuilders = {
+            sqlcipher_flutter_libs = { src, ... }: src;
+            sqlite3_flutter_libs = { src, ... }: src;
+          };
+
           nativeBuildInputs = [ pkgs.copyDesktopItems ];
 
           # media_kit_video プラグインのビルドに libmpv のヘッダーが必要。
@@ -237,7 +250,12 @@
           # dart:ffi の DynamicLibrary.open() は RUNPATH を見ないため、
           # builder 標準の runtimeDependencies で LD_LIBRARY_PATH に載せる。
           # stream-tap-lib も同様 (バンドル相対が外れた場合の保険)。
-          runtimeDependencies = [ mpv-unwrapped-minimal stream-tap-lib ];
+          # sqlite も同様 (Drift が libsqlite3 を dlopen するため)。
+          runtimeDependencies = [
+            mpv-unwrapped-minimal
+            stream-tap-lib
+            pkgs.sqlite
+          ];
 
           postFixup = ''
             mkdir -p $out/share/icons/hicolor/192x192/apps
@@ -285,6 +303,9 @@
 
         devShells.default = pkgs.mkShell {
           ANDROID_HOME = "${androidSdk}/libexec/android-sdk";
+          # Drift (`sqlite3` パッケージ) が `flutter run` / `flutter test` 時に
+          # libsqlite3 を dlopen できるようにする。
+          LD_LIBRARY_PATH = lib.makeLibraryPath [ pkgs.sqlite ];
           packages = [
             pkgs.flutter
             androidSdk

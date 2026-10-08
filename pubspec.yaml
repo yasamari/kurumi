@@ -89,6 +89,13 @@ dependencies:
   gal: ^2.3.3
   gal_linux: ^0.1.2
   image: ^4.10.1
+  drift: ^2.35.1
+  drift_flutter: ^0.3.1
+  sqlite3_flutter_libs: ^0.6.0+eol
+  # `nix build` の package-source-builder が扱える版に固定する。
+  # 固定 nixpkgs が知るのは 3.5.0 のみ。上げるときは nixpkgs 側の対応
+  # (dart/package-source-builders/sqlite3/default.nix) を確認する。
+  sqlite3: 3.5.0
 
 # Android の libmpv を自前のビルドに差し替える。
 # media_kit_libs_android_video は Android プラットフォームのみの対象で、
@@ -115,6 +122,7 @@ dev_dependencies:
   riverpod_lint: ^3.1.9
   freezed: ^4.0.2
   json_serializable: ^6.14.1
+  drift_dev: ^2.35.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

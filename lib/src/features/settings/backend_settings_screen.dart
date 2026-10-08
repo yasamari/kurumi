@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../core/settings/app_settings.dart';
+import '../../core/settings/app_settings_state.dart';
 import '../../core/utils/url_format.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/providers/backend_provider.dart';
@@ -106,6 +107,19 @@ class BackendSettingsScreen extends ConsumerWidget {
               ),
               const Divider(),
               ListTile(
+                title: const Text('番組データの更新間隔'),
+                subtitle: Text(
+                  '${state.epgRefreshIntervalHours}時間ごとに更新',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _showEpgIntervalDialog(
+                  context,
+                  ref,
+                  state.epgRefreshIntervalHours,
+                ),
+              ),
+              const Divider(),
+              ListTile(
                 title: const Text('接続テスト'),
                 subtitle: Text(
                   connectionTest.isLoading ? 'テスト中…' : '現在の設定で接続を確認',
@@ -197,6 +211,25 @@ class BackendSettingsScreen extends ConsumerWidget {
     );
   }
 
+  /// EPG更新間隔の選択ダイアログ。1〜24時間のスライダーで選ぶ。
+  Future<void> _showEpgIntervalDialog(
+    BuildContext context,
+    WidgetRef ref,
+    int current,
+  ) {
+    return showDialog(
+      context: context,
+      builder: (context) {
+        return _EpgIntervalDialog(
+          initialValue: current,
+          onSave: (hours) => ref
+              .read(appSettingsProvider.notifier)
+              .setEpgRefreshIntervalHours(hours),
+        );
+      },
+    );
+  }
+
   /// エラー表示ダイアログ。
   Future<void> _showErrorDialog(BuildContext context, String message) {
     return showDialog(
@@ -212,6 +245,66 @@ class BackendSettingsScreen extends ConsumerWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// EPG更新間隔の選択ダイアログ。
+class _EpgIntervalDialog extends StatefulWidget {
+  const _EpgIntervalDialog({
+    required this.initialValue,
+    required this.onSave,
+  });
+
+  final int initialValue;
+  final ValueChanged<int> onSave;
+
+  @override
+  State<_EpgIntervalDialog> createState() => _EpgIntervalDialogState();
+}
+
+class _EpgIntervalDialogState extends State<_EpgIntervalDialog> {
+  late double _hours;
+
+  @override
+  void initState() {
+    super.initState();
+    _hours = widget.initialValue.toDouble();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('番組データの更新間隔'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('${_hours.round()}時間ごとに更新'),
+          Slider(
+            min: AppSettingsState.minEpgRefreshIntervalHours.toDouble(),
+            max: AppSettingsState.maxEpgRefreshIntervalHours.toDouble(),
+            divisions:
+                AppSettingsState.maxEpgRefreshIntervalHours -
+                AppSettingsState.minEpgRefreshIntervalHours,
+            label: '${_hours.round()}時間',
+            value: _hours,
+            onChanged: (value) => setState(() => _hours = value),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('キャンセル'),
+        ),
+        TextButton(
+          onPressed: () {
+            widget.onSave(_hours.round());
+            Navigator.of(context).pop();
+          },
+          child: const Text('保存'),
+        ),
+      ],
     );
   }
 }

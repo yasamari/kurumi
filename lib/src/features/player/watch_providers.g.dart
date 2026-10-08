@@ -8,7 +8,7 @@ part of 'watch_providers.dart';
 
 // GENERATED CODE - DO NOT MODIFY BY HAND
 // ignore_for_file: type=lint, type=warning
-/// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
+/// 視聴中の画質。永続化しない。
 ///
 /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
 /// 破棄・再生成で状態が初期値に戻らないようにするため。
@@ -16,13 +16,13 @@ part of 'watch_providers.dart';
 @ProviderFor(WatchQuality)
 final watchQualityProvider = WatchQualityProvider._();
 
-/// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
+/// 視聴中の画質。永続化しない。
 ///
 /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
 /// 破棄・再生成で状態が初期値に戻らないようにするため。
 final class WatchQualityProvider
     extends $NotifierProvider<WatchQuality, String> {
-  /// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
+  /// 視聴中の画質。永続化しない。
   ///
   /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
   /// 破棄・再生成で状態が初期値に戻らないようにするため。
@@ -53,9 +53,9 @@ final class WatchQualityProvider
   }
 }
 
-String _$watchQualityHash() => r'c577ce1487ac82dfaf5235c8f4b874555bc3964c';
+String _$watchQualityHash() => r'd19ee03d4f6f8dbcc1adea353fe8c617a8390c96';
 
-/// 視聴中の画質 (KonomiTV用)。永続化しない。既定は `original`。
+/// 視聴中の画質。永続化しない。
 ///
 /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
 /// 破棄・再生成で状態が初期値に戻らないようにするため。
@@ -125,7 +125,7 @@ final class WatchInfoTabProvider extends $NotifierProvider<WatchInfoTab, int> {
   }
 }
 
-String _$watchInfoTabHash() => r'2bf10ee58c9b61ae9fd5cf78d7d126014721de51';
+String _$watchInfoTabHash() => r'9e72cef700873a2a5312751183ac5f3100ddc773';
 
 /// 情報パネルの選択中タブ。永続化しない。既定は番組情報。
 ///
@@ -153,16 +153,26 @@ abstract class _$WatchInfoTab extends $Notifier<int> {
 
 /// 指定チャンネルのライブストリーム情報。画質変更に追従する。
 ///
-/// チャンネル解決は放送中一覧のキャッシュから行う。見つからなければ例外送出し、
-/// UI側で「見つかりません」表示に使う。
+/// チャンネル解決はバックエンド別に行う。KonomiTV は放送中一覧のキャッシュ、
+/// Mirakurun はEPGキャッシュのチャンネル行 (時刻に依存しない one-shot 読出)
+/// から行う。見つからなければ例外送出し、UI側で「見つかりません」表示に使う。
+///
+/// Mirakurun で放送中一覧 (`nowOnAirChannelsProvider`) を使わないのは、
+/// あちらが毎分再計算されるため。ここで購読すると毎分 loading を経由して
+/// 映像スロット (`_LivePlayer` の State ごと) が作り直されてしまう。
 
 @ProviderFor(liveStream)
 final liveStreamProvider = LiveStreamFamily._();
 
 /// 指定チャンネルのライブストリーム情報。画質変更に追従する。
 ///
-/// チャンネル解決は放送中一覧のキャッシュから行う。見つからなければ例外送出し、
-/// UI側で「見つかりません」表示に使う。
+/// チャンネル解決はバックエンド別に行う。KonomiTV は放送中一覧のキャッシュ、
+/// Mirakurun はEPGキャッシュのチャンネル行 (時刻に依存しない one-shot 読出)
+/// から行う。見つからなければ例外送出し、UI側で「見つかりません」表示に使う。
+///
+/// Mirakurun で放送中一覧 (`nowOnAirChannelsProvider`) を使わないのは、
+/// あちらが毎分再計算されるため。ここで購読すると毎分 loading を経由して
+/// 映像スロット (`_LivePlayer` の State ごと) が作り直されてしまう。
 
 final class LiveStreamProvider
     extends
@@ -174,8 +184,13 @@ final class LiveStreamProvider
     with $FutureModifier<LiveStream>, $FutureProvider<LiveStream> {
   /// 指定チャンネルのライブストリーム情報。画質変更に追従する。
   ///
-  /// チャンネル解決は放送中一覧のキャッシュから行う。見つからなければ例外送出し、
-  /// UI側で「見つかりません」表示に使う。
+  /// チャンネル解決はバックエンド別に行う。KonomiTV は放送中一覧のキャッシュ、
+  /// Mirakurun はEPGキャッシュのチャンネル行 (時刻に依存しない one-shot 読出)
+  /// から行う。見つからなければ例外送出し、UI側で「見つかりません」表示に使う。
+  ///
+  /// Mirakurun で放送中一覧 (`nowOnAirChannelsProvider`) を使わないのは、
+  /// あちらが毎分再計算されるため。ここで購読すると毎分 loading を経由して
+  /// 映像スロット (`_LivePlayer` の State ごと) が作り直されてしまう。
   LiveStreamProvider._({
     required LiveStreamFamily super.from,
     required String super.argument,
@@ -219,12 +234,17 @@ final class LiveStreamProvider
   }
 }
 
-String _$liveStreamHash() => r'd8f6f3bb755f079f2ef680d0818a2828c7377509';
+String _$liveStreamHash() => r'f927bbac817f85df345736c166526b85cb5d99ca';
 
 /// 指定チャンネルのライブストリーム情報。画質変更に追従する。
 ///
-/// チャンネル解決は放送中一覧のキャッシュから行う。見つからなければ例外送出し、
-/// UI側で「見つかりません」表示に使う。
+/// チャンネル解決はバックエンド別に行う。KonomiTV は放送中一覧のキャッシュ、
+/// Mirakurun はEPGキャッシュのチャンネル行 (時刻に依存しない one-shot 読出)
+/// から行う。見つからなければ例外送出し、UI側で「見つかりません」表示に使う。
+///
+/// Mirakurun で放送中一覧 (`nowOnAirChannelsProvider`) を使わないのは、
+/// あちらが毎分再計算されるため。ここで購読すると毎分 loading を経由して
+/// 映像スロット (`_LivePlayer` の State ごと) が作り直されてしまう。
 
 final class LiveStreamFamily extends $Family
     with $FunctionalFamilyOverride<FutureOr<LiveStream>, String> {
@@ -239,8 +259,13 @@ final class LiveStreamFamily extends $Family
 
   /// 指定チャンネルのライブストリーム情報。画質変更に追従する。
   ///
-  /// チャンネル解決は放送中一覧のキャッシュから行う。見つからなければ例外送出し、
-  /// UI側で「見つかりません」表示に使う。
+  /// チャンネル解決はバックエンド別に行う。KonomiTV は放送中一覧のキャッシュ、
+  /// Mirakurun はEPGキャッシュのチャンネル行 (時刻に依存しない one-shot 読出)
+  /// から行う。見つからなければ例外送出し、UI側で「見つかりません」表示に使う。
+  ///
+  /// Mirakurun で放送中一覧 (`nowOnAirChannelsProvider`) を使わないのは、
+  /// あちらが毎分再計算されるため。ここで購読すると毎分 loading を経由して
+  /// 映像スロット (`_LivePlayer` の State ごと) が作り直されてしまう。
 
   LiveStreamProvider call(String channelId) =>
       LiveStreamProvider._(argument: channelId, from: this);

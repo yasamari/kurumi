@@ -34,7 +34,11 @@ class ChannelSwitchPanel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final channels = ref.watch(nowOnAirChannelsProvider);
 
+    // Mirakurun は毎分再計算されるため、そのたびに読み込み表示に戻すと
+    // パネルが点滅する。前回データを出し続ける。
     return channels.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) => _Message(text: '$error'),
       data: (items) {

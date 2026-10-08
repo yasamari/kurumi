@@ -1,7 +1,13 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../core/settings/app_settings.dart';
+import '../../domain/entities/backend_type.dart';
+import '../../domain/entities/channel.dart';
 import '../../domain/entities/live_stream.dart';
 import '../../domain/providers/backend_provider.dart';
+import '../../domain/repositories/tv_repository.dart';
+import '../tv/epg_providers.dart';
 import '../tv/tv_providers.dart';
 import 'program_info_panel.dart';
 
@@ -49,21 +55,32 @@ class WatchInfoTab extends _$WatchInfoTab {
 
 /// 指定チャンネルのライブストリーム情報。画質変更に追従する。
 ///
-/// チャンネル解決は放送中一覧のキャッシュから行う。見つからなければ例外送出し、
-/// UI側で「見つかりません」表示に使う。
+/// チャンネル解決はバックエンド別に行う。KonomiTV は放送中一覧のキャッシュ、
+/// Mirakurun はEPGキャッシュのチャンネル行 (時刻に依存しない one-shot 読出)
+/// から行う。見つからなければ例外送出し、UI側で「見つかりません」表示に使う。
+///
+/// Mirakurun で放送中一覧 (`nowOnAirChannelsProvider`) を使わないのは、
+/// あちらが毎分再計算されるため。ここで購読すると毎分 loading を経由して
+/// 映像スロット (`_LivePlayer` の State ごと) が作り直されてしまう。
 @riverpod
 Future<LiveStream> liveStream(Ref ref, String channelId) async {
   final quality = ref.watch(watchQualityProvider);
-  final items = await ref.watch(nowOnAirChannelsProvider.future);
-  final item = items.where((e) => e.channel.id == channelId).firstOrNull;
-  if (item == null) {
-    throw const ChannelNotFoundException();
+  final backendType = ref.watch(
+    appSettingsProvider.select(
+      (settings) => settings.value?.backendType ?? BackendType.mirakurun,
+    ),
+  );
+  final Channel channel;
+  if (backendType == BackendType.konomiTv) {
+    final items = await ref.watch(nowOnAirChannelsProvider.future);
+    final item = items.where((e) => e.channel.id == channelId).firstOrNull;
+    if (item == null) {
+      throw const ChannelNotFoundException();
+    }
+    channel = item.channel;
+  } else {
+    channel = await ref.watch(mirakurunEpgChannelProvider(channelId).future);
   }
   final repository = ref.watch(tvRepositoryProvider);
-  return repository.getLiveStream(item.channel, quality: quality);
-}
-
-/// 視聴対象チャンネルが一覧キャッシュに無い場合の例外。
-class ChannelNotFoundException implements Exception {
-  const ChannelNotFoundException();
+  return repository.getLiveStream(channel, quality: quality);
 }

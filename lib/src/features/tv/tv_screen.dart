@@ -6,6 +6,7 @@ import '../../core/widgets/channel_card.dart';
 import '../../domain/entities/channel_item.dart';
 import '../../domain/entities/channel_type.dart';
 import '../../domain/repositories/tv_repository.dart';
+import 'epg_providers.dart';
 import 'tv_providers.dart';
 
 /// テレビ画面: 放送中チャンネルをチャンネル種別タブ+グリッドで表示する。
@@ -16,7 +17,11 @@ class TvScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final channels = ref.watch(nowOnAirChannelsProvider);
 
+    // Mirakurun は毎分再計算・数時間ごとに裏更新が走るが、そのたびに読み込み
+    // 表示に戻すと一覧が点滅する。前回データを出し続ける。
     return channels.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
       loading: () => const Scaffold(
         body: Center(child: CircularProgressIndicator()),
       ),
@@ -33,7 +38,12 @@ class TvScreen extends ConsumerWidget {
           appBar: AppBar(title: const Text('テレビ')),
           body: _Error(
             message: '$error',
-            onRetry: () => ref.invalidate(nowOnAirChannelsProvider),
+            // 同期 provider は keepAlive のため、再取得には明示の invalidate
+            // が要る (一覧だけではキャッシュされたエラーのままになる)。
+            onRetry: () {
+              ref.invalidate(mirakurunEpgSyncProvider);
+              ref.invalidate(nowOnAirChannelsProvider);
+            },
           ),
         );
       },
@@ -42,7 +52,10 @@ class TvScreen extends ConsumerWidget {
           return Scaffold(
             appBar: AppBar(title: const Text('テレビ')),
             body: _Empty(
-              onRetry: () => ref.invalidate(nowOnAirChannelsProvider),
+              onRetry: () {
+                ref.invalidate(mirakurunEpgSyncProvider);
+                ref.invalidate(nowOnAirChannelsProvider);
+              },
             ),
           );
         }

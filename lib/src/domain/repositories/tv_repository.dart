@@ -7,6 +7,12 @@ class BackendUnconfiguredException implements Exception {
   const BackendUnconfiguredException();
 }
 
+/// 視聴対象チャンネルが一覧キャッシュに無い場合の例外。
+/// UI側で「見つかりません」表示に使う。
+class ChannelNotFoundException implements Exception {
+  const ChannelNotFoundException();
+}
+
 /// バックエンド非依存のテレビ操作インターフェース。
 ///
 /// 新しいバックエンド (EDCB等) を追加する場合はこのクラスを実装し、

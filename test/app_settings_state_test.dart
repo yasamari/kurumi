@@ -55,6 +55,26 @@ void main() {
     });
   });
 
+  group('更新間隔', () {
+    test('既定は6時間', () {
+      const settings = AppSettingsState();
+      expect(settings.epgRefreshIntervalHours, 6);
+      expect(
+        settings.copyWith(epgRefreshIntervalHours: 12).epgRefreshIntervalHours,
+        12,
+      );
+    });
+
+    test('1〜24時間に丸める', () {
+      expect(clampEpgRefreshIntervalHours(6), 6);
+      expect(clampEpgRefreshIntervalHours(1), 1);
+      expect(clampEpgRefreshIntervalHours(24), 24);
+      expect(clampEpgRefreshIntervalHours(0), 1);
+      expect(clampEpgRefreshIntervalHours(-3), 1);
+      expect(clampEpgRefreshIntervalHours(25), 24);
+    });
+  });
+
   group('activeBaseUrl', () {
     test('選択中のバックエンドの URL を返す', () {
       const settings = AppSettingsState(

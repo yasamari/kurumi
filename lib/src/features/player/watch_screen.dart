@@ -26,6 +26,7 @@ import '../../domain/entities/channel_type.dart';
 import '../../domain/entities/live_stream.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
+import '../tv/epg_providers.dart';
 import '../tv/tv_providers.dart';
 import 'audio_switch.dart';
 import 'danmaku_settings.dart';
@@ -76,7 +77,13 @@ class WatchScreen extends ConsumerWidget {
       ),
     );
 
+    // Mirakurun は毎分再計算・数時間ごとに裏更新が走る。そのたびに読み込み
+    // 表示に戻すと映像スロットが `PlayerLoadingView` に差し替わり、
+    // `_LivePlayerState` ごと破棄されて mpv が開き直される。
+    // 前回データを出し続ける (初回読み込みとエラー表示はそのまま)。
     return channels.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
       loading: () => const PlayerPlaceholderScaffold(
         child: Center(child: CircularProgressIndicator()),
       ),
@@ -89,7 +96,12 @@ class WatchScreen extends ConsumerWidget {
         return PlayerPlaceholderScaffold(
           child: PlayerRetryView(
             message: '$error',
-            onRetry: () => ref.invalidate(nowOnAirChannelsProvider),
+            // 同期 provider は keepAlive のため、再取得には明示の invalidate
+            // が要る (一覧だけではキャッシュされたエラーのままになる)。
+            onRetry: () {
+              ref.invalidate(mirakurunEpgSyncProvider);
+              ref.invalidate(nowOnAirChannelsProvider);
+            },
           ),
         );
       },
@@ -100,7 +112,10 @@ class WatchScreen extends ConsumerWidget {
           return PlayerPlaceholderScaffold(
             child: PlayerRetryView(
               message: 'チャンネルが見つかりません',
-              onRetry: () => ref.invalidate(nowOnAirChannelsProvider),
+              onRetry: () {
+                ref.invalidate(mirakurunEpgSyncProvider);
+                ref.invalidate(nowOnAirChannelsProvider);
+              },
             ),
           );
         }
@@ -338,7 +353,11 @@ class _WatchBody extends ConsumerWidget {
     final stream = ref.watch(liveStreamProvider(channelId));
     return Scaffold(
       backgroundColor: Colors.black,
+      // KonomiTV は番組境界ごとに再取得で作り直されるため、前回データを
+      // 出し続ける (読み込み表示に戻すと `_LivePlayerState` ごと破棄される)。
       body: stream.when(
+        skipLoadingOnReload: true,
+        skipLoadingOnRefresh: true,
         // 読み込み中でも情報パネルは消さず、映像側だけ読み込み表示にする
         // (チャンネル切り替え中にパネルが点滅しないように)。
         loading: () => _WatchLayout(
@@ -478,7 +497,12 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
   Widget _buildLayout(bool pictureInPicture) {
     // セッション開設 (tap起動) 中は映像側だけ読み込み表示し、
     // 情報パネルは出したままにする。
+    // KonomiTV は番組境界ごとに再取得で作り直されるため、前回データを
+    // 出し続ける (読み込み表示に戻すと `_LivePlayerState` ごと破棄されて
+    // mpv が開き直される)。画質切替はURLキーで作り直されるため影響しない。
     final video = widget.stream.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
       loading: () => const PlayerLoadingView(),
       error: (error, _) => PlayerRetryView(
         message: '$error',
