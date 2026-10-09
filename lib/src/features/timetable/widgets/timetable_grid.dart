@@ -11,6 +11,7 @@ import '../../../domain/entities/timetable.dart';
 import '../../../domain/entities/tv_program.dart';
 import '../timetable_layout.dart';
 import '../timetable_scroll_link.dart';
+import 'timetable_pan_scroll.dart';
 import 'timetable_program_cell.dart';
 
 /// 番組表グリッド。縦=時間・横=チャンネルの2軸スクロール。
@@ -23,6 +24,10 @@ import 'timetable_program_cell.dart';
 ///   [TimetableScrollLink] で連動させる。どちらも仮想化される
 /// - 罫線・nowラインは `AnimatedBuilder` で線だけ作り直し、列の再構築は
 ///   起きない
+///
+/// ドラッグ・ホイールは [TimetablePanScroll] が1本で受ける (斜めも可)。
+/// 列の `ListView` は `NeverScrollableScrollPhysics` なので自分では
+/// スクロールしない。慣性・端のクランプ・仮想化はこれまでどおり。
 class TimetableGrid extends StatefulWidget {
   const TimetableGrid({
     super.key,
@@ -88,7 +93,8 @@ class _TimetableGridState extends State<TimetableGrid>
           constraints.maxHeight - timetableHeaderHeight,
         );
         _scheduleJumpToNow(viewportHeight, gridHeight);
-        // デスクトップのマウスドラッグでもスクロールできるようにする。
+        // デスクトップのマウスドラッグ (スクロールバー自体を摘む操作) を
+        // 受け付けるようにする。
         final grid = Row(
           children: [
             SizedBox(
@@ -130,6 +136,9 @@ class _TimetableGridState extends State<TimetableGrid>
                         child: ListView.builder(
                           scrollDirection: Axis.horizontal,
                           controller: _headerController,
+                          // 斜めスクロールのためドラッグは
+                          // `TimetablePanScroll` に一本化する。
+                          physics: const NeverScrollableScrollPhysics(),
                           itemExtent: timetableColumnWidth,
                           itemCount: columns.length,
                           itemBuilder: (context, index) => _ChannelHeader(
@@ -149,6 +158,7 @@ class _TimetableGridState extends State<TimetableGrid>
                         ListView.builder(
                           scrollDirection: Axis.horizontal,
                           controller: _columnsController,
+                          physics: const NeverScrollableScrollPhysics(),
                           itemExtent: timetableColumnWidth,
                           itemCount: columns.length,
                           itemBuilder: (context, index) {
@@ -206,7 +216,14 @@ class _TimetableGridState extends State<TimetableGrid>
           behavior: ScrollConfiguration.of(context).copyWith(
             dragDevices: {PointerDeviceKind.touch, PointerDeviceKind.mouse},
           ),
-          child: grid,
+          // 列の ListView はドラッグの競合を避けるため
+          // `NeverScrollableScrollPhysics` にしてあり、ドラッグ・ホイールは
+          // ここで受けて縦横のリンクへ流す (斜めスクロール)。
+          child: TimetablePanScroll(
+            verticalLink: _vLink,
+            horizontalLink: _hLink,
+            child: grid,
+          ),
         );
       },
     );
@@ -279,6 +296,8 @@ class _GutterListState extends State<_GutterList> {
     return _NoScrollbar(
       child: ListView.builder(
         controller: _controller,
+        // 斜めスクロールのためドラッグは `TimetablePanScroll` に一本化する。
+        physics: const NeverScrollableScrollPhysics(),
         itemExtent: 60 * timetablePxPerMin,
         itemCount: hours,
         addAutomaticKeepAlives: false,
@@ -361,6 +380,10 @@ class _ColumnListState extends State<_ColumnList> {
         child: _NoScrollbar(
           child: ListView.builder(
             controller: _controller,
+            // 斜めスクロールのためドラッグは `TimetablePanScroll` に
+            // 一本化する。仮想化 (可視セルだけ作る) はコントローラーの
+            // 駆動で残る。
+            physics: const NeverScrollableScrollPhysics(),
             itemCount: segments.length,
             addAutomaticKeepAlives: false,
             // セル内容は静的でスクロールでは再描画されないため、セル単位の

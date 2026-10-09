@@ -160,6 +160,34 @@ void main() {
     });
   });
 
+  group('ドラッグオフセット', () {
+    test('指の移動と逆方向へ動く', () {
+      expect(
+        timetableDragOffset(offset: 100, maxOffset: 1000, delta: 30),
+        70,
+      );
+      expect(
+        timetableDragOffset(offset: 100, maxOffset: 1000, delta: -30),
+        130,
+      );
+    });
+
+    test('両端でクランプする', () {
+      // 下端 (先頭)。上へ引っ張っても 0 より行かない。
+      expect(timetableDragOffset(offset: 10, maxOffset: 500, delta: 40), 0);
+      // 上端 (末尾)。下へ引っ張っても最大値を超えない。
+      expect(
+        timetableDragOffset(offset: 490, maxOffset: 500, delta: -40),
+        500,
+      );
+    });
+
+    test('内容がビューポートより短ければ動かない', () {
+      expect(timetableDragOffset(offset: 0, maxOffset: 0, delta: 40), 0);
+      expect(timetableDragOffset(offset: 0, maxOffset: -1, delta: -40), 0);
+    });
+  });
+
   group('時境界', () {
     test('1日分は24件で5時から28時までになる', () {
       final marks = timetableHourMarksMs(dayStartMs, dayEndMs);

@@ -126,6 +126,23 @@ double timetableProgramHeightPx({
   return timetableHeightPx(clamped.startMs, clamped.endMs);
 }
 
+/// ドラッグ量から次のスクロールオフセットを求める。
+///
+/// [delta] は画面上の指の移動方向 (下・右が正)。内容は指に逆らって動くので
+/// 符号を反転し、両端でクランプする。[maxOffset] が 0 以下 (内容が
+/// ビューポートより短い) では 0 を返す。
+///
+/// 斜めスクロールでは縦横2軸が同じドラッグ量を別々に受け取るため、軸ごとの
+/// クランプはこの純関数で行う (すべての列の高さが揃っていることが前提)。
+double timetableDragOffset({
+  required double offset,
+  required double maxOffset,
+  required double delta,
+}) {
+  if (maxOffset <= 0) return 0;
+  return (offset - delta).clamp(0.0, maxOffset).toDouble();
+}
+
 /// 範囲内の時境界 (JSTの毎正時) の一覧 (ms epoch) を返す。
 ///
 /// ガターの時刻ラベルと横罫線の位置決めに使う。

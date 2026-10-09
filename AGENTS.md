@@ -168,6 +168,16 @@ Mirakurun (`/api/programs` 約10MB・期間絞り不可) の全量取得を減�
 - Android 側の必須変更は2つ: `AndroidManifest.xml` の activity に `android:supportsPictureInPicture="true"`、`MainActivity` を `PipCallbackHelperActivityWrapper` に継承する (コールバックは `onPictureInPictureModeChanged` からのみ届く。`configureFlutterEngine` の `super` がラッパーの実装になり、`DynamicColorBridge` の据付はその後に書く)。
 
 
+## 番組表 (グリッドのスクロール)
+
+`features/timetable/`。縦=時間・横=チャンネル。寸法・座標・日付計算は `timetable_layout.dart` の純関数 (テスト対象) に寄せ、ウィジェット側で時刻計算をしないこと。
+
+- **斜めスクロールは `TimetablePanScroll` が1本の `PanGestureRecognizer` で受ける。** グリッドは縦列 (各チャンネル列の `ListView.builder`、番組境界が列で異なるため) が横列 (チャンネルを並べた `ListView.builder`) の内側にある縦横2軸構造。どちらも軸でロックされた `DragGestureRecognizer` なので、斜めドラッグは深い縦列側が先にジェスチャーを取って横成分が落ち1軸しか動かない。
+- **列の 4 本の `ListView` (ガター・ヘッダー・横列・各縦列) は `NeverScrollableScrollPhysics` を外さない。** `ScrollPosition.applyNewDimensions` → `setCanDrag(physics.shouldAcceptUserOffset)` で recognizer ごと外れるため、下のパンだけが arena に参加する。ここを平台の physics に戻すと斜めが壊れる (元の1軸ロックの症状に戻る)。仮想化 (可視セルだけ作る) はコントローラー駆動で残る。
+- **パンは `TimetableScrollLink.dragBy` / `flingBy` / `pointerScrollBy` で縦横のリンクへ同じ量を流す。** クランプは純関数 `timetableDragOffset`、慣性 (`goBallistic`) とホイール (`pointerScroll`) は各 `ScrollPosition` の物理に委ねる。全列の高さは `timetableColumnSegments` の空白埋めで揃える (揃わないとオフセット共有の前提が崩れ、短い列に触れた瞬間に他列が引き戻される)。
+- 罫線・nowラインは `TimetableScrollLink.offset` の `AnimatedBuilder`、進捗表示 (`ProgramProgressBar`) は各セル内の自律更新ウィジェット。番組表1日分は `timetableDataProvider` が次の番組境界で自分を作り直す。
+
+
 ## Conventions
 
 - **Doc comments, test names, and user-facing strings are in Japanese.** Match this.
