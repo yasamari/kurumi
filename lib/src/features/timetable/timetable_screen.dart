@@ -2,18 +2,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../domain/entities/channel.dart';
+import '../../core/utils/time_format.dart';
 import '../../domain/entities/channel_type.dart';
 import '../../domain/entities/timetable.dart';
-import '../../domain/entities/tv_program.dart';
 import '../../domain/repositories/tv_repository.dart';
+import '../shell/app_destinations.dart';
 import '../tv/epg_providers.dart';
 import 'timetable_layout.dart';
 import 'timetable_providers.dart';
 import 'widgets/timetable_grid.dart';
 import 'widgets/timetable_program_sheet.dart';
 
-/// 番組表画面: 縦=時間・横=チャンネルの番組表を種別タブ+日送りで表示する。
+/// 番組表画面: 縦=時間・横=チャンネルの番組表を1行バー+グリッドで表示する。
+///
+/// チャンネル種別はタブで切り替えない。`TabBarView` の水平スワイプが
+/// グリッドの斜めスクロール (`TimetablePanScroll`) と干渉するため、
+/// メニューからの選択にしている。種別・日付・時刻・現在ボタンは
+/// 1行のバー (`_TimetableBar`) に収める。
 class TimetableScreen extends ConsumerStatefulWidget {
   const TimetableScreen({super.key});
 
@@ -25,8 +30,12 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
   /// 今日の放送日からのずれ (日単位)。シェルに保持されるためタブ切替で保たれる。
   int _dayOffset = 0;
 
-  /// 種別タブの選択位置。再読み込みで先頭に戻らないよう状態で持つ。
-  int _tabIndex = 0;
+  /// 種別の選択。未選択・範囲外のときは先頭種別を使う。
+  ChannelType? _selectedType;
+
+  /// 外部スクロール要求の世代と対象時刻 (時刻メニュー・現在ボタン用)。
+  int _scrollRequestId = 0;
+  int? _scrollRequestMs;
 
   @override
   Widget build(BuildContext context) {
@@ -34,72 +43,205 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
       DateTime.now().millisecondsSinceEpoch,
     );
     final dayStartMs = timetableDayStartMsForOffset(baseDayStartMs, _dayOffset);
-    final isToday = _dayOffset == 0;
     final timetable = ref.watch(timetableDataProvider(dayStartMs));
+    // 狭幅では詰めた表示にし、「番組表」ラベルを隠して操作部を優先する。
+    final compact =
+        MediaQuery.sizeOf(context).width < AdaptiveBreakpoints.rail;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('番組表'),
-        actions: [
-          IconButton(
-            tooltip: '今日に戻る',
-            icon: const Icon(Icons.today_outlined),
-            onPressed: isToday ? null : () => setState(() => _dayOffset = 0),
-          ),
-          IconButton(
-            tooltip: '更新',
-            icon: const Icon(Icons.refresh),
-            onPressed: () => _refresh(dayStartMs),
-          ),
-        ],
-      ),
-      body: Column(
-        children: [
-          _DayPager(
-            dayStartMs: dayStartMs,
-            isToday: isToday,
-            onPrevious: () => setState(() => _dayOffset--),
-            onNext: () => setState(() => _dayOffset++),
-            onToday: () => setState(() => _dayOffset = 0),
-          ),
-          Expanded(
-            // 再計算・裏更新のたびに読み込み表示に戻すとグリッドが点滅する。
-            // 前回データを出し続ける。
-            child: timetable.when(
-              skipLoadingOnReload: true,
-              skipLoadingOnRefresh: true,
-              loading: () =>
-                  const Center(child: CircularProgressIndicator()),
-              error: (error, _) {
-                if (error is BackendUnconfiguredException) {
-                  return _Unconfigured(
-                    onOpenSettings: () => context.go('/settings'),
-                  );
-                }
-                return _Error(
-                  message: '$error',
-                  onRetry: () => _refresh(dayStartMs),
-                );
-              },
-              data: (data) => _TimetableBody(
-                data: data,
-                tabIndex: _tabIndex,
-                onTabChanged: (index) => setState(() => _tabIndex = index),
-                onProgramTap: (column, program) =>
-                    showTimetableProgramSheet(
-                      context: context,
-                      column: column,
-                      program: program,
-                    ),
-                onChannelTap: (channel) =>
-                    context.push('/watch/${channel.id}'),
-                onRetry: () => _refresh(dayStartMs),
+    // 再計算・裏更新のたびに読み込み表示に戻すとグリッドが点滅する。
+    // 前回データを出し続ける。
+    return timetable.when(
+      skipLoadingOnReload: true,
+      skipLoadingOnRefresh: true,
+      loading: () => Scaffold(
+        appBar: _TimetableBar(
+          compact: compact,
+          types: const [],
+          selectedType: null,
+          onTypeSelected: (_) {},
+          dayStartMs: dayStartMs,
+          onPickDate: _pickDate,
+          onTimeSelected: _jumpToTime,
+          onGoNow: _goNow,
+          onRefresh: () => _refresh(dayStartMs),
+        ),
+        // 読み込み中もバーと時刻ガターは出す。グリッドは空列で組み、
+        // 中央に読み込み表示を重ねる。種別メニューは取得後に生える。
+        body: Stack(
+          children: [
+            TimetableGrid(
+              data: TimetableData(
+                startMs: dayStartMs,
+                endMs: dayStartMs + timetableDayLengthMs,
+                channels: const [],
               ),
+              onProgramTap: (_, _) {},
+              onChannelTap: (_) {},
             ),
-          ),
-        ],
+            const Center(child: CircularProgressIndicator()),
+          ],
+        ),
       ),
+      error: (error, _) {
+        if (error is BackendUnconfiguredException) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('番組表')),
+            body: _Unconfigured(
+              onOpenSettings: () => context.go('/settings'),
+            ),
+          );
+        }
+        return Scaffold(
+          appBar: AppBar(title: const Text('番組表')),
+          body: _Error(
+            message: '$error',
+            onRetry: () => _refresh(dayStartMs),
+          ),
+        );
+      },
+      data: (data) {
+        final types = channelTypesInOrder(
+          data.channels.map((column) => column.channel.channelType),
+        );
+        if (types.isEmpty) {
+          return Scaffold(
+          appBar: _TimetableBar(
+            compact: compact,
+            types: types,
+            selectedType: null,
+            onTypeSelected: (_) {},
+              dayStartMs: dayStartMs,
+              onPickDate: _pickDate,
+              onTimeSelected: _jumpToTime,
+              onGoNow: _goNow,
+              onRefresh: () => _refresh(dayStartMs),
+            ),
+            body: _Empty(onRetry: () => _refresh(dayStartMs)),
+          );
+        }
+        final selectedType =
+            (_selectedType != null && types.contains(_selectedType))
+            ? _selectedType!
+            : types.first;
+        final filtered = data.copyWith(
+          channels: timetableColumnsOfType(data.channels, selectedType),
+        );
+        return Scaffold(
+          appBar: _TimetableBar(
+            compact: compact,
+            types: types,
+            selectedType: selectedType,
+            onTypeSelected: (type) =>
+                setState(() => _selectedType = type),
+            dayStartMs: dayStartMs,
+            onPickDate: _pickDate,
+            onTimeSelected: _jumpToTime,
+            onGoNow: _goNow,
+            onRefresh: () => _refresh(dayStartMs),
+          ),
+          // 日替わりでグリッドを作り直す (先頭へ戻す)。種別切替では
+          // 作り直さないため、同じ時刻位置を保ったまま列だけ変わる。
+          body: TimetableGrid(
+            key: ValueKey(dayStartMs),
+            data: filtered,
+            jumpToTimeMs: _scrollRequestMs,
+            scrollRequestId: _scrollRequestId,
+            onRequestPreviousDay: _goPreviousDayBottom,
+            onRequestNextDay: _goNextDayTop,
+            onProgramTap: (column, program) => showTimetableProgramSheet(
+              context: context,
+              column: column,
+              program: program,
+            ),
+            onChannelTap: (channel) => context.push('/watch/${channel.id}'),
+          ),
+        );
+      },
     );
+  }
+
+  /// 時刻メニューからのジャンプ。対象時刻へスクロール要求を出す。
+  void _jumpToTime(int timeMs) {
+    setState(() {
+      _scrollRequestId++;
+      _scrollRequestMs = timeMs;
+    });
+  }
+
+  /// 現在時刻へ移動する。日付を今日に戻してから要求を出すため、新データ
+  /// 到着後の build で世代変化を見てジャンプする。
+  void _goNow() {
+    setState(() {
+      _dayOffset = 0;
+      _scrollRequestId++;
+      _scrollRequestMs = DateTime.now().millisecondsSinceEpoch;
+    });
+  }
+
+  /// 上端の「前の日」ボタンからの移動。前日の末尾へ出る
+  /// (今見ている先頭と時刻がつながる)。
+  void _goPreviousDayBottom() {
+    final previousStartMs = timetableDayStartMsForOffset(
+      timetableDayStartMs(DateTime.now().millisecondsSinceEpoch),
+      _dayOffset - 1,
+    );
+    setState(() {
+      _dayOffset--;
+      _scrollRequestId++;
+      _scrollRequestMs = previousStartMs + timetableDayLengthMs - 60000;
+    });
+  }
+
+  /// 下端の「次の日」ボタンからの移動。翌日の先頭へ出る
+  /// (今見ている末尾と時刻がつながる)。
+  void _goNextDayTop() {
+    final nextStartMs = timetableDayStartMsForOffset(
+      timetableDayStartMs(DateTime.now().millisecondsSinceEpoch),
+      _dayOffset + 1,
+    );
+    setState(() {
+      _dayOffset++;
+      _scrollRequestId++;
+      _scrollRequestMs = nextStartMs;
+    });
+  }
+
+  /// 日付ピッカーで放送日を選ぶ。正午基準で求める
+  /// (0〜4時は前日の放送日に属するため)。
+  Future<void> _pickDate() async {
+    final dayStartMs = timetableDayStartMsForOffset(
+      timetableDayStartMs(DateTime.now().millisecondsSinceEpoch),
+      _dayOffset,
+    );
+    final initialJst = toJst(
+      DateTime.fromMillisecondsSinceEpoch(dayStartMs),
+    );
+    final initialDate = DateTime(
+      initialJst.year,
+      initialJst.month,
+      initialJst.day,
+    );
+    final todayJst = toJst(DateTime.now());
+    final today = DateTime(todayJst.year, todayJst.month, todayJst.day);
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: today.subtract(const Duration(days: 30)),
+      lastDate: today.add(const Duration(days: 30)),
+    );
+    if (picked == null || !mounted) return;
+    final pickedStartMs = timetableDayStartMs(
+      DateTime.utc(picked.year, picked.month, picked.day, 3)
+          .millisecondsSinceEpoch,
+    );
+    setState(() {
+      _dayOffset = timetableDayOffsetForDayStart(
+        baseDayStartMs: timetableDayStartMs(
+          DateTime.now().millisecondsSinceEpoch,
+        ),
+        targetDayStartMs: pickedStartMs,
+      );
+    });
   }
 
   void _refresh(int dayStartMs) {
@@ -108,115 +250,248 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
   }
 }
 
-/// 放送日の送り。中央ラベルタップで今日に戻る。
-class _DayPager extends StatelessWidget {
-  const _DayPager({
+/// バー内のテキストボタンの見た目。トーンを付けてボタンと分かるようにする。
+/// 狭幅では詰める。
+ButtonStyle _barButtonStyle({bool compact = false}) {
+  return FilledButton.styleFrom(
+    padding: EdgeInsets.symmetric(horizontal: compact ? 12 : 16),
+    minimumSize: Size(0, compact ? 36 : 40),
+    textStyle: const TextStyle(fontSize: 14),
+    tapTargetSize: compact
+        ? MaterialTapTargetSize.shrinkWrap
+        : MaterialTapTargetSize.padded,
+  );
+}
+
+/// バー内のアイコンボタンの見た目。狭幅では詰める。
+ButtonStyle _barIconButtonStyle({bool compact = false}) {
+  return IconButton.styleFrom(
+    minimumSize: compact ? const Size(36, 36) : const Size(48, 48),
+    padding: EdgeInsets.zero,
+    tapTargetSize: compact
+        ? MaterialTapTargetSize.shrinkWrap
+        : MaterialTapTargetSize.padded,
+  );
+}
+
+/// 番組表の1行バー。種別・日付・時刻・現在ボタンを1行に収める。
+///
+/// 狭幅では詰めた表示にし、入り切らない場合もスクロールではなく縮小で
+/// 収める (`FittedBox`)。タブ (`TabBar`/`TabBarView`) は使わない。
+/// 水平スワイプがグリッドの斜めスクロールと干渉するため。
+class _TimetableBar extends StatelessWidget implements PreferredSizeWidget {
+  const _TimetableBar({
+    required this.compact,
+    required this.types,
+    required this.selectedType,
+    required this.onTypeSelected,
     required this.dayStartMs,
-    required this.isToday,
-    required this.onPrevious,
-    required this.onNext,
-    required this.onToday,
+    required this.onPickDate,
+    required this.onTimeSelected,
+    required this.onGoNow,
+    required this.onRefresh,
   });
 
+  /// 狭幅向けの詰めた表示にするか。「番組表」ラベルは出さない。
+  final bool compact;
+
+  /// 利用可能な種別 (正規順)。
+  final List<ChannelType> types;
+
+  /// 選択中の種別。データなしのときは null。
+  final ChannelType? selectedType;
+
+  final ValueChanged<ChannelType> onTypeSelected;
   final int dayStartMs;
-  final bool isToday;
-  final VoidCallback onPrevious;
-  final VoidCallback onNext;
-  final VoidCallback onToday;
+  final VoidCallback onPickDate;
+  final ValueChanged<int> onTimeSelected;
+  final VoidCallback onGoNow;
+  final VoidCallback onRefresh;
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final label = formatTimetableDay(dayStartMs);
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            tooltip: '前の日',
-            icon: const Icon(Icons.chevron_left),
-            onPressed: onPrevious,
-          ),
-          TextButton(
-            onPressed: isToday ? null : onToday,
-            child: Text(
-              isToday ? '$label (今日)' : label,
-              style: theme.textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
+    final colorScheme = Theme.of(context).colorScheme;
+    final onSurface = colorScheme.onSurface;
+    final dateLabel = compact
+        ? formatTimetableDayShort(dayStartMs)
+        : formatTimetableDay(dayStartMs);
+    // トーン付きボタン同士の間隔。区切り線は置かない。
+    final gap = SizedBox(width: compact ? 4 : 8);
+    return AppBar(
+      backgroundColor: colorScheme.surface,
+      foregroundColor: onSurface,
+      scrolledUnderElevation: 0,
+      titleSpacing: 4,
+      centerTitle: false,
+      title: FittedBox(
+        fit: BoxFit.scaleDown,
+        alignment: Alignment.centerLeft,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (!compact)
+              const Padding(
+                padding: EdgeInsets.only(left: 8),
+                child: Text('番組表'),
               ),
+            if (!compact) gap,
+            if (selectedType != null)
+              _TypeMenu(
+                types: types,
+                selected: selectedType!,
+                onSelected: onTypeSelected,
+                compact: compact,
+              ),
+            gap,
+            if (compact)
+              FilledButton.tonal(
+                onPressed: onPickDate,
+                style: _barButtonStyle(compact: true),
+                child: Text(dateLabel),
+              )
+            else
+              FilledButton.tonalIcon(
+                onPressed: onPickDate,
+                style: _barButtonStyle(),
+                icon: const Icon(Icons.calendar_month_outlined, size: 20),
+                label: Text(dateLabel),
+              ),
+            gap,
+            _TimeMenu(
+              dayStartMs: dayStartMs,
+              onSelected: onTimeSelected,
+              compact: compact,
             ),
-          ),
-          IconButton(
-            tooltip: '次の日',
-            icon: const Icon(Icons.chevron_right),
-            onPressed: onNext,
-          ),
-        ],
+          ],
+        ),
       ),
+      actions: [
+        IconButton.filledTonal(
+          tooltip: '現在時刻に移動',
+          icon: const Icon(Icons.my_location, size: 20),
+          onPressed: onGoNow,
+        ),
+        IconButton(
+          tooltip: '更新',
+          color: onSurface,
+          icon: const Icon(Icons.refresh),
+          onPressed: onRefresh,
+        ),
+      ],
     );
   }
 }
 
-/// 種別タブ+グリッド。チャンネルが無ければ空表示にする。
-class _TimetableBody extends StatelessWidget {
-  const _TimetableBody({
-    required this.data,
-    required this.tabIndex,
-    required this.onTabChanged,
-    required this.onProgramTap,
-    required this.onChannelTap,
-    required this.onRetry,
+/// チャンネル種別の選択メニュー。タップ操作のみで切り替える。
+class _TypeMenu extends StatelessWidget {
+  const _TypeMenu({
+    required this.types,
+    required this.selected,
+    required this.onSelected,
+    this.compact = false,
   });
 
-  final TimetableData data;
-  final int tabIndex;
-  final ValueChanged<int> onTabChanged;
-  final void Function(TimetableChannel column, TvProgram program) onProgramTap;
-  final void Function(Channel channel) onChannelTap;
-  final VoidCallback onRetry;
+  final List<ChannelType> types;
+  final ChannelType selected;
+  final ValueChanged<ChannelType> onSelected;
+
+  /// 狭幅ではラベル+矢印だけの詰めた表示にする。
+  final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    if (data.channels.isEmpty) {
-      return _Empty(onRetry: onRetry);
-    }
-    final types = channelTypesInOrder(
-      data.channels.map((column) => column.channel.channelType),
-    );
-    final initialIndex = tabIndex.clamp(0, types.length - 1);
-    return DefaultTabController(
-      length: types.length,
-      initialIndex: initialIndex,
-      child: Column(
-        children: [
-          TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.center,
-            onTap: onTabChanged,
-            tabs: [for (final type in types) Tab(text: type.label)],
-          ),
-          Expanded(
-            child: TabBarView(
-              children: [
-                for (var i = 0; i < types.length; i++)
-                  TimetableGrid(
-                    key: ValueKey('${data.startMs}-$i'),
-                    data: data.copyWith(
-                      channels: timetableColumnsOfType(
-                        data.channels,
-                        types[i],
-                      ),
-                    ),
-                    onProgramTap: (column, program) =>
-                        onProgramTap(column, program),
-                    onChannelTap: onChannelTap,
-                  ),
+    return MenuAnchor(
+      builder: (context, controller, _) {
+        void toggleTypeMenu() {
+          if (controller.isOpen) {
+            controller.close();
+          } else {
+            controller.open();
+          }
+        }
+        return FilledButton.tonal(
+          onPressed: toggleTypeMenu,
+          style: _barButtonStyle(compact: compact),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (!compact) ...[
+                const Icon(Icons.live_tv_outlined, size: 20),
+                const SizedBox(width: 4),
               ],
-            ),
+              Text(selected.label),
+              const Icon(Icons.arrow_drop_down, size: 18),
+            ],
           ),
-        ],
+        );
+      },
+      menuChildren: [
+        for (final type in types)
+          MenuItemButton(
+            leadingIcon: type == selected
+                ? const Icon(Icons.check, size: 20)
+                : null,
+            onPressed: () => onSelected(type),
+            child: Text(type.label),
+          ),
+      ],
+    );
+  }
+}
+
+/// 時刻の選択メニュー。選んだ正時へジャンプする。
+class _TimeMenu extends StatelessWidget {
+  const _TimeMenu({
+    required this.dayStartMs,
+    required this.onSelected,
+    this.compact = false,
+  });
+
+  final int dayStartMs;
+  final ValueChanged<int> onSelected;
+
+  /// 狭幅ではトーン付きの時計アイコンのみにする。
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    return MenuAnchor(
+      style: const MenuStyle(
+        maximumSize: WidgetStatePropertyAll(Size(200, 400)),
       ),
+      builder: (context, controller, _) {
+        void toggleTimeMenu() {
+          if (controller.isOpen) {
+            controller.close();
+          } else {
+            controller.open();
+          }
+        }
+        if (compact) {
+          return IconButton.filledTonal(
+            tooltip: '時刻を選択',
+            style: _barIconButtonStyle(compact: true),
+            icon: const Icon(Icons.schedule_outlined, size: 20),
+            onPressed: toggleTimeMenu,
+          );
+        }
+        return FilledButton.tonalIcon(
+          onPressed: toggleTimeMenu,
+          style: _barButtonStyle(),
+          icon: const Icon(Icons.schedule_outlined, size: 20),
+          label: const Text('時刻'),
+        );
+      },
+      menuChildren: [
+        for (final hourMs in timetableDayHoursMs(dayStartMs))
+          MenuItemButton(
+            onPressed: () => onSelected(hourMs),
+            child: Text(formatTimetableHour(hourMs)),
+          ),
+      ],
     );
   }
 }

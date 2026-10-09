@@ -116,7 +116,9 @@ class TimetableScrollLink extends ChangeNotifier {
   /// 参加メンバーの最大スクロール量。未レイアウト (節点なし) では 0。
   ///
   /// 全列の高さは `timetableColumnSegments` の空白埋めで揃うため、先頭の
-  /// 値を使えば全列共通になる。
+  /// 値を使えば全列共通になる。端ボタンの表示判定に使う。
+  double get maxOffset => _maxOffset;
+
   double get _maxOffset {
     for (final member in _members.keys) {
       if (member.hasClients) {

@@ -61,6 +61,52 @@ String formatTimetableDay(int dayStartMs) {
   return '${jst.month}/${jst.day}（${weekdays[jst.weekday % 7]}）';
 }
 
+/// 放送日の短い表示ラベル (`10/9` 形式、JST) を返す。
+///
+/// 狭幅ツールバー用。
+String formatTimetableDayShort(int dayStartMs) {
+  final jst = toJst(DateTime.fromMillisecondsSinceEpoch(dayStartMs));
+  return '${jst.month}/${jst.day}';
+}
+
+/// 放送日の開始時刻から基準日との日オフセットを求める。
+///
+/// 日付ピッカーで選んだ日の放送日開始時刻から `_dayOffset` への戻しに使う。
+int timetableDayOffsetForDayStart({
+  required int baseDayStartMs,
+  required int targetDayStartMs,
+}) {
+  return ((targetDayStartMs - baseDayStartMs) / timetableDayLengthMs).round();
+}
+
+/// 放送日内の毎正時 (ms epoch) を日開始順に24件返す。
+///
+/// 時刻メニューの選択肢に使う。放送日は4時始まりのため、先頭は4時になる。
+List<int> timetableDayHoursMs(int dayStartMs) {
+  return [for (var i = 0; i < 24; i++) dayStartMs + i * 3600 * 1000];
+}
+
+/// 時刻の表示ラベル (`4時` 形式、JST) を返す。
+String formatTimetableHour(int timeMs) {
+  final jst = toJst(DateTime.fromMillisecondsSinceEpoch(timeMs));
+  return '${jst.hour}時';
+}
+
+/// 指定時刻へジャンプするときの縦オフセット(px)を返す。
+///
+/// 対象時刻が上から1/4の位置に来るようにし、両端でクランプする。初回表示の
+/// 現在時刻ジャンプと、時刻メニュー・現在ボタンからのジャンプで共有する。
+double timetableJumpTargetPx({
+  required int timeMs,
+  required int dayStartMs,
+  required double viewportHeightPx,
+  required double gridHeightPx,
+}) {
+  final target =
+      timetableOffsetPx(timeMs, dayStartMs) - viewportHeightPx * 0.25;
+  return target.clamp(0.0, max(0.0, gridHeightPx - viewportHeightPx)).toDouble();
+}
+
 /// 指定日が今日の放送日かどうか。
 bool isTimetableToday(int dayStartMs, int nowMs) {
   return dayStartMs == timetableDayStartMs(nowMs);

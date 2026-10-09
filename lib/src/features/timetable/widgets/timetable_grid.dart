@@ -34,6 +34,10 @@ class TimetableGrid extends StatefulWidget {
     required this.data,
     required this.onProgramTap,
     required this.onChannelTap,
+    this.jumpToTimeMs,
+    this.scrollRequestId = 0,
+    this.onRequestPreviousDay,
+    this.onRequestNextDay,
   });
 
   /// 表示する1日分。
@@ -45,12 +49,27 @@ class TimetableGrid extends StatefulWidget {
   /// チャンネルヘッダータップ時のコールバック (視聴遷移用)。
   final void Function(Channel channel) onChannelTap;
 
+  /// 外部からのスクロール要求 (時刻メニュー・現在ボタン用)。
+  ///
+  /// [scrollRequestId] が変わったら [jumpToTimeMs] へジャンプする。タブを
+  /// 使わないため水平スワイプとの干渉はなく、ID 変化での宣言的ジャンプで
+  /// 足りる。
+  final int? jumpToTimeMs;
+
+  /// スクロール要求の世代。変化したらジャンプする。
+  final int scrollRequestId;
+
+  /// 上端到達時に出す「前の日」ボタンのコールバック。null では出さない。
+  final VoidCallback? onRequestPreviousDay;
+
+  /// 下端到達時に出す「次の日」ボタンのコールバック。null では出さない。
+  final VoidCallback? onRequestNextDay;
+
   @override
   State<TimetableGrid> createState() => _TimetableGridState();
 }
 
-class _TimetableGridState extends State<TimetableGrid>
-    with AutomaticKeepAliveClientMixin {
+class _TimetableGridState extends State<TimetableGrid> {
   /// 縦スクロールの連動 (ガター+各チャンネル列)。
   late final TimetableScrollLink _vLink = TimetableScrollLink();
 
@@ -63,10 +82,20 @@ class _TimetableGridState extends State<TimetableGrid>
   /// 初回表示のnowジャンプ済みの放送日。日替わりで再実行する。
   int _jumpedForDayMs = -1;
 
-  // タブ切替で破棄されるとスクロール位置とnowジャンプ済み状態を失い、
-  // 戻るたびに先頭へ戻ってしまうため、タブの状態は保持する。
+  /// 処理済みの外部スクロール要求の世代。
+  int _handledRequestId = 0;
+
   @override
-  bool get wantKeepAlive => true;
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // 初回レイアウト後に共有オフセットを配信し、端ボタンの表示を更新する。
+      // スクロール前は通知が飛ばないため、これが無いと端にいても
+      // ボタンが出ない。
+      _vLink.jumpTo(_vLink.offset);
+    });
+  }
 
   @override
   void dispose() {
@@ -79,7 +108,6 @@ class _TimetableGridState extends State<TimetableGrid>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     final TimetableData data = widget.data;
     final List<TimetableChannel> columns = data.channels;
     final gridHeight = timetableHeightPx(data.startMs, data.endMs);
@@ -93,6 +121,7 @@ class _TimetableGridState extends State<TimetableGrid>
           constraints.maxHeight - timetableHeaderHeight,
         );
         _scheduleJumpToNow(viewportHeight, gridHeight);
+        _handleScrollRequest(viewportHeight, gridHeight);
         // デスクトップのマウスドラッグ (スクロールバー自体を摘む操作) を
         // 受け付けるようにする。
         final grid = Row(
@@ -204,6 +233,13 @@ class _TimetableGridState extends State<TimetableGrid>
                             ),
                           ),
                         ),
+                        // 端までスクロールしたら日送りボタンを出す。
+                        // 罫線とは別に置く (ボタンはタップを受けるため)。
+                        _EdgeButtons(
+                          verticalLink: _vLink,
+                          onRequestPreviousDay: widget.onRequestPreviousDay,
+                          onRequestNextDay: widget.onRequestNextDay,
+                        ),
                       ],
                     ),
                   ),
@@ -238,15 +274,142 @@ class _TimetableGridState extends State<TimetableGrid>
       final data = widget.data;
       final nowMs = DateTime.now().millisecondsSinceEpoch;
       if (nowMs < data.startMs || nowMs >= data.endMs) return;
-      final target = min(
-        max(
-          timetableOffsetPx(nowMs, data.startMs) - viewportHeight * 0.25,
-          0.0,
+      _vLink.jumpTo(
+        timetableJumpTargetPx(
+          timeMs: nowMs,
+          dayStartMs: data.startMs,
+          viewportHeightPx: viewportHeight,
+          gridHeightPx: gridHeight,
         ),
-        max(0.0, gridHeight - viewportHeight),
       );
-      _vLink.jumpTo(target);
     });
+  }
+
+  /// 時刻メニュー・現在ボタンからのスクロール要求を処理する。
+  ///
+  /// 要求の世代が変わったときだけ1回ジャンプする。日付が変わってデータが
+  /// 届く前の要求は範囲外として捨てられるため、現在ボタンは日付を今日に
+  /// 戻してから要求を出す (新データ到着後の build で世代変化を見る)。
+  void _handleScrollRequest(double viewportHeight, double gridHeight) {
+    final requestId = widget.scrollRequestId;
+    final timeMs = widget.jumpToTimeMs;
+    if (requestId == _handledRequestId || timeMs == null) return;
+    _handledRequestId = requestId;
+    final data = widget.data;
+    if (timeMs < data.startMs || timeMs >= data.endMs) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _vLink.jumpTo(
+        timetableJumpTargetPx(
+          timeMs: timeMs,
+          dayStartMs: widget.data.startMs,
+          viewportHeightPx: viewportHeight,
+          gridHeightPx: gridHeight,
+        ),
+      );
+    });
+  }
+}
+
+/// 端到達時の日送りボタン。上端で「前の日」、下端で「次の日」を出す。
+///
+/// 列の再構築は起こさず、表示の切り替えだけを `AnimatedBuilder` で受ける。
+/// コールバックが null の側は出さない。
+class _EdgeButtons extends StatelessWidget {
+  const _EdgeButtons({
+    required this.verticalLink,
+    required this.onRequestPreviousDay,
+    required this.onRequestNextDay,
+  });
+
+  final TimetableScrollLink verticalLink;
+  final VoidCallback? onRequestPreviousDay;
+  final VoidCallback? onRequestNextDay;
+
+  @override
+  Widget build(BuildContext context) {
+    if (onRequestPreviousDay == null && onRequestNextDay == null) {
+      return const SizedBox.shrink();
+    }
+    return AnimatedBuilder(
+      animation: verticalLink,
+      builder: (context, _) {
+        final max = verticalLink.maxOffset;
+        // 内容がビューポートに収まる (max が 0) ときは出さない。
+        final showTop =
+            onRequestPreviousDay != null &&
+            max > 0 &&
+            verticalLink.offset <= 1;
+        final showBottom =
+            onRequestNextDay != null &&
+            max > 0 &&
+            verticalLink.offset >= max - 1;
+        return Stack(
+          children: [
+            Positioned(
+              top: 12,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: _EdgeButton(
+                  visible: showTop,
+                  icon: Icons.expand_less,
+                  label: '前の日',
+                  onPressed: onRequestPreviousDay ?? () {},
+                ),
+              ),
+            ),
+            Positioned(
+              bottom: 12,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: _EdgeButton(
+                  visible: showBottom,
+                  icon: Icons.expand_more,
+                  label: '次の日',
+                  onPressed: onRequestNextDay ?? () {},
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 端ボタン本体。フェードで出入りする。
+class _EdgeButton extends StatelessWidget {
+  const _EdgeButton({
+    required this.visible,
+    required this.icon,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final bool visible;
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return ExcludeSemantics(
+      excluding: !visible,
+      child: IgnorePointer(
+        ignoring: !visible,
+        child: AnimatedOpacity(
+          opacity: visible ? 1 : 0,
+          duration: const Duration(milliseconds: 200),
+          child: ElevatedButton.icon(
+            onPressed: onPressed,
+            icon: Icon(icon, size: 20),
+            label: Text(label),
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -83,8 +83,36 @@ void main() {
       );
     });
 
+    test('放送日の開始時刻から日オフセットが求まる', () {
+      expect(
+        timetableDayOffsetForDayStart(
+          baseDayStartMs: dayStartMs,
+          targetDayStartMs: dayStartMs,
+        ),
+        0,
+      );
+      expect(
+        timetableDayOffsetForDayStart(
+          baseDayStartMs: dayStartMs,
+          targetDayStartMs: dayStartMs + timetableDayLengthMs,
+        ),
+        1,
+      );
+      expect(
+        timetableDayOffsetForDayStart(
+          baseDayStartMs: dayStartMs,
+          targetDayStartMs: dayStartMs - timetableDayLengthMs,
+        ),
+        -1,
+      );
+    });
+
     test('日ラベルは月日と曜日になる', () {
       expect(formatTimetableDay(dayStartMs), '10/8（木）');
+    });
+
+    test('短い日ラベルは月日だけになる', () {
+      expect(formatTimetableDayShort(dayStartMs), '10/8');
     });
 
     test('今日判定ができる', () {
@@ -194,6 +222,71 @@ void main() {
       expect(marks, hasLength(24));
       expect(marks.first, dayStartMs + 3600 * 1000);
       expect(marks.last, dayEndMs);
+    });
+
+    test('放送日内の毎正時が24件並ぶ', () {
+      final hours = timetableDayHoursMs(dayStartMs);
+      expect(hours, hasLength(24));
+      expect(hours.first, dayStartMs);
+      for (var i = 1; i < hours.length; i++) {
+        expect(hours[i] - hours[i - 1], 3600 * 1000);
+      }
+    });
+
+    test('時刻ラベルはJSTの時になる', () {
+      expect(formatTimetableHour(dayStartMs), '4時');
+      expect(formatTimetableHour(dayStartMs + 8 * 3600 * 1000), '12時');
+    });
+  });
+
+  group('ジャンプ先オフセット', () {
+    test('対象時刻が上から1/4に来る', () {
+      // 2時間後=360px、ビューポート800pxなら160pxになる。
+      expect(
+        timetableJumpTargetPx(
+          timeMs: dayStartMs + 2 * 3600 * 1000,
+          dayStartMs: dayStartMs,
+          viewportHeightPx: 800,
+          gridHeightPx: timetableHeightPx(dayStartMs, dayEndMs),
+        ),
+        160,
+      );
+    });
+
+    test('先頭では0にクランプする', () {
+      expect(
+        timetableJumpTargetPx(
+          timeMs: dayStartMs,
+          dayStartMs: dayStartMs,
+          viewportHeightPx: 800,
+          gridHeightPx: timetableHeightPx(dayStartMs, dayEndMs),
+        ),
+        0,
+      );
+    });
+
+    test('末尾では最大値にクランプする', () {
+      expect(
+        timetableJumpTargetPx(
+          timeMs: dayEndMs,
+          dayStartMs: dayStartMs,
+          viewportHeightPx: 800,
+          gridHeightPx: timetableHeightPx(dayStartMs, dayEndMs),
+        ),
+        timetableHeightPx(dayStartMs, dayEndMs) - 800,
+      );
+    });
+
+    test('内容がビューポートより短ければ0になる', () {
+      expect(
+        timetableJumpTargetPx(
+          timeMs: dayStartMs + 3600 * 1000,
+          dayStartMs: dayStartMs,
+          viewportHeightPx: 5000,
+          gridHeightPx: timetableHeightPx(dayStartMs, dayEndMs),
+        ),
+        0,
+      );
     });
   });
 
