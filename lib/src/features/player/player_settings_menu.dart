@@ -60,6 +60,9 @@ class PlayerSettingsButton extends StatelessWidget {
     this.danmakuSupported = false,
     this.danmakuPreferences = const DanmakuPreferences(),
     this.onDanmakuPreferencesChanged,
+    this.cmSupported = false,
+    this.cmAutoSkipEnabled = false,
+    this.onCmAutoSkipChanged,
     this.qualityCurrent,
     this.qualities = const [],
     this.onQualitySelected,
@@ -96,6 +99,16 @@ class PlayerSettingsButton extends StatelessWidget {
   /// 映像側の再構築に巻き込まれるため ([audioLayout] と同じ理屈)。
   final ValueChanged<DanmakuPreferences>? onDanmakuPreferencesChanged;
 
+  /// CM区間がある場合のみCM設定ページを出す。
+  final bool cmSupported;
+
+  /// CM自動スキップの現在値 (メニューを開いた時点の値)。
+  final bool cmAutoSkipEnabled;
+
+  /// CM自動スキップを変えたときのコールバック。呼び出し側で状態に反映し、
+  /// 永続化まで行うこと。購読はボタン側で行わない。
+  final ValueChanged<bool>? onCmAutoSkipChanged;
+
   /// 現在の画質。null のときは画質ページを出さない。
   final String? qualityCurrent;
 
@@ -126,8 +139,9 @@ class PlayerSettingsButton extends StatelessWidget {
         danmakuSupported: danmakuSupported,
         danmakuPreferences: danmakuPreferences,
         onDanmakuPreferencesChanged: onDanmakuPreferencesChanged,
-
-
+        cmSupported: cmSupported,
+        cmAutoSkipEnabled: cmAutoSkipEnabled,
+        onCmAutoSkipChanged: onCmAutoSkipChanged,
         qualityCurrent: qualityCurrent,
         qualities: qualities,
         onQualitySelected: onQualitySelected,
@@ -138,7 +152,7 @@ class PlayerSettingsButton extends StatelessWidget {
 
 /// 設定メニューのページ。
 enum _SettingsPage {
-  /// 一覧 (画質・弾幕・音声への入口)。
+  /// 一覧 (画質・弾幕・CMスキップ・音声への入口)。
   main,
 
   /// 画質の選択。
@@ -146,6 +160,9 @@ enum _SettingsPage {
 
   /// 弾幕の on/off。
   danmaku,
+
+  /// CM自動スキップの on/off。
+  cmSkip,
 
   /// 音声の選択。
   audio,
@@ -157,7 +174,7 @@ List<AudioTrack> _realAudioTracks(List<AudioTrack> tracks) {
   return tracks.where((t) => !reserved.contains(t.id)).toList();
 }
 
-/// 設定メニューを開く。画質・弾幕・音声の3ページ構成。
+/// 設定メニューを開く。画質・弾幕・CMスキップ・音声の4ページ構成。
 ///
 /// スマホ幅の縦画面では画面下からせり出すボトムシート、それ以外はボタンの
 /// 上下どちらか広い側に寄せたポップアップにする。メニューを閉じた後の選択結果は
@@ -171,6 +188,9 @@ Future<void> showPlayerSettingsMenu(
   bool danmakuSupported = false,
   DanmakuPreferences danmakuPreferences = const DanmakuPreferences(),
   ValueChanged<DanmakuPreferences>? onDanmakuPreferencesChanged,
+  bool cmSupported = false,
+  bool cmAutoSkipEnabled = false,
+  ValueChanged<bool>? onCmAutoSkipChanged,
   String? qualityCurrent,
   List<String> qualities = const [],
   ValueChanged<String>? onQualitySelected,
@@ -202,8 +222,9 @@ Future<void> showPlayerSettingsMenu(
           danmakuSupported: danmakuSupported,
           danmakuPreferences: danmakuPreferences,
           onDanmakuPreferencesChanged: onDanmakuPreferencesChanged,
-
-
+          cmSupported: cmSupported,
+          cmAutoSkipEnabled: cmAutoSkipEnabled,
+          onCmAutoSkipChanged: onCmAutoSkipChanged,
           qualityCurrent: qualityCurrent,
           qualities: qualities,
           onQualitySelected: onQualitySelected,
@@ -232,8 +253,9 @@ Future<void> showPlayerSettingsMenu(
       danmakuSupported: danmakuSupported,
       danmakuPreferences: danmakuPreferences,
       onDanmakuPreferencesChanged: onDanmakuPreferencesChanged,
-
-
+      cmSupported: cmSupported,
+      cmAutoSkipEnabled: cmAutoSkipEnabled,
+      onCmAutoSkipChanged: onCmAutoSkipChanged,
       qualityCurrent: qualityCurrent,
       qualities: qualities,
       onQualitySelected: onQualitySelected,
@@ -253,6 +275,9 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
     required this.danmakuSupported,
     required this.danmakuPreferences,
     required this.onDanmakuPreferencesChanged,
+    required this.cmSupported,
+    required this.cmAutoSkipEnabled,
+    required this.onCmAutoSkipChanged,
     required this.qualityCurrent,
     required this.qualities,
     required this.onQualitySelected,
@@ -268,6 +293,9 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
   final bool danmakuSupported;
   final DanmakuPreferences danmakuPreferences;
   final ValueChanged<DanmakuPreferences>? onDanmakuPreferencesChanged;
+  final bool cmSupported;
+  final bool cmAutoSkipEnabled;
+  final ValueChanged<bool>? onCmAutoSkipChanged;
   final String? qualityCurrent;
   final List<String> qualities;
   final ValueChanged<String>? onQualitySelected;
@@ -336,8 +364,9 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
                 danmakuSupported: danmakuSupported,
                 danmakuPreferences: danmakuPreferences,
                 onDanmakuPreferencesChanged: onDanmakuPreferencesChanged,
-
-
+                cmSupported: cmSupported,
+                cmAutoSkipEnabled: cmAutoSkipEnabled,
+                onCmAutoSkipChanged: onCmAutoSkipChanged,
                 qualityCurrent: qualityCurrent,
                 qualities: qualities,
                 onQualitySelected: onQualitySelected,
@@ -382,6 +411,9 @@ class _SettingsMenuPanel extends StatefulWidget {
     required this.danmakuSupported,
     required this.danmakuPreferences,
     required this.onDanmakuPreferencesChanged,
+    required this.cmSupported,
+    required this.cmAutoSkipEnabled,
+    required this.onCmAutoSkipChanged,
     required this.qualityCurrent,
     required this.qualities,
     required this.onQualitySelected,
@@ -399,6 +431,9 @@ class _SettingsMenuPanel extends StatefulWidget {
   final bool danmakuSupported;
   final DanmakuPreferences danmakuPreferences;
   final ValueChanged<DanmakuPreferences>? onDanmakuPreferencesChanged;
+  final bool cmSupported;
+  final bool cmAutoSkipEnabled;
+  final ValueChanged<bool>? onCmAutoSkipChanged;
   final String? qualityCurrent;
   final List<String> qualities;
   final ValueChanged<String>? onQualitySelected;
@@ -424,6 +459,17 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
     if (onChanged == null) return;
     setState(() => _danmaku = preferences);
     onChanged(preferences);
+  }
+
+  /// CM自動スキップの表示値。弾幕と同じくローカルで鏡写しする。
+  late bool _cmAutoSkip = widget.cmAutoSkipEnabled;
+
+  /// CM自動スキップを変えて反映する。メニューは開いたままにする。
+  void _changeCmAutoSkip(bool enabled) {
+    final onChanged = widget.onCmAutoSkipChanged;
+    if (onChanged == null) return;
+    setState(() => _cmAutoSkip = enabled);
+    onChanged(enabled);
   }
 
   /// ページ遷移の向き。進むとき +1 (右から入る)、戻るとき -1 (左から入る)。
@@ -506,6 +552,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
                         onQualitySelected: onQualitySelected,
                       ),
                       _SettingsPage.danmaku => _buildDanmakuPage(context),
+                      _SettingsPage.cmSkip => _buildCmSkipPage(context),
                       _SettingsPage.audio => _buildAudioPage(context, layout),
                     },
                   ),
@@ -585,6 +632,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
       _SettingsPage.main => '',
       _SettingsPage.quality => '画質',
       _SettingsPage.danmaku => '弾幕',
+      _SettingsPage.cmSkip => 'CMスキップ',
       _SettingsPage.audio => '音声',
     };
     return Padding(
@@ -634,6 +682,14 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
             subtitle: Text(_danmaku.enabled ? '表示' : '非表示'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _go(_SettingsPage.danmaku, 1),
+          ),
+        if (widget.cmSupported)
+          ListTile(
+            leading: const Icon(Icons.fast_forward_outlined),
+            title: const Text('CMスキップ'),
+            subtitle: Text(_cmAutoSkip ? '自動でスキップ' : '手動'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _go(_SettingsPage.cmSkip, 1),
           ),
         StreamBuilder<Tracks>(
           stream: widget.player.stream.tracks,
@@ -772,6 +828,24 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
                   ),
                 )
               : null,
+        ),
+      ],
+    );
+  }
+
+  /// CMスキップのページ。自動スキップの on/off だけを持つ。
+  ///
+  /// 切り替えてもメニューは開いたままにする (弾幕ページと同じ流儀)。
+  Widget _buildCmSkipPage(BuildContext context) {
+    final editable = widget.onCmAutoSkipChanged != null;
+    return ListView(
+      shrinkWrap: true,
+      children: [
+        SwitchListTile(
+          title: const Text('CMを自動でスキップ'),
+          subtitle: const Text('CM区間に入ったら本編の先頭へ飛ぶ'),
+          value: _cmAutoSkip,
+          onChanged: editable ? _changeCmAutoSkip : null,
         ),
       ],
     );

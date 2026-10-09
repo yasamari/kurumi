@@ -56,15 +56,9 @@ void main() {
     final items = buildVideoPrograms(response: response, baseUrl: _baseUrl);
 
     expect(items.map((e) => e.id).toList(), [3, 1]);
-    expect(
-      items[0].thumbnailUrl,
-      '$_baseUrl/api/videos/3/thumbnail',
-    );
+    expect(items[0].thumbnailUrl, '$_baseUrl/api/videos/3/thumbnail');
     expect(items[0].channel?.name, 'BS11イレブン');
-    expect(
-      items[0].channel?.logoUrl,
-      '$_baseUrl/api/channels/bs211/logo',
-    );
+    expect(items[0].channel?.logoUrl, '$_baseUrl/api/channels/bs211/logo');
   });
 
   test('チャンネル不明の録画はチャンネルなしで残す', () {
@@ -87,9 +81,7 @@ void main() {
       description: '概要',
       startTime: DateTime(2026, 10, 1, 1, 0),
       endTime: DateTime(2026, 10, 1, 1, 48),
-      genres: const [
-        KonomiGenreDto(major: 'アニメ', middle: '国内アニメ'),
-      ],
+      genres: const [KonomiGenreDto(major: 'アニメ', middle: '国内アニメ')],
       detail: const {'出演者': 'テスト太郎'},
       channel: _channel(displayId: 'bs211', name: 'BS11イレブン'),
     );
@@ -158,5 +150,49 @@ void main() {
     );
 
     expect(video.recordedFile, isNull);
+  });
+
+  test('CM区間が引き継がれる', () {
+    final dto = KonomiRecordedProgramDto(
+      id: 12,
+      title: 'CM付き番組',
+      description: '概要',
+      startTime: DateTime(2026, 10, 1, 1, 0),
+      endTime: DateTime(2026, 10, 1, 1, 48),
+      recordedVideo: const KonomiRecordedVideoDto(
+        cmSections: [
+          KonomiCmSectionDto(startTime: 600, endTime: 720),
+          KonomiCmSectionDto(startTime: 100, endTime: 200),
+        ],
+      ),
+    );
+
+    final video = buildVideoProgram(dto: dto, baseUrl: _baseUrl);
+
+    final file = video.recordedFile;
+    expect(file, isNotNull);
+    expect(file!.cmSections.map((e) => e.startTime).toList(), [100, 600]);
+    expect(file.cmSections.map((e) => e.endTime).toList(), [200, 720]);
+  });
+
+  test('CM区間が無いときは空', () {
+    final video = buildVideoProgram(
+      dto: _video(id: 13, title: 'CMなし番組'),
+      baseUrl: _baseUrl,
+    );
+
+    expect(video.recordedFile, isNull);
+    final withFile = buildVideoProgram(
+      dto: KonomiRecordedProgramDto(
+        id: 14,
+        title: '解析済みCMなし',
+        description: '概要',
+        startTime: DateTime(2026, 10, 1, 1, 0),
+        endTime: DateTime(2026, 10, 1, 1, 48),
+        recordedVideo: const KonomiRecordedVideoDto(cmSections: []),
+      ),
+      baseUrl: _baseUrl,
+    );
+    expect(withFile.recordedFile?.cmSections, isEmpty);
   });
 }

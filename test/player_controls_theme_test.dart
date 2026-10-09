@@ -98,4 +98,20 @@ void main() {
       }
     });
   });
+
+  group('CM区間の配色', () {
+    final light = ColorScheme.fromSeed(seedColor: Colors.deepOrange);
+    final dark = ColorScheme.fromSeed(
+      seedColor: Colors.deepOrange,
+      brightness: Brightness.dark,
+    );
+
+    test('ダークテーマでは tertiary を使う', () {
+      expect(cmSectionColorFrom(dark), dark.tertiary);
+    });
+
+    test('ライトテーマでは黒の上でも見える tertiaryContainer を使う', () {
+      expect(cmSectionColorFrom(light), light.tertiaryContainer);
+    });
+  });
 }

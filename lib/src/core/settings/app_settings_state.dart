@@ -11,6 +11,7 @@ class AppSettingsState {
     this.danmakuOpacity = defaultDanmakuOpacity,
     this.danmakuSpeed = defaultDanmakuSpeed,
     this.subtitlesEnabled = defaultSubtitlesEnabled,
+    this.cmAutoSkipEnabled = defaultCmAutoSkipEnabled,
     this.epgRefreshIntervalHours = defaultEpgRefreshIntervalHours,
   });
 
@@ -31,6 +32,9 @@ class AppSettingsState {
   /// で視聴しても意図せず描画されるのを避ける。字幕が見たい人は画面上の字幕
   /// ボタンで各自オンにする。
   static const bool defaultSubtitlesEnabled = false;
+
+  /// CM自動スキップは既定で無効にする。意図せず本編を飛ばすのを避ける。
+  static const bool defaultCmAutoSkipEnabled = false;
 
   /// EPGキャッシュの更新間隔の既定値 (時間)。
   static const int defaultEpgRefreshIntervalHours = 6;
@@ -62,6 +66,9 @@ class AppSettingsState {
   /// 字幕を表示するかどうか。false のときは mpv に `sid=no` を適用する。
   final bool subtitlesEnabled;
 
+  /// CM区間を自動で飛ばすかどうか。録画再生だけで使う。既定は無効。
+  final bool cmAutoSkipEnabled;
+
   /// EPGキャッシュの更新間隔 (時間)。1〜24。
   /// Mirakurun 等の全量取得型バックエンドにのみ使う。
   final int epgRefreshIntervalHours;
@@ -84,6 +91,7 @@ class AppSettingsState {
     double? danmakuOpacity,
     double? danmakuSpeed,
     bool? subtitlesEnabled,
+    bool? cmAutoSkipEnabled,
     int? epgRefreshIntervalHours,
   }) {
     return AppSettingsState(
@@ -95,6 +103,7 @@ class AppSettingsState {
       danmakuOpacity: danmakuOpacity ?? this.danmakuOpacity,
       danmakuSpeed: danmakuSpeed ?? this.danmakuSpeed,
       subtitlesEnabled: subtitlesEnabled ?? this.subtitlesEnabled,
+      cmAutoSkipEnabled: cmAutoSkipEnabled ?? this.cmAutoSkipEnabled,
       epgRefreshIntervalHours:
           epgRefreshIntervalHours ?? this.epgRefreshIntervalHours,
     );

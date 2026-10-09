@@ -1,5 +1,6 @@
 import '../../../domain/entities/channel.dart';
 import '../../../domain/entities/channel_type.dart';
+import '../../../domain/entities/cm_section.dart';
 import '../../../domain/entities/recorded_file_info.dart';
 import '../../../domain/entities/video_program.dart';
 import 'konomi_filter.dart';
@@ -46,6 +47,7 @@ VideoProgram buildVideoProgram({
 /// 録画ファイル情報を [RecordedFileInfo] に変換する純粋関数。
 ///
 /// DTO が null (録画中などで情報が無い) のときは null を返す。
+/// CM区間は未解析 (null)・CMなし (空) とも空一覧に畳み、正規化する。
 RecordedFileInfo? buildRecordedFileInfo(KonomiRecordedVideoDto? dto) {
   if (dto == null) return null;
   return RecordedFileInfo(
@@ -62,7 +64,20 @@ RecordedFileInfo? buildRecordedFileInfo(KonomiRecordedVideoDto? dto) {
     audioCodec: dto.primaryAudioCodec,
     audioChannel: dto.primaryAudioChannel,
     samplingRate: dto.primaryAudioSamplingRate,
+    cmSections: buildCmSections(dto.cmSections),
   );
+}
+
+/// CM区間DTOを表示用 [CmSection] に変換する純粋関数。
+///
+/// null (未解析) は空一覧に畳む。不正値の除去・整列・結合は
+/// [normalizeCmSections] に委ねる。
+List<CmSection> buildCmSections(List<KonomiCmSectionDto>? dtos) {
+  if (dtos == null || dtos.isEmpty) return const [];
+  return normalizeCmSections([
+    for (final dto in dtos)
+      CmSection(startTime: dto.startTime, endTime: dto.endTime),
+  ]);
 }
 
 /// 録画番組一覧レスポンスから表示用 [VideoProgram] を組み立てる純粋関数。

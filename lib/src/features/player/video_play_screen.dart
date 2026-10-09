@@ -17,6 +17,7 @@ import '../../core/media/kurumi_audio_handler.dart';
 import '../../core/media/media_control_target.dart';
 import '../../core/media/now_playing_item.dart';
 import '../../core/settings/app_settings.dart';
+import '../../core/settings/app_settings_state.dart';
 import '../../core/widgets/program_detail_body.dart';
 import '../../domain/entities/video_program.dart';
 import '../../domain/providers/backend_provider.dart';
@@ -25,6 +26,8 @@ import '../../domain/repositories/video_repository.dart';
 import '../videos/videos_providers.dart';
 import 'audio_switch.dart';
 import 'capture_list_panel.dart';
+import 'cm_sections.dart';
+import 'cm_seek_bar.dart';
 import 'comment_list_panel.dart';
 import 'danmaku_settings.dart';
 import 'jikkyo_comment_source.dart';
@@ -220,6 +223,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   StreamSubscription<bool>? _playingSub;
   StreamSubscription<bool>? _bufferingSub;
   StreamSubscription<Duration>? _danmakuPositionSub;
+  StreamSubscription<Duration>? _cmSkipSub;
   StreamSubscription<Duration>? _durationSub;
 
   /// mpv から届いた再生尺。システム通知の [MediaItem.duration] に載せる。
@@ -238,6 +242,14 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
 
   /// キャプチャ一覧。画質切替で破棄される (セッション内のみ保持)。
   final ValueNotifier<List<CaptureEntry>> _captures = ValueNotifier([]);
+
+  /// CM自動スキップの通知元。設定メニューは購読せずコールバック経由で変え、
+  /// 自動スキップ判定は値を読むだけにする。`notifyListeners` には出さない
+  /// (出すと映像まで作り直される)。回転で生き残る位置で持つ。
+  late final ValueNotifier<bool> _cmAutoSkip = ValueNotifier(
+    ref.read(appSettingsProvider).value?.cmAutoSkipEnabled ??
+        AppSettingsState.defaultCmAutoSkipEnabled,
+  );
 
   /// 弾幕付きキャプチャ用の撮像境界のキー。回転で生き残る位置で持つ。
   final GlobalKey _danmakuBoundaryKey = GlobalKey();
@@ -297,6 +309,9 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
         _playback.player.stream.buffering.listen(_onBufferingForDanmaku);
     _danmakuPositionSub =
         _playback.player.stream.position.listen(_onPositionForDanmaku);
+    // CM自動スキップ。設定オンの間、CM区間に入ったら終端へ飛ばす。
+    // 購読はここだけで行い、映像の再構築には波及させない。
+    _cmSkipSub = _playback.player.stream.position.listen(_onPositionForCmSkip);
     // 再生尺が分かり次第、システム通知の番組情報と再生状態に反映する。
     _durationSub =
         _playback.player.stream.duration.listen(_onDurationForSystemMedia);
@@ -489,6 +504,38 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     }
   }
 
+  /// CM自動スキップ。設定オンでCM区間に入ったら終端へ飛ばす。
+  ///
+  /// `notifyListeners` は起こさない。入り方 (シーク流入か自然再生か) を
+  /// 問わず飛ばし、CMを見たいときは設定を切る運用にする。
+  void _onPositionForCmSkip(Duration position) {
+    if (!mounted) return;
+    if (!_cmAutoSkip.value) return;
+    final sections = widget.video.recordedFile?.cmSections ?? const [];
+    if (sections.isEmpty) return;
+    final target = cmAutoSkipTargetSec(
+      sections: sections,
+      positionSec: position.inMilliseconds / 1000.0,
+      enabled: true,
+    );
+    if (target == null) return;
+    unawaited(
+      _playback.player.seek(Duration(milliseconds: (target * 1000).round())),
+    );
+  }
+
+  /// CM自動スキップの on/off を変えて永続化する。
+  ///
+  /// `notifyListeners` は起こさない。設定メニューは開いたままにする
+  /// (弾幕設定と同じ流儀)。
+  void _setCmAutoSkip(bool enabled) {
+    if (_cmAutoSkip.value == enabled) return;
+    _cmAutoSkip.value = enabled;
+    unawaited(
+      ref.read(appSettingsProvider.notifier).setCmAutoSkipEnabled(enabled),
+    );
+  }
+
   /// 再生尺が分かったら、システム通知の番組情報と再生状態に反映する。
   ///
   /// `notifyListeners` は起こさず、通知への配信だけを行う (映像の再構築に
@@ -534,6 +581,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     _playingSub?.cancel();
     _bufferingSub?.cancel();
     _danmakuPositionSub?.cancel();
+    _cmSkipSub?.cancel();
     _durationSub?.cancel();
     // システムのメディア操作の委譲を外す。本当に画面を離れたときだけ通知を
     // 消す (画質切替では新画面が登録済みのため何もしない)。
@@ -548,6 +596,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     _danmakuClock.dispose();
     _danmakuStore.dispose();
     _captures.dispose();
+    _cmAutoSkip.dispose();
     _danmakuCapturePixelRatio.dispose();
     _playback.dispose();
     super.dispose();
@@ -577,11 +626,12 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     final pastComments = _pastComments;
     // 値ではなく notifier を参照だけ渡す (購読はボタンとレイアウトの中だけ)。
     final infoPanel = ref.watch(infoPanelVisibilityProvider);
+    final cmSections = widget.video.recordedFile?.cmSections ?? const [];
     final video = ListenableBuilder(
       listenable: _playback,
       builder: (context, _) {
-        // 下部バーは「キャプチャ → 弾幕付きキャプチャ → 字幕 → 設定 →
-        // PiP → フルスクリーン」の並び。録画の下端は
+        // 下部バーは「キャプチャ → 弾幕付きキャプチャ → 字幕 → CMスキップ →
+        // 設定 → PiP → フルスクリーン」の並び。録画の下端は
         // media_kit の既定構成にキャプチャ・字幕・設定・PiP を足す。
         // (デスクトップは PiP の代わりに情報パネルの表示切替が入る)
         Widget settingsButton() => _VideoSettingsButton(
@@ -591,6 +641,9 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           danmakuSupported: pastComments.isSupported,
           danmakuPreferences: _playback.danmakuPreferences.value,
           onDanmakuPreferencesChanged: _playback.setDanmakuPreferences,
+          cmSupported: cmSections.isNotEmpty,
+          cmAutoSkipEnabled: _cmAutoSkip.value,
+          onCmAutoSkipChanged: _setCmAutoSkip,
           quality: widget.quality,
         );
         // キーボードショートカット (`c` / `v`) を受ける。フォーカスは奪わず
@@ -611,6 +664,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           // PiP 中は標準コントロールを出さない (操作はシステムの PiP ボタンと
           // 画面タップで戻ることになり、Flutter 側では触れないため)。
           showControls: !pictureInPicture,
+          cmSections: cmSections,
           seekableBottomButtonBar: [
             const MaterialPositionIndicator(),
             const Spacer(),
@@ -622,6 +676,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
               enabled: _playback.subtitlesEnabled,
               onToggled: _playback.toggleSubtitles,
             ),
+            // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
+            CmSkipButton(player: _playback.player, cmSections: cmSections),
             settingsButton(),
             const PipModeButton(),
             const MaterialFullscreenButton(),
@@ -641,6 +697,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
               enabled: _playback.subtitlesEnabled,
               onToggled: _playback.toggleSubtitles,
             ),
+            // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
+            CmSkipButton(player: _playback.player, cmSections: cmSections),
             settingsButton(),
             const PipModeButton(),
             // デスクトップでは PiP ボタン (Android 専用) の場所 情報パネルを
@@ -718,6 +776,9 @@ class _VideoSettingsButton extends ConsumerWidget {
     required this.danmakuSupported,
     required this.danmakuPreferences,
     required this.onDanmakuPreferencesChanged,
+    required this.cmSupported,
+    required this.cmAutoSkipEnabled,
+    required this.onCmAutoSkipChanged,
     required this.quality,
   });
 
@@ -732,6 +793,15 @@ class _VideoSettingsButton extends ConsumerWidget {
 
   /// 弾幕の表示設定を変えたときのコールバック。永続化まで行う。
   final ValueChanged<DanmakuPreferences> onDanmakuPreferencesChanged;
+
+  /// CM区間があるかどうか。偽のときCM設定ページを出さない。
+  final bool cmSupported;
+
+  /// CM自動スキップの現在値 (メニューを開いた時点の値)。購読しない。
+  final bool cmAutoSkipEnabled;
+
+  /// CM自動スキップを変えたときのコールバック。永続化まで行う。
+  final ValueChanged<bool> onCmAutoSkipChanged;
 
   /// 現在再生している画質。
   final String quality;
@@ -751,6 +821,9 @@ class _VideoSettingsButton extends ConsumerWidget {
       danmakuSupported: danmakuSupported,
       danmakuPreferences: danmakuPreferences,
       onDanmakuPreferencesChanged: onDanmakuPreferencesChanged,
+      cmSupported: cmSupported,
+      cmAutoSkipEnabled: cmAutoSkipEnabled,
+      onCmAutoSkipChanged: onCmAutoSkipChanged,
       qualityCurrent: quality,
       qualities: [
         if (repository.isOriginalVideoQuality('original')) 'original',

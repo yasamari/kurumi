@@ -53,13 +53,13 @@ const playerButtonBarHeight = 56.0;
 
 /// シークバーの色。標準コントロールの既定は白 (トラック) + 赤 (再生位置)。
 ///
-/// アプリの Dynamic Color ([ColorScheme]) に合わせて変更する。
+/// アプリの Dynamic Color ([ColorScheme]) に合わせて変更する.
 ///
 /// シークバーは映像の上 (明度に関係なく黒) に描くため、ライトテーマの
 /// `primary` (暗い調) をそのまま使うと暗くて見えない。ライトテーマでは同じ
-/// パレットの明るい調 ([ColorScheme.primaryContainer]) を使う。
+/// パレットの明るい調 ([ColorScheme.primaryContainer]) を使う.
 ///
-/// トラック・バッファは再生位置より薄く、進んだ分と未読분이区別できるように
+/// トラック・バッファは再生位置より薄く、進んだ分と未読分が区別できるように
 /// する (既定はトラックとバッファが同じ色で、バッファが見えない)。
 ({Color track, Color buffer, Color position, Color thumb}) seekBarColorsFrom(
   ColorScheme scheme,
@@ -73,4 +73,15 @@ const playerButtonBarHeight = 56.0;
     position: accent,
     thumb: accent,
   );
+}
+
+/// CM区間レーンの色。tertiary系を使う。
+///
+/// シークバーと同じく映像 (黒) の上に描くため、ライトテーマでは明るい調
+/// ([ColorScheme.tertiaryContainer]) を使う。ダークテーマでは
+/// [ColorScheme.tertiary] をそのまま使う。
+Color cmSectionColorFrom(ColorScheme scheme) {
+  return scheme.brightness == Brightness.dark
+      ? scheme.tertiary
+      : scheme.tertiaryContainer;
 }

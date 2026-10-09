@@ -28,6 +28,18 @@ Map<String, dynamic> _$KonomiVideoChannelDtoToJson(
   'channel_number': instance.channelNumber,
 };
 
+KonomiCmSectionDto _$KonomiCmSectionDtoFromJson(Map<String, dynamic> json) =>
+    KonomiCmSectionDto(
+      startTime: (json['start_time'] as num).toDouble(),
+      endTime: (json['end_time'] as num).toDouble(),
+    );
+
+Map<String, dynamic> _$KonomiCmSectionDtoToJson(KonomiCmSectionDto instance) =>
+    <String, dynamic>{
+      'start_time': instance.startTime,
+      'end_time': instance.endTime,
+    };
+
 KonomiRecordedVideoDto _$KonomiRecordedVideoDtoFromJson(
   Map<String, dynamic> json,
 ) => KonomiRecordedVideoDto(
@@ -51,6 +63,9 @@ KonomiRecordedVideoDto _$KonomiRecordedVideoDtoFromJson(
   primaryAudioChannel: json['primary_audio_channel'] as String?,
   primaryAudioSamplingRate: (json['primary_audio_sampling_rate'] as num?)
       ?.toInt(),
+  cmSections: (json['cm_sections'] as List<dynamic>?)
+      ?.map((e) => KonomiCmSectionDto.fromJson(e as Map<String, dynamic>))
+      .toList(),
 );
 
 Map<String, dynamic> _$KonomiRecordedVideoDtoToJson(
@@ -69,6 +84,7 @@ Map<String, dynamic> _$KonomiRecordedVideoDtoToJson(
   'primary_audio_codec': instance.primaryAudioCodec,
   'primary_audio_channel': instance.primaryAudioChannel,
   'primary_audio_sampling_rate': instance.primaryAudioSamplingRate,
+  'cm_sections': instance.cmSections,
 };
 
 KonomiRecordedProgramDto _$KonomiRecordedProgramDtoFromJson(

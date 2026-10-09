@@ -12,7 +12,7 @@ part 'app_settings.g.dart';
 /// 切替時に再入力が不要になるよう両方のURLを保持する。
 ///
 /// プレイヤー側の表示設定 (弾幕の on/off・文字サイズ・不透明度・速度、字幕の
-/// on/off) もここに永続化する。プレイヤーは開くたびにこのスナップショットから
+/// on/off、CM自動スキップ) もここに永続化する。プレイヤーは開くたびにこのスナップショットから
 /// 初期値を作る ([AppSettingsState] の既定値参照)。
 @Riverpod(keepAlive: true)
 class AppSettings extends _$AppSettings {
@@ -24,6 +24,7 @@ class AppSettings extends _$AppSettings {
   static const _keyDanmakuOpacity = 'danmaku_opacity';
   static const _keyDanmakuSpeed = 'danmaku_speed';
   static const _keySubtitlesEnabled = 'subtitles_enabled';
+  static const _keyCmAutoSkipEnabled = 'cm_auto_skip_enabled';
   static const _keyEpgRefreshIntervalHours = 'epg_refresh_interval_hours';
 
   @override
@@ -49,6 +50,9 @@ class AppSettings extends _$AppSettings {
       subtitlesEnabled:
           prefs.getBool(_keySubtitlesEnabled) ??
           AppSettingsState.defaultSubtitlesEnabled,
+      cmAutoSkipEnabled:
+          prefs.getBool(_keyCmAutoSkipEnabled) ??
+          AppSettingsState.defaultCmAutoSkipEnabled,
       epgRefreshIntervalHours: clampEpgRefreshIntervalHours(
         prefs.getInt(_keyEpgRefreshIntervalHours) ??
             AppSettingsState.defaultEpgRefreshIntervalHours,
@@ -109,6 +113,14 @@ class AppSettings extends _$AppSettings {
     await prefs.setBool(_keySubtitlesEnabled, enabled);
     final current = await future;
     state = AsyncData(current.copyWith(subtitlesEnabled: enabled));
+  }
+
+  /// CM自動スキップの on/off を保存する。既定は無効。
+  Future<void> setCmAutoSkipEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyCmAutoSkipEnabled, enabled);
+    final current = await future;
+    state = AsyncData(current.copyWith(cmAutoSkipEnabled: enabled));
   }
 
   /// EPGキャッシュの更新間隔 (時間) を保存する。範囲外は1〜24に丸める。

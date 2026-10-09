@@ -30,6 +30,21 @@ class KonomiVideoChannelDto {
   Map<String, dynamic> toJson() => _$KonomiVideoChannelDtoToJson(this);
 }
 
+/// `RecordedVideo.cm_sections` の1区間。秒数はファイル先頭基準。
+/// 未解析時は `cm_sections` 自体が null、解析済みでCMなしは空配列。
+@JsonSerializable(fieldRename: FieldRename.snake)
+class KonomiCmSectionDto {
+  const KonomiCmSectionDto({required this.startTime, required this.endTime});
+
+  factory KonomiCmSectionDto.fromJson(Map<String, dynamic> json) =>
+      _$KonomiCmSectionDtoFromJson(json);
+
+  final double startTime;
+  final double endTime;
+
+  Map<String, dynamic> toJson() => _$KonomiCmSectionDtoToJson(this);
+}
+
 /// `RecordedProgram.recorded_video` の録画ファイル情報。使う分のみ定義する。
 @JsonSerializable(fieldRename: FieldRename.snake)
 class KonomiRecordedVideoDto {
@@ -47,6 +62,7 @@ class KonomiRecordedVideoDto {
     this.primaryAudioCodec,
     this.primaryAudioChannel,
     this.primaryAudioSamplingRate,
+    this.cmSections,
   });
 
   factory KonomiRecordedVideoDto.fromJson(Map<String, dynamic> json) =>
@@ -68,6 +84,9 @@ class KonomiRecordedVideoDto {
   final String? primaryAudioCodec;
   final String? primaryAudioChannel;
   final int? primaryAudioSamplingRate;
+
+  /// CM区間一覧。未解析時は null、解析済みでCMなしは空配列。
+  final List<KonomiCmSectionDto>? cmSections;
 
   Map<String, dynamic> toJson() => _$KonomiRecordedVideoDtoToJson(this);
 }

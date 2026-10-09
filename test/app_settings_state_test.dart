@@ -22,6 +22,15 @@ void main() {
       // 明示的に `sid=no` を適用する。
       expect(settings.subtitlesEnabled, isFalse);
     });
+
+    test('CM自動スキップは既定で無効', () {
+      const settings = AppSettingsState();
+      expect(settings.cmAutoSkipEnabled, isFalse);
+      expect(
+        settings.copyWith(cmAutoSkipEnabled: true).cmAutoSkipEnabled,
+        isTrue,
+      );
+    });
   });
 
   group('copyWith', () {
@@ -37,7 +46,10 @@ void main() {
 
     test('字幕の on/off を差し替える', () {
       const settings = AppSettingsState();
-      expect(settings.copyWith(subtitlesEnabled: true).subtitlesEnabled, isTrue);
+      expect(
+        settings.copyWith(subtitlesEnabled: true).subtitlesEnabled,
+        isTrue,
+      );
     });
 
     test('弾幕の表示設定4項目をまとめて差し替える', () {

@@ -1,5 +1,7 @@
 import 'package:freezed_annotation/freezed_annotation.dart';
 
+import 'cm_section.dart';
+
 part 'recorded_file_info.freezed.dart';
 
 /// 録画ファイルの技術情報。ビデオ詳細のBottomSheet表示に使う。
@@ -40,5 +42,8 @@ abstract class RecordedFileInfo with _$RecordedFileInfo {
 
     /// 音声サンプリングレート (Hz)。不明時は null。
     int? samplingRate,
+
+    /// CM区間一覧 (秒)。未解析・CMなしはいずれも空。
+    @Default([]) List<CmSection> cmSections,
   }) = _RecordedFileInfo;
 }

@@ -26,7 +26,8 @@ mixin _$RecordedFileInfo {
  String? get scanType;/// 音声コーデック (例: `AAC-LC`)。不明時は null。
  String? get audioCodec;/// 音声チャンネル (`Monaural` / `Stereo` / `5.1ch`)。不明時は null。
  String? get audioChannel;/// 音声サンプリングレート (Hz)。不明時は null。
- int? get samplingRate;
+ int? get samplingRate;/// CM区間一覧 (秒)。未解析・CMなしはいずれも空。
+ List<CmSection> get cmSections;
 /// Create a copy of RecordedFileInfo
 /// with the given fields replaced by the non-null parameter values.
 @JsonKey(includeFromJson: false, includeToJson: false)
@@ -38,20 +39,20 @@ $RecordedFileInfoCopyWith<RecordedFileInfo> get copyWith => _$RecordedFileInfoCo
 @override
 bool operator ==(Object other) {
   final _this = this as RecordedFileInfo;
-  return identical(this, other) || (other.runtimeType == runtimeType&&other is RecordedFileInfo&&(identical(other.filePath, _this.filePath) || other.filePath == _this.filePath)&&(identical(other.fileSize, _this.fileSize) || other.fileSize == _this.fileSize)&&(identical(other.recordingStartTime, _this.recordingStartTime) || other.recordingStartTime == _this.recordingStartTime)&&(identical(other.recordingEndTime, _this.recordingEndTime) || other.recordingEndTime == _this.recordingEndTime)&&(identical(other.fileModifiedAt, _this.fileModifiedAt) || other.fileModifiedAt == _this.fileModifiedAt)&&(identical(other.videoCodec, _this.videoCodec) || other.videoCodec == _this.videoCodec)&&(identical(other.resolutionWidth, _this.resolutionWidth) || other.resolutionWidth == _this.resolutionWidth)&&(identical(other.resolutionHeight, _this.resolutionHeight) || other.resolutionHeight == _this.resolutionHeight)&&(identical(other.frameRate, _this.frameRate) || other.frameRate == _this.frameRate)&&(identical(other.scanType, _this.scanType) || other.scanType == _this.scanType)&&(identical(other.audioCodec, _this.audioCodec) || other.audioCodec == _this.audioCodec)&&(identical(other.audioChannel, _this.audioChannel) || other.audioChannel == _this.audioChannel)&&(identical(other.samplingRate, _this.samplingRate) || other.samplingRate == _this.samplingRate));
+  return identical(this, other) || (other.runtimeType == runtimeType&&other is RecordedFileInfo&&(identical(other.filePath, _this.filePath) || other.filePath == _this.filePath)&&(identical(other.fileSize, _this.fileSize) || other.fileSize == _this.fileSize)&&(identical(other.recordingStartTime, _this.recordingStartTime) || other.recordingStartTime == _this.recordingStartTime)&&(identical(other.recordingEndTime, _this.recordingEndTime) || other.recordingEndTime == _this.recordingEndTime)&&(identical(other.fileModifiedAt, _this.fileModifiedAt) || other.fileModifiedAt == _this.fileModifiedAt)&&(identical(other.videoCodec, _this.videoCodec) || other.videoCodec == _this.videoCodec)&&(identical(other.resolutionWidth, _this.resolutionWidth) || other.resolutionWidth == _this.resolutionWidth)&&(identical(other.resolutionHeight, _this.resolutionHeight) || other.resolutionHeight == _this.resolutionHeight)&&(identical(other.frameRate, _this.frameRate) || other.frameRate == _this.frameRate)&&(identical(other.scanType, _this.scanType) || other.scanType == _this.scanType)&&(identical(other.audioCodec, _this.audioCodec) || other.audioCodec == _this.audioCodec)&&(identical(other.audioChannel, _this.audioChannel) || other.audioChannel == _this.audioChannel)&&(identical(other.samplingRate, _this.samplingRate) || other.samplingRate == _this.samplingRate)&&const DeepCollectionEquality().equals(other.cmSections, _this.cmSections));
 }
 
 
 @override
 int get hashCode {
   final _this = this as RecordedFileInfo;
-  return Object.hash(runtimeType,_this.filePath,_this.fileSize,_this.recordingStartTime,_this.recordingEndTime,_this.fileModifiedAt,_this.videoCodec,_this.resolutionWidth,_this.resolutionHeight,_this.frameRate,_this.scanType,_this.audioCodec,_this.audioChannel,_this.samplingRate);
+  return Object.hash(runtimeType,_this.filePath,_this.fileSize,_this.recordingStartTime,_this.recordingEndTime,_this.fileModifiedAt,_this.videoCodec,_this.resolutionWidth,_this.resolutionHeight,_this.frameRate,_this.scanType,_this.audioCodec,_this.audioChannel,_this.samplingRate,const DeepCollectionEquality().hash(_this.cmSections));
 }
 
 @override
 String toString() {
   final _this = this as RecordedFileInfo;
-  return 'RecordedFileInfo(filePath: ${_this.filePath}, fileSize: ${_this.fileSize}, recordingStartTime: ${_this.recordingStartTime}, recordingEndTime: ${_this.recordingEndTime}, fileModifiedAt: ${_this.fileModifiedAt}, videoCodec: ${_this.videoCodec}, resolutionWidth: ${_this.resolutionWidth}, resolutionHeight: ${_this.resolutionHeight}, frameRate: ${_this.frameRate}, scanType: ${_this.scanType}, audioCodec: ${_this.audioCodec}, audioChannel: ${_this.audioChannel}, samplingRate: ${_this.samplingRate})';
+  return 'RecordedFileInfo(filePath: ${_this.filePath}, fileSize: ${_this.fileSize}, recordingStartTime: ${_this.recordingStartTime}, recordingEndTime: ${_this.recordingEndTime}, fileModifiedAt: ${_this.fileModifiedAt}, videoCodec: ${_this.videoCodec}, resolutionWidth: ${_this.resolutionWidth}, resolutionHeight: ${_this.resolutionHeight}, frameRate: ${_this.frameRate}, scanType: ${_this.scanType}, audioCodec: ${_this.audioCodec}, audioChannel: ${_this.audioChannel}, samplingRate: ${_this.samplingRate}, cmSections: ${_this.cmSections})';
 }
 
 
@@ -62,7 +63,7 @@ abstract mixin class $RecordedFileInfoCopyWith<$Res>  {
   factory $RecordedFileInfoCopyWith(RecordedFileInfo value, $Res Function(RecordedFileInfo) _then) = _$RecordedFileInfoCopyWithImpl;
 @useResult
 $Res call({
- String filePath, int fileSize, DateTime? recordingStartTime, DateTime? recordingEndTime, DateTime? fileModifiedAt, String? videoCodec, int? resolutionWidth, int? resolutionHeight, double? frameRate, String? scanType, String? audioCodec, String? audioChannel, int? samplingRate
+ String filePath, int fileSize, DateTime? recordingStartTime, DateTime? recordingEndTime, DateTime? fileModifiedAt, String? videoCodec, int? resolutionWidth, int? resolutionHeight, double? frameRate, String? scanType, String? audioCodec, String? audioChannel, int? samplingRate, List<CmSection> cmSections
 });
 
 
@@ -79,7 +80,7 @@ class _$RecordedFileInfoCopyWithImpl<$Res>
 
 /// Create a copy of RecordedFileInfo
 /// with the given fields replaced by the non-null parameter values.
-@pragma('vm:prefer-inline') @override $Res call({Object? filePath = null,Object? fileSize = null,Object? recordingStartTime = freezed,Object? recordingEndTime = freezed,Object? fileModifiedAt = freezed,Object? videoCodec = freezed,Object? resolutionWidth = freezed,Object? resolutionHeight = freezed,Object? frameRate = freezed,Object? scanType = freezed,Object? audioCodec = freezed,Object? audioChannel = freezed,Object? samplingRate = freezed,}) {
+@pragma('vm:prefer-inline') @override $Res call({Object? filePath = null,Object? fileSize = null,Object? recordingStartTime = freezed,Object? recordingEndTime = freezed,Object? fileModifiedAt = freezed,Object? videoCodec = freezed,Object? resolutionWidth = freezed,Object? resolutionHeight = freezed,Object? frameRate = freezed,Object? scanType = freezed,Object? audioCodec = freezed,Object? audioChannel = freezed,Object? samplingRate = freezed,Object? cmSections = null,}) {
   return _then(RecordedFileInfo(
 filePath: null == filePath ? _self.filePath : filePath // ignore: cast_nullable_to_non_nullable
 as String,fileSize: null == fileSize ? _self.fileSize : fileSize // ignore: cast_nullable_to_non_nullable
@@ -94,7 +95,8 @@ as double?,scanType: freezed == scanType ? _self.scanType : scanType // ignore: 
 as String?,audioCodec: freezed == audioCodec ? _self.audioCodec : audioCodec // ignore: cast_nullable_to_non_nullable
 as String?,audioChannel: freezed == audioChannel ? _self.audioChannel : audioChannel // ignore: cast_nullable_to_non_nullable
 as String?,samplingRate: freezed == samplingRate ? _self.samplingRate : samplingRate // ignore: cast_nullable_to_non_nullable
-as int?,
+as int?,cmSections: null == cmSections ? _self.cmSections : cmSections // ignore: cast_nullable_to_non_nullable
+as List<CmSection>,
   ));
 }
 
@@ -179,10 +181,10 @@ return $default(_that);case _:
 /// }
 /// ```
 
-@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String filePath,  int fileSize,  DateTime? recordingStartTime,  DateTime? recordingEndTime,  DateTime? fileModifiedAt,  String? videoCodec,  int? resolutionWidth,  int? resolutionHeight,  double? frameRate,  String? scanType,  String? audioCodec,  String? audioChannel,  int? samplingRate)?  $default,{required TResult orElse(),}) {final _that = this;
+@optionalTypeArgs TResult maybeWhen<TResult extends Object?>(TResult Function( String filePath,  int fileSize,  DateTime? recordingStartTime,  DateTime? recordingEndTime,  DateTime? fileModifiedAt,  String? videoCodec,  int? resolutionWidth,  int? resolutionHeight,  double? frameRate,  String? scanType,  String? audioCodec,  String? audioChannel,  int? samplingRate,  List<CmSection> cmSections)?  $default,{required TResult orElse(),}) {final _that = this;
 switch (_that) {
 case _RecordedFileInfo() when $default != null:
-return $default(_that.filePath,_that.fileSize,_that.recordingStartTime,_that.recordingEndTime,_that.fileModifiedAt,_that.videoCodec,_that.resolutionWidth,_that.resolutionHeight,_that.frameRate,_that.scanType,_that.audioCodec,_that.audioChannel,_that.samplingRate);case _:
+return $default(_that.filePath,_that.fileSize,_that.recordingStartTime,_that.recordingEndTime,_that.fileModifiedAt,_that.videoCodec,_that.resolutionWidth,_that.resolutionHeight,_that.frameRate,_that.scanType,_that.audioCodec,_that.audioChannel,_that.samplingRate,_that.cmSections);case _:
   return orElse();
 
 }
@@ -200,10 +202,10 @@ return $default(_that.filePath,_that.fileSize,_that.recordingStartTime,_that.rec
 /// }
 /// ```
 
-@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String filePath,  int fileSize,  DateTime? recordingStartTime,  DateTime? recordingEndTime,  DateTime? fileModifiedAt,  String? videoCodec,  int? resolutionWidth,  int? resolutionHeight,  double? frameRate,  String? scanType,  String? audioCodec,  String? audioChannel,  int? samplingRate)  $default,) {final _that = this;
+@optionalTypeArgs TResult when<TResult extends Object?>(TResult Function( String filePath,  int fileSize,  DateTime? recordingStartTime,  DateTime? recordingEndTime,  DateTime? fileModifiedAt,  String? videoCodec,  int? resolutionWidth,  int? resolutionHeight,  double? frameRate,  String? scanType,  String? audioCodec,  String? audioChannel,  int? samplingRate,  List<CmSection> cmSections)  $default,) {final _that = this;
 switch (_that) {
 case _RecordedFileInfo():
-return $default(_that.filePath,_that.fileSize,_that.recordingStartTime,_that.recordingEndTime,_that.fileModifiedAt,_that.videoCodec,_that.resolutionWidth,_that.resolutionHeight,_that.frameRate,_that.scanType,_that.audioCodec,_that.audioChannel,_that.samplingRate);case _:
+return $default(_that.filePath,_that.fileSize,_that.recordingStartTime,_that.recordingEndTime,_that.fileModifiedAt,_that.videoCodec,_that.resolutionWidth,_that.resolutionHeight,_that.frameRate,_that.scanType,_that.audioCodec,_that.audioChannel,_that.samplingRate,_that.cmSections);case _:
   throw StateError('Unexpected subclass');
 
 }
@@ -220,10 +222,10 @@ return $default(_that.filePath,_that.fileSize,_that.recordingStartTime,_that.rec
 /// }
 /// ```
 
-@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String filePath,  int fileSize,  DateTime? recordingStartTime,  DateTime? recordingEndTime,  DateTime? fileModifiedAt,  String? videoCodec,  int? resolutionWidth,  int? resolutionHeight,  double? frameRate,  String? scanType,  String? audioCodec,  String? audioChannel,  int? samplingRate)?  $default,) {final _that = this;
+@optionalTypeArgs TResult? whenOrNull<TResult extends Object?>(TResult? Function( String filePath,  int fileSize,  DateTime? recordingStartTime,  DateTime? recordingEndTime,  DateTime? fileModifiedAt,  String? videoCodec,  int? resolutionWidth,  int? resolutionHeight,  double? frameRate,  String? scanType,  String? audioCodec,  String? audioChannel,  int? samplingRate,  List<CmSection> cmSections)?  $default,) {final _that = this;
 switch (_that) {
 case _RecordedFileInfo() when $default != null:
-return $default(_that.filePath,_that.fileSize,_that.recordingStartTime,_that.recordingEndTime,_that.fileModifiedAt,_that.videoCodec,_that.resolutionWidth,_that.resolutionHeight,_that.frameRate,_that.scanType,_that.audioCodec,_that.audioChannel,_that.samplingRate);case _:
+return $default(_that.filePath,_that.fileSize,_that.recordingStartTime,_that.recordingEndTime,_that.fileModifiedAt,_that.videoCodec,_that.resolutionWidth,_that.resolutionHeight,_that.frameRate,_that.scanType,_that.audioCodec,_that.audioChannel,_that.samplingRate,_that.cmSections);case _:
   return null;
 
 }
@@ -235,7 +237,7 @@ return $default(_that.filePath,_that.fileSize,_that.recordingStartTime,_that.rec
 
 
 class _RecordedFileInfo implements RecordedFileInfo {
-  const _RecordedFileInfo({this.filePath = '', this.fileSize = 0, this.recordingStartTime, this.recordingEndTime, this.fileModifiedAt, this.videoCodec, this.resolutionWidth, this.resolutionHeight, this.frameRate, this.scanType, this.audioCodec, this.audioChannel, this.samplingRate});
+  const _RecordedFileInfo({this.filePath = '', this.fileSize = 0, this.recordingStartTime, this.recordingEndTime, this.fileModifiedAt, this.videoCodec, this.resolutionWidth, this.resolutionHeight, this.frameRate, this.scanType, this.audioCodec, this.audioChannel, this.samplingRate,  List<CmSection> cmSections = const []}): _cmSections = cmSections;
   
 
 /// 録画ファイルのサーバー上のパス。
@@ -262,6 +264,15 @@ class _RecordedFileInfo implements RecordedFileInfo {
 @override final  String? audioChannel;
 /// 音声サンプリングレート (Hz)。不明時は null。
 @override final  int? samplingRate;
+/// CM区間一覧 (秒)。未解析・CMなしはいずれも空。
+ final  List<CmSection> _cmSections;
+/// CM区間一覧 (秒)。未解析・CMなしはいずれも空。
+@override@JsonKey() List<CmSection> get cmSections {
+  if (_cmSections is EqualUnmodifiableListView) return _cmSections;
+  // ignore: implicit_dynamic_type
+  return EqualUnmodifiableListView(_cmSections);
+}
+
 
 /// Create a copy of RecordedFileInfo
 /// with the given fields replaced by the non-null parameter values.
@@ -273,18 +284,18 @@ _$RecordedFileInfoCopyWith<_RecordedFileInfo> get copyWith => __$RecordedFileInf
 
 @override
 bool operator ==(Object other) {
-    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RecordedFileInfo&&(identical(other.filePath, filePath) || other.filePath == filePath)&&(identical(other.fileSize, fileSize) || other.fileSize == fileSize)&&(identical(other.recordingStartTime, recordingStartTime) || other.recordingStartTime == recordingStartTime)&&(identical(other.recordingEndTime, recordingEndTime) || other.recordingEndTime == recordingEndTime)&&(identical(other.fileModifiedAt, fileModifiedAt) || other.fileModifiedAt == fileModifiedAt)&&(identical(other.videoCodec, videoCodec) || other.videoCodec == videoCodec)&&(identical(other.resolutionWidth, resolutionWidth) || other.resolutionWidth == resolutionWidth)&&(identical(other.resolutionHeight, resolutionHeight) || other.resolutionHeight == resolutionHeight)&&(identical(other.frameRate, frameRate) || other.frameRate == frameRate)&&(identical(other.scanType, scanType) || other.scanType == scanType)&&(identical(other.audioCodec, audioCodec) || other.audioCodec == audioCodec)&&(identical(other.audioChannel, audioChannel) || other.audioChannel == audioChannel)&&(identical(other.samplingRate, samplingRate) || other.samplingRate == samplingRate));
+    return identical(this, other) || (other.runtimeType == runtimeType&&other is _RecordedFileInfo&&(identical(other.filePath, filePath) || other.filePath == filePath)&&(identical(other.fileSize, fileSize) || other.fileSize == fileSize)&&(identical(other.recordingStartTime, recordingStartTime) || other.recordingStartTime == recordingStartTime)&&(identical(other.recordingEndTime, recordingEndTime) || other.recordingEndTime == recordingEndTime)&&(identical(other.fileModifiedAt, fileModifiedAt) || other.fileModifiedAt == fileModifiedAt)&&(identical(other.videoCodec, videoCodec) || other.videoCodec == videoCodec)&&(identical(other.resolutionWidth, resolutionWidth) || other.resolutionWidth == resolutionWidth)&&(identical(other.resolutionHeight, resolutionHeight) || other.resolutionHeight == resolutionHeight)&&(identical(other.frameRate, frameRate) || other.frameRate == frameRate)&&(identical(other.scanType, scanType) || other.scanType == scanType)&&(identical(other.audioCodec, audioCodec) || other.audioCodec == audioCodec)&&(identical(other.audioChannel, audioChannel) || other.audioChannel == audioChannel)&&(identical(other.samplingRate, samplingRate) || other.samplingRate == samplingRate)&&const DeepCollectionEquality().equals(other.cmSections, _cmSections));
 }
 
 
 @override
 int get hashCode {
-    return Object.hash(runtimeType,filePath,fileSize,recordingStartTime,recordingEndTime,fileModifiedAt,videoCodec,resolutionWidth,resolutionHeight,frameRate,scanType,audioCodec,audioChannel,samplingRate);
+    return Object.hash(runtimeType,filePath,fileSize,recordingStartTime,recordingEndTime,fileModifiedAt,videoCodec,resolutionWidth,resolutionHeight,frameRate,scanType,audioCodec,audioChannel,samplingRate,const DeepCollectionEquality().hash(_cmSections));
 }
 
 @override
 String toString() {
-    return 'RecordedFileInfo(filePath: $filePath, fileSize: $fileSize, recordingStartTime: $recordingStartTime, recordingEndTime: $recordingEndTime, fileModifiedAt: $fileModifiedAt, videoCodec: $videoCodec, resolutionWidth: $resolutionWidth, resolutionHeight: $resolutionHeight, frameRate: $frameRate, scanType: $scanType, audioCodec: $audioCodec, audioChannel: $audioChannel, samplingRate: $samplingRate)';
+    return 'RecordedFileInfo(filePath: $filePath, fileSize: $fileSize, recordingStartTime: $recordingStartTime, recordingEndTime: $recordingEndTime, fileModifiedAt: $fileModifiedAt, videoCodec: $videoCodec, resolutionWidth: $resolutionWidth, resolutionHeight: $resolutionHeight, frameRate: $frameRate, scanType: $scanType, audioCodec: $audioCodec, audioChannel: $audioChannel, samplingRate: $samplingRate, cmSections: $cmSections)';
 }
 
 
@@ -295,7 +306,7 @@ abstract mixin class _$RecordedFileInfoCopyWith<$Res> implements $RecordedFileIn
   factory _$RecordedFileInfoCopyWith(_RecordedFileInfo value, $Res Function(_RecordedFileInfo) _then) = __$RecordedFileInfoCopyWithImpl;
 @override @useResult
 $Res call({
- String filePath, int fileSize, DateTime? recordingStartTime, DateTime? recordingEndTime, DateTime? fileModifiedAt, String? videoCodec, int? resolutionWidth, int? resolutionHeight, double? frameRate, String? scanType, String? audioCodec, String? audioChannel, int? samplingRate
+ String filePath, int fileSize, DateTime? recordingStartTime, DateTime? recordingEndTime, DateTime? fileModifiedAt, String? videoCodec, int? resolutionWidth, int? resolutionHeight, double? frameRate, String? scanType, String? audioCodec, String? audioChannel, int? samplingRate, List<CmSection> cmSections
 });
 
 
@@ -312,7 +323,7 @@ class __$RecordedFileInfoCopyWithImpl<$Res>
 
 /// Create a copy of RecordedFileInfo
 /// with the given fields replaced by the non-null parameter values.
-@override @pragma('vm:prefer-inline') $Res call({Object? filePath = null,Object? fileSize = null,Object? recordingStartTime = freezed,Object? recordingEndTime = freezed,Object? fileModifiedAt = freezed,Object? videoCodec = freezed,Object? resolutionWidth = freezed,Object? resolutionHeight = freezed,Object? frameRate = freezed,Object? scanType = freezed,Object? audioCodec = freezed,Object? audioChannel = freezed,Object? samplingRate = freezed,}) {
+@override @pragma('vm:prefer-inline') $Res call({Object? filePath = null,Object? fileSize = null,Object? recordingStartTime = freezed,Object? recordingEndTime = freezed,Object? fileModifiedAt = freezed,Object? videoCodec = freezed,Object? resolutionWidth = freezed,Object? resolutionHeight = freezed,Object? frameRate = freezed,Object? scanType = freezed,Object? audioCodec = freezed,Object? audioChannel = freezed,Object? samplingRate = freezed,Object? cmSections = null,}) {
   return _then(_RecordedFileInfo(
 filePath: null == filePath ? _self.filePath : filePath // ignore: cast_nullable_to_non_nullable
 as String,fileSize: null == fileSize ? _self.fileSize : fileSize // ignore: cast_nullable_to_non_nullable
@@ -327,7 +338,8 @@ as double?,scanType: freezed == scanType ? _self.scanType : scanType // ignore: 
 as String?,audioCodec: freezed == audioCodec ? _self.audioCodec : audioCodec // ignore: cast_nullable_to_non_nullable
 as String?,audioChannel: freezed == audioChannel ? _self.audioChannel : audioChannel // ignore: cast_nullable_to_non_nullable
 as String?,samplingRate: freezed == samplingRate ? _self.samplingRate : samplingRate // ignore: cast_nullable_to_non_nullable
-as int?,
+as int?,cmSections: null == cmSections ? _self._cmSections : cmSections // ignore: cast_nullable_to_non_nullable
+as List<CmSection>,
   ));
 }
 
