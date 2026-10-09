@@ -8,11 +8,50 @@ import 'mirakurun_program_dto.dart';
 import 'mirakurun_service_dto.dart';
 
 /// Mirakurunのサービス+番組一覧から表示用 [ChannelItem] を組み立てる純粋関数。
+
+/// 兄弟サービス (同じ放送のサブチャンネル) かどうかを判定する純粋関数。
 ///
+/// Mirakurun の `service.channel.channel` (物理チャンネル文字) はサーバー
+/// 設定依存で、BS の Service形式スキャン (`BS15_1` のような `BSxx_N` 形式)
+/// では兄弟サービスごとに異なる文字列になるため、物理チャンネルの一致
+/// だけでは兄弟を束ねられない (BS-TBS の 161/162/163 など)。同名サービス
+/// も兄弟とみなす。`networkId` で別ネットワーク (BS とCATV再送信など) の
+/// 同名局や、別地域の同物理チャンネルを区別する。
+///
+/// テレビ欄SQL (`EpgDao.nowOnAir`)・番組表 (`buildMirakurunTimetableColumns`)
+/// と同じ規則を使うこと。
+bool isMirakurunSiblingService({
+  required String channelType,
+  required int networkId,
+  required String name,
+  required String tunerChannel,
+  required String otherChannelType,
+  required int otherNetworkId,
+  required String otherName,
+  required String otherTunerChannel,
+}) {
+  if (channelType != otherChannelType || networkId != otherNetworkId) {
+    return false;
+  }
+  if (name.isNotEmpty && name == otherName) return true;
+  if (tunerChannel.isNotEmpty && tunerChannel == otherTunerChannel) {
+    return true;
+  }
+  return false;
+}
+
+/// 表示済みサービスの記録 (重複排除用)。
+typedef _SeenService = ({
+  String channelType,
+  int networkId,
+  String name,
+  String tunerChannel,
+  int eventId,
+});
 /// 仕様:
 /// - `/api/programs` を参照し、現在放送中の番組があるサービスだけ残す
-/// - 同じチャンネル (`channel.type` + `channel.channel`) かつ
-///   同じ `eventId` のサービスは1つにまとめる (サブチャンネルの同時放送対策)
+/// - 同じ放送のサービス (サブチャンネル) で同じ `eventId` は1つにまとめる
+///   (同時放送対策。兄弟判定は [isMirakurunSiblingService])
 /// - 出力順は `/api/services` のレスポンス順を維持する (ソートしない)
 ///
 /// [now] を引数化しているため単体テストしやすい。
@@ -30,7 +69,7 @@ List<ChannelItem> buildMirakurunChannelItems({
     (programsByService[key] ??= []).add(program);
   }
 
-  final seenDedupeKeys = <String>{};
+  final seenSiblings = <_SeenService>[];
   final items = <ChannelItem>[];
 
   for (final service in services) {
@@ -53,13 +92,36 @@ List<ChannelItem> buildMirakurunChannelItems({
 
     // 放送中でないサービスは除外する。
     if (present == null) continue;
+    // クロージャ内では昇格しないため final に受ける。
+    final presentProgram = present;
 
-    // 同じチャンネルかつ同じ eventId は1つにまとめる。先勝
+    // 兄弟サービスの同じ eventId は1つにまとめる。先勝
     // (services の順序 = サーバーのチャンネル順を尊重)。
     final channel = service.channel;
-    final dedupeKey =
-        '${channel?.type}:${channel?.channel}:${present.eventId}';
-    if (!seenDedupeKeys.add(dedupeKey)) continue;
+    final channelType = channel?.type ?? '';
+    final tunerChannel = channel?.channel ?? '';
+    final duplicate = seenSiblings.any(
+      (seen) =>
+          seen.eventId == presentProgram.eventId &&
+          isMirakurunSiblingService(
+            channelType: channelType,
+            networkId: service.networkId,
+            name: service.name,
+            tunerChannel: tunerChannel,
+            otherChannelType: seen.channelType,
+            otherNetworkId: seen.networkId,
+            otherName: seen.name,
+            otherTunerChannel: seen.tunerChannel,
+          ),
+    );
+    if (duplicate) continue;
+    seenSiblings.add((
+      channelType: channelType,
+      networkId: service.networkId,
+      name: service.name,
+      tunerChannel: tunerChannel,
+      eventId: present.eventId,
+    ));
 
     items.add(
       ChannelItem(

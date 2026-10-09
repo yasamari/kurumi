@@ -152,6 +152,135 @@ void main() {
     expect(items.length, 2);
   });
 
+  test('同名で物理チャンネルが違っても同じeventIdはまとまる', () {
+    // BS の Service形式スキャンでは兄弟ごとに物理チャンネル文字が
+    // 異なる (BS15_1 など) ため、同名でも束ねる。
+    final services = [
+      _service(
+        id: 10,
+        serviceId: 161,
+        networkId: 4,
+        name: 'BS-TBS',
+        channelType: 'BS',
+        channel: 'BS15_1',
+      ),
+      _service(
+        id: 11,
+        serviceId: 162,
+        networkId: 4,
+        name: 'BS-TBS',
+        channelType: 'BS',
+        channel: 'BS15_2',
+      ),
+      _service(
+        id: 12,
+        serviceId: 163,
+        networkId: 4,
+        name: 'BS-TBS',
+        channelType: 'BS',
+        channel: 'BS15_3',
+      ),
+    ];
+    final programs = [
+      for (final serviceId in [161, 162, 163])
+        _program(
+          eventId: 2001,
+          serviceId: serviceId,
+          networkId: 4,
+          startAt: nowMs - hourMs,
+          duration: 2 * hourMs,
+        ),
+    ];
+
+    final items = buildMirakurunChannelItems(
+      services: services,
+      programs: programs,
+      now: now,
+      baseUrl: _baseUrl,
+    );
+
+    expect(items.length, 1);
+    expect(items.single.channel.name, 'BS-TBS');
+  });
+
+  test('名前も物理チャンネルも違えばまとめない', () {
+    final services = [
+      _service(
+        id: 10,
+        serviceId: 161,
+        networkId: 4,
+        name: 'A局',
+        channelType: 'BS',
+        channel: 'BS15_1',
+      ),
+      _service(
+        id: 11,
+        serviceId: 162,
+        networkId: 4,
+        name: 'B局',
+        channelType: 'BS',
+        channel: 'BS15_2',
+      ),
+    ];
+    final programs = [
+      _program(
+        eventId: 2001,
+        serviceId: 161,
+        networkId: 4,
+        startAt: nowMs - hourMs,
+        duration: 2 * hourMs,
+      ),
+      _program(
+        eventId: 2001,
+        serviceId: 162,
+        networkId: 4,
+        startAt: nowMs - hourMs,
+        duration: 2 * hourMs,
+      ),
+    ];
+
+    final items = buildMirakurunChannelItems(
+      services: services,
+      programs: programs,
+      now: now,
+      baseUrl: _baseUrl,
+    );
+
+    expect(items.map((e) => e.channel.name), ['A局', 'B局']);
+  });
+
+  test('ネットワークが違えばまとめない', () {
+    final services = [
+      _service(id: 10, serviceId: 161, networkId: 4, name: 'BS-TBS'),
+      _service(id: 11, serviceId: 161, networkId: 5, name: 'BS-TBS'),
+    ];
+    final programs = [
+      _program(
+        eventId: 2001,
+        serviceId: 161,
+        networkId: 4,
+        startAt: nowMs - hourMs,
+        duration: 2 * hourMs,
+      ),
+      _program(
+        eventId: 2001,
+        serviceId: 161,
+        networkId: 5,
+        startAt: nowMs - hourMs,
+        duration: 2 * hourMs,
+      ),
+    ];
+
+    final items = buildMirakurunChannelItems(
+      services: services,
+      programs: programs,
+      now: now,
+      baseUrl: _baseUrl,
+    );
+
+    expect(items.length, 2);
+  });
+
   test('servicesの順番を維持し、次番組を拾う', () {
     final services = [
       _service(

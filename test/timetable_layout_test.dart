@@ -426,18 +426,9 @@ void main() {
   });
 
   group('セルの表示量', () {
-    test('高さで行数が決まる', () {
-      expect(timetableCellTitleMaxLines(20), 0);
-      expect(timetableCellTitleMaxLines(36), 1);
-      expect(timetableCellTitleMaxLines(59.9), 1);
-      expect(timetableCellTitleMaxLines(60), 2);
-      expect(timetableCellTitleMaxLines(83.9), 2);
-      expect(timetableCellTitleMaxLines(84), 3);
-    });
-
-    test('時刻表示の要否が決まる', () {
-      expect(timetableCellShowsTime(59.9), isFalse);
-      expect(timetableCellShowsTime(60), isTrue);
+    test('文章表示の要否が決まる', () {
+      expect(timetableCellShowsText(35.9), isFalse);
+      expect(timetableCellShowsText(36), isTrue);
     });
 
     test('セル時刻は時:分-時:分になる', () {

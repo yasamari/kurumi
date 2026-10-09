@@ -171,10 +171,12 @@ class EpgDao extends DatabaseAccessor<EpgDatabase> with _$EpgDaoMixin {
 
   /// テレビ欄を1発SQLで取得する。
   ///
-  /// 現行仕様 (`mirakurun_filter.dart`) をSQLに寄せている:
+  /// 現行仕様 (`mirakurun_filter.dart` の兄弟判定) をSQLに寄せている:
   /// - 放送中でないチャンネルは除外する
-  /// - 同じチャンネル種別かつ同じ物理チャンネルで同じ `eventId` の行は
-  ///   `sortOrder` が小さい方だけ残す (サブチャンネルの同時放送対策)
+  /// - 同一種別・同一ネットワークで同じ `eventId` かつ (同名または
+  ///   同一物理チャンネル) の行は `sortOrder` が小さい方だけ残す
+  ///   (サブチャンネルの同時放送対策。BS の Service形式スキャンでは
+  ///   物理チャンネル文字が兄弟ごとに異なるため同名でも束ねる)
   /// - 出力順は取得APIの応答順 (`sortOrder` 順)
   ///
   /// `?` は出現順に [`sourceBackend`, `nowMs`, `nowMs`,
@@ -255,8 +257,10 @@ WHERE r.present_row IS NOT NULL
     SELECT 1 FROM ranked AS r2
     WHERE r2.present_row IS NOT NULL
       AND r2.c_channel_type = r.c_channel_type
-      AND r2.c_tuner_channel = r.c_tuner_channel
+      AND r2.c_network_id = r.c_network_id
       AND r2.present_event = r.present_event
+      AND (r2.c_name = r.c_name
+        OR (r2.c_tuner_channel <> '' AND r2.c_tuner_channel = r.c_tuner_channel))
       AND r2.c_sort_order < r.c_sort_order
   )
 ORDER BY r.c_sort_order

@@ -238,6 +238,155 @@ void main() {
     expect(rows.map((r) => r.name), ['親局']);
   });
 
+  test('同名で物理チャンネルが違っても同じeventIdは1行にまとまる', () async {
+    // BS の Service形式スキャンでは兄弟ごとに物理チャンネル文字が
+    // 異なる (BS15_1 など) ため、同名でも束ねる。
+    await seed(
+      channels: [
+        _channel(
+          networkId: 4,
+          serviceId: 161,
+          remoteId: '10',
+          name: 'BS-TBS',
+          sortOrder: 0,
+          channelType: 'BS',
+          tunerChannel: 'BS15_1',
+        ),
+        _channel(
+          networkId: 4,
+          serviceId: 162,
+          remoteId: '11',
+          name: 'BS-TBS',
+          sortOrder: 1,
+          channelType: 'BS',
+          tunerChannel: 'BS15_2',
+        ),
+        _channel(
+          networkId: 4,
+          serviceId: 163,
+          remoteId: '12',
+          name: 'BS-TBS',
+          sortOrder: 2,
+          channelType: 'BS',
+          tunerChannel: 'BS15_3',
+        ),
+      ],
+      programs: [
+        for (final serviceId in [161, 162, 163])
+          _program(
+            networkId: 4,
+            serviceId: serviceId,
+            eventId: 11,
+            startAtMs: nowMs - _hourMs,
+            endAtMs: nowMs + _hourMs,
+          ),
+      ],
+    );
+
+    final rows = await dao.nowOnAir(
+      sourceBackend: _backend,
+      nowMs: nowMs,
+    );
+
+    expect(rows.map((r) => r.name), ['BS-TBS']);
+  });
+
+  test('名前も物理チャンネルも違えばまとめない', () async {
+    await seed(
+      channels: [
+        _channel(
+          networkId: 4,
+          serviceId: 161,
+          remoteId: '10',
+          name: 'A局',
+          sortOrder: 0,
+          channelType: 'BS',
+          tunerChannel: 'BS15_1',
+        ),
+        _channel(
+          networkId: 4,
+          serviceId: 162,
+          remoteId: '11',
+          name: 'B局',
+          sortOrder: 1,
+          channelType: 'BS',
+          tunerChannel: 'BS15_2',
+        ),
+      ],
+      programs: [
+        _program(
+          networkId: 4,
+          serviceId: 161,
+          eventId: 11,
+          startAtMs: nowMs - _hourMs,
+          endAtMs: nowMs + _hourMs,
+        ),
+        _program(
+          networkId: 4,
+          serviceId: 162,
+          eventId: 11,
+          startAtMs: nowMs - _hourMs,
+          endAtMs: nowMs + _hourMs,
+        ),
+      ],
+    );
+
+    final rows = await dao.nowOnAir(
+      sourceBackend: _backend,
+      nowMs: nowMs,
+    );
+
+    expect(rows.map((r) => r.name), ['A局', 'B局']);
+  });
+
+  test('ネットワークが違えばまとめない', () async {
+    await seed(
+      channels: [
+        _channel(
+          networkId: 4,
+          serviceId: 161,
+          remoteId: '10',
+          name: 'BS-TBS',
+          sortOrder: 0,
+          channelType: 'BS',
+          tunerChannel: 'BS15_1',
+        ),
+        _channel(
+          networkId: 5,
+          serviceId: 161,
+          remoteId: '11',
+          name: 'BS-TBS',
+          sortOrder: 1,
+          channelType: 'BS',
+          tunerChannel: 'BS15_1',
+        ),
+      ],
+      programs: [
+        _program(
+          networkId: 4,
+          serviceId: 161,
+          eventId: 11,
+          startAtMs: nowMs - _hourMs,
+          endAtMs: nowMs + _hourMs,
+        ),
+        _program(
+          networkId: 5,
+          serviceId: 161,
+          eventId: 11,
+          startAtMs: nowMs - _hourMs,
+          endAtMs: nowMs + _hourMs,
+        ),
+      ],
+    );
+
+    final rows = await dao.nowOnAir(
+      sourceBackend: _backend,
+      nowMs: nowMs,
+    );
+
+    expect(rows, hasLength(2));
+  });
+
   test('別eventId・別チャンネルは重複排除されない', () async {
     await seed(
       channels: [

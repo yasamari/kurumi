@@ -122,7 +122,13 @@ class TimetableScrollLink extends ChangeNotifier {
   double get _maxOffset {
     for (final member in _members.keys) {
       if (member.hasClients) {
-        return max(0.0, member.position.maxScrollExtent);
+        final position = member.position;
+        // 初回レイアウト前は寸法が無く `maxScrollExtent` が throw する。
+        // 端ボタンの表示判定は build でも走るため、ここで落とすと
+        // 読み込み完了時に赤いエラー画面が一瞬出る。
+        if (position.hasContentDimensions) {
+          return max(0.0, position.maxScrollExtent);
+        }
       }
     }
     return 0;

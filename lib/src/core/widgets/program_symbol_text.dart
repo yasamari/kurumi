@@ -9,6 +9,8 @@ import '../utils/program_text.dart';
 /// 相当)。1文字の記号は正方形に近づけ、角丸を付ける。
 ///
 /// 通常の [Text] と同様に [style]・[maxLines]・[overflow] を指定できる。
+/// [trailingText] を渡すと、改行を挟んで同じ段落に続けて出す (番組概要など)。
+/// 省略は段落末尾でまとめて行う。
 class ProgramSymbolText extends StatelessWidget {
   const ProgramSymbolText(
     this.text, {
@@ -17,6 +19,8 @@ class ProgramSymbolText extends StatelessWidget {
     this.maxLines,
     this.overflow,
     this.textAlign,
+    this.trailingText,
+    this.trailingStyle,
   });
 
   final String text;
@@ -24,6 +28,12 @@ class ProgramSymbolText extends StatelessWidget {
   final int? maxLines;
   final TextOverflow? overflow;
   final TextAlign? textAlign;
+
+  /// 本文の後に続けて出す補足文。空のときは出さない。
+  final String? trailingText;
+
+  /// 補足文のスタイル。null では本文と同じになる。
+  final TextStyle? trailingStyle;
 
   @override
   Widget build(BuildContext context) {
@@ -33,6 +43,7 @@ class ProgramSymbolText extends StatelessWidget {
       color: colorScheme.onPrimary,
       fontSizeFactor: 0.85,
     );
+    final trailing = trailingText;
     return Text.rich(
       TextSpan(
         children: [
@@ -48,6 +59,11 @@ class ProgramSymbolText extends StatelessWidget {
               )
             else
               TextSpan(text: segment.text),
+          if (trailing != null && trailing.isNotEmpty)
+            TextSpan(
+              text: text.isEmpty ? trailing : '\n$trailing',
+              style: trailingStyle,
+            ),
         ],
       ),
       style: baseStyle,

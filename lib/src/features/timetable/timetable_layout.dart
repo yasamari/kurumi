@@ -28,9 +28,6 @@ const double timetableGutterWidth = 48;
 /// チャンネルヘッダーの高さ。
 const double timetableHeaderHeight = 68;
 
-/// セルの角丸。
-const double timetableCellRadius = 8;
-
 /// セル間の余白 (縦・横)。
 const double timetableCellGap = 2;
 
@@ -348,13 +345,6 @@ List<TimetableColumnSegment> timetableColumnSegments({
   return segments;
 }
 
-/// セル高さからタイトル表示行数を決める。0は色ブロックのみ (タップ可)。
-int timetableCellTitleMaxLines(double heightPx) {
-  if (heightPx < 36) return 0;
-  if (heightPx < 60) return 1;
-  if (heightPx < 84) return 2;
-  return 3;
-}
-
-/// セル高さから時刻表示の要否を決める。
-bool timetableCellShowsTime(double heightPx) => heightPx >= 60;
+/// セル高さから文章表示の要否を決める。この高さ以上では省略記号付きの
+/// 通常表示になり、未満では切り詰め表示 (見切れ上等) になる。
+bool timetableCellShowsText(double heightPx) => heightPx >= 36;

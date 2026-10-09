@@ -4,19 +4,22 @@ import '../../../domain/entities/timetable.dart';
 import '../../../domain/entities/tv_program.dart';
 import '../../epg/epg_database.dart';
 import 'mirakurun_epg_channel_item.dart';
+import 'mirakurun_filter.dart';
 
 /// EPGキャッシュのチャンネル・番組行から番組表の列を組み立てる純粋関数。
 ///
 /// 仕様:
 /// - 出力順は取得APIの応答順 (`sortOrder` 順) を維持する
-/// - 期間内に番組が無いチャンネルも空列として残す (番組表は全列表示が前提)
+/// - 期間内に番組が無いチャンネルも空列として残す (番組表は全列表示が前提。
+///   ただし分岐で列を分けたときの空列は落とす)
 /// - 番組は開始時刻順に並べ直す (DB側も同順だがここで保証する)
 /// - ロゴURLは保存せず、読み出し時の `baseUrl` から組み立てる
-/// - 同一種別・物理チャンネルのサービス (サブチャンネル) はテレビ欄
-///   (`EpgDao.nowOnAir` の重複排除) と同じ考えで1列にまとめる。時間が重なり
-///   同じ `eventId` の番組は同時放送として重複排除し、先勝のチャンネル名・
-///   ロゴを使う。時間が重なる別番組 (マルチ編成の分岐など) が1件でもあれば
-///   まとめず列を分ける (その瞬間のテレビ欄が2行出すのと同じ)
+/// - 兄弟サービス (サブチャンネル) はテレビ欄と同じ考え
+///   ([isMirakurunSiblingService]: 同一種別・同一ネットワークで同名または
+///   同一物理チャンネル) で1つに束ねる。時間が重なり同じ `eventId` の番組は
+///   同時放送として重複排除し、先勝のチャンネル名・ロゴを使う。時間が重なる
+///   別番組 (マルチ編成の分岐など) が1件でもあればまとめず列を分ける
+///   (その瞬間のテレビ欄が2行出すのと同じ)
 List<TimetableChannel> buildMirakurunTimetableColumns({
   required List<EpgChannel> channels,
   required List<EpgProgram> programs,
@@ -37,34 +40,49 @@ List<TimetableChannel> buildMirakurunTimetableColumns({
     return list;
   }
 
-  // 同一種別・物理チャンネルで束ねる。物理チャンネルが空の行は束ねない
-  // (無関係なチャンネル同士をまとめてしまうため)。
-  final groups = <List<EpgChannel>>[];
-  final indexByKey = <String, int>{};
-  for (final channel in channels) {
-    final key = _siblingKey(channel);
-    if (key == null) {
-      groups.add([channel]);
-      continue;
+  // 兄弟同士を束ねる。同名または同一物理チャンネルで推移的に束ねる
+  // (AとBが同名・BとCが同物理チャンネルの場合3つとも1束)。
+  // 行数は数十件程度のため全ペア走査する。
+  final parent = List<int>.generate(channels.length, (i) => i);
+  int find(int i) => parent[i] == i ? i : parent[i] = find(parent[i]);
+  void union(int a, int b) {
+    parent[find(a)] = find(b);
+  }
+
+  bool isSibling(EpgChannel a, EpgChannel b) {
+    return isMirakurunSiblingService(
+      channelType: a.channelType,
+      networkId: a.networkId,
+      name: a.name,
+      tunerChannel: a.tunerChannel,
+      otherChannelType: b.channelType,
+      otherNetworkId: b.networkId,
+      otherName: b.name,
+      otherTunerChannel: b.tunerChannel,
+    );
+  }
+
+  for (var i = 0; i < channels.length; i++) {
+    for (var j = i + 1; j < channels.length; j++) {
+      if (isSibling(channels[i], channels[j])) union(i, j);
     }
-    final index = indexByKey[key];
+  }
+  final groups = <List<EpgChannel>>[];
+  final indexByRoot = <int, int>{};
+  for (var i = 0; i < channels.length; i++) {
+    final root = find(i);
+    final index = indexByRoot[root];
     if (index == null) {
-      indexByKey[key] = groups.length;
-      groups.add([channel]);
+      indexByRoot[root] = groups.length;
+      groups.add([channels[i]]);
     } else {
-      groups[index].add(channel);
+      groups[index].add(channels[i]);
     }
   }
   return [
     for (final group in groups)
       ..._mergeGroup(group, programsOf, baseUrl: baseUrl),
   ];
-}
-
-/// まとめキー。束ねない行は null。
-String? _siblingKey(EpgChannel channel) {
-  if (channel.tunerChannel.isEmpty) return null;
-  return '${channel.channelType}\x1f${channel.tunerChannel}';
 }
 
 /// 1グループを1列か複数列に展開する。
@@ -93,7 +111,13 @@ List<TimetableChannel> _mergeGroup(
     if (conflict) break;
   }
   // 別番組の重なりがあればまとめず、列を分ける。
-  if (conflict) return [for (final channel in group) columnOf(channel)];
+  // 番組の無い行は落とす (空列を並べないため)。
+  if (conflict) {
+    return [
+      for (final channel in group)
+        if (programsOf(channel).isNotEmpty) columnOf(channel),
+    ];
+  }
   merged.sort((a, b) => a.startAt.compareTo(b.startAt));
   return [
     TimetableChannel(

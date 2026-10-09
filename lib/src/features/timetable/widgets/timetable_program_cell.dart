@@ -4,11 +4,12 @@ import '../../../core/widgets/program_symbol_text.dart';
 import '../../../domain/entities/tv_program.dart';
 import '../timetable_layout.dart';
 
-/// 番組表の番組ブロック1件。ジャンル色のティント + 左アクセントバーの
-/// Material 3 カード。
+/// 番組表の番組ブロック1件。角なし・ジャンル色のティント + 左アクセントバー。
 ///
-/// [heightPx] に応じて表示内容を変える (短い番組はタイトルのみ、
-/// ごく短い番組は色ブロックのみ)。タップは常に有効。
+/// 上から放送時間、続けてタイトル+番組概要を1つの段落に流し込む。
+/// タイトルと概要の間に行数制限はなく、セル末尾でまとめて省略する。
+/// 段落が入らない短い番組は切り詰め表示 (見切れ上等) になる。
+/// タップは常に有効。
 ///
 /// 波紋のための `Material` は祖先 (列単位) が持つ。セルごとに作ると
 /// 初回構築のウィジェット数が膨らむ。
@@ -34,59 +35,101 @@ class TimetableProgramCell extends StatelessWidget {
       seed.withValues(alpha: isOnAir ? 0.30 : 0.14),
       colorScheme.surfaceContainerHigh,
     );
-    final maxLines = timetableCellTitleMaxLines(heightPx);
-    final showTime = timetableCellShowsTime(heightPx);
+    final showText = timetableCellShowsText(heightPx);
+    final description = program.description;
+    final timeLabel = formatTimetableCellTime(program.startAt, program.endAt);
 
     return Container(
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(timetableCellRadius),
-      ),
+      color: background,
       child: InkWell(
-        borderRadius: BorderRadius.circular(timetableCellRadius),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Container(
-                width: 3,
-                decoration: BoxDecoration(
-                  color: seed,
-                  borderRadius: BorderRadius.circular(1.5),
-                ),
-              ),
+              Container(width: 3, color: seed),
               const SizedBox(width: 5),
-              if (maxLines > 0)
+              if (showText)
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      ProgramSymbolText(
-                        program.title,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: isOnAir ? FontWeight.bold : FontWeight.w600,
-                          color: colorScheme.onSurface,
-                          height: 1.25,
-                        ),
-                        maxLines: maxLines,
+                      Text(
+                        timeLabel,
+                        style: Theme.of(context).textTheme.labelSmall
+                            ?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                              height: 1.2,
+                            ),
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      if (showTime)
-                        Text(
-                          formatTimetableCellTime(
-                            program.startAt,
-                            program.endAt,
-                          ),
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: colorScheme.onSurfaceVariant,
-                          ),
-                          maxLines: 1,
+                      Expanded(
+                        child: ProgramSymbolText(
+                          program.title,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                fontWeight: isOnAir
+                                    ? FontWeight.bold
+                                    : FontWeight.w600,
+                                color: colorScheme.onSurface,
+                                height: 1.25,
+                              ),
+                          trailingText: description.isNotEmpty
+                              ? description
+                              : null,
+                          trailingStyle: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                height: 1.3,
+                              ),
+                          // セル高が bounds になるため実質無制限。
+                          // maxLines なしの ellipsis は1行化するため必須。
+                          maxLines: 1000,
                           overflow: TextOverflow.ellipsis,
                         ),
+                      ),
                     ],
+                  ),
+                )
+              else
+                // 段落が入らない短い番組は切り詰め表示にする。
+                // OverflowBox で自然な高さを許し、ClipRect で黙って切る。
+                Expanded(
+                  child: ClipRect(
+                    child: OverflowBox(
+                      alignment: Alignment.topCenter,
+                      maxHeight: double.infinity,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            timeLabel,
+                            style: Theme.of(context).textTheme.labelSmall
+                                ?.copyWith(
+                                  color: colorScheme.onSurfaceVariant,
+                                  height: 1.2,
+                                ),
+                            maxLines: 1,
+                          ),
+                          ProgramSymbolText(
+                            program.title,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  fontWeight: isOnAir
+                                      ? FontWeight.bold
+                                      : FontWeight.w600,
+                                  color: colorScheme.onSurface,
+                                  height: 1.25,
+                                ),
+                            maxLines: 1000,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
             ],
