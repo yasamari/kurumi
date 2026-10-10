@@ -667,6 +667,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           cmSections: cmSections,
           seekableBottomButtonBar: [
             const MaterialPositionIndicator(),
+            // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
+            CmSkipButton(player: _playback.player, cmSections: cmSections),
             const Spacer(),
             CaptureButton(onPressed: () => _capture(withDanmaku: false)),
             DanmakuCaptureButton(
@@ -676,8 +678,6 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
               enabled: _playback.subtitlesEnabled,
               onToggled: _playback.toggleSubtitles,
             ),
-            // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
-            CmSkipButton(player: _playback.player, cmSections: cmSections),
             settingsButton(),
             const PipModeButton(),
             const MaterialFullscreenButton(),
@@ -688,6 +688,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
             const MaterialDesktopSkipNextButton(),
             const MaterialDesktopVolumeButton(),
             const MaterialDesktopPositionIndicator(),
+            // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
+            CmSkipButton(player: _playback.player, cmSections: cmSections),
             const Spacer(),
             CaptureButton(onPressed: () => _capture(withDanmaku: false)),
             DanmakuCaptureButton(
@@ -697,8 +699,6 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
               enabled: _playback.subtitlesEnabled,
               onToggled: _playback.toggleSubtitles,
             ),
-            // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
-            CmSkipButton(player: _playback.player, cmSections: cmSections),
             settingsButton(),
             const PipModeButton(),
             // デスクトップでは PiP ボタン (Android 専用) の場所 情報パネルを
