@@ -15,6 +15,7 @@ import 'package:media_kit_video/media_kit_video_controls/src/controls/methods/vi
 import 'package:media_kit_video/media_kit_video_controls/src/controls/widgets/video_controls_theme_data_injector.dart';
 
 import '../../domain/entities/cm_section.dart';
+import '../../domain/entities/video_thumbnail_tiles.dart';
 import 'cm_seek_bar.dart';
 
 // KURUMI-CM: media_kit_video 2.0.1 のフォーク。CM区間表示のため、テーマ・
@@ -25,12 +26,19 @@ import 'cm_seek_bar.dart';
 /// CM区間付きのデスクトップ標準コントロール。使い方は
 /// [MaterialDesktopVideoControls] と同じで、[cmSections] が空でないときに
 /// シークバーへ重ねて表示する。
+///
+/// [seekThumbnail] を与えると、シークバーのホバー位置にサムネイル
+/// プレビューを出す (録画再生のみ。ライブでは null)。
 Widget CmMaterialDesktopVideoControls(
   VideoState state, {
   List<CmSection> cmSections = const [],
+  VideoThumbnailTiles? seekThumbnail,
 }) {
   return VideoControlsThemeDataInjector(
-    child: _MaterialDesktopVideoControls(cmSections: cmSections),
+    child: _MaterialDesktopVideoControls(
+      cmSections: cmSections,
+      seekThumbnail: seekThumbnail,
+    ),
   );
 }
 
@@ -50,9 +58,15 @@ MaterialDesktopVideoControlsThemeData cmDesktopVideoControlsThemeOf(
 /// {@macro material_desktop_video_controls}
 class _MaterialDesktopVideoControls extends StatefulWidget {
   // KURUMI-CM: CM区間一覧。シークバーとスキップボタンが使う。
-  const _MaterialDesktopVideoControls({this.cmSections = const []});
+  const _MaterialDesktopVideoControls({
+    this.cmSections = const [],
+    this.seekThumbnail,
+  });
 
   final List<CmSection> cmSections;
+
+  /// シークバーのホバー位置に出すサムネイル並び。null なら出さない。
+  final VideoThumbnailTiles? seekThumbnail;
 
   @override
   State<_MaterialDesktopVideoControls> createState() =>
@@ -449,6 +463,7 @@ class _MaterialDesktopVideoControlsState
                                             // シークバーに差し替える。
                                             cmSections: widget.cmSections,
                                             isDesktop: true,
+                                            seekThumbnail: widget.seekThumbnail,
                                             onSeekStart: () {
                                               _timer?.cancel();
                                             },

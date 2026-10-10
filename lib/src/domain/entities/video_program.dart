@@ -3,6 +3,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 import 'channel.dart';
 import 'recorded_file_info.dart';
 import 'tv_program.dart';
+import 'video_thumbnail_tiles.dart';
 
 part 'video_program.freezed.dart';
 
@@ -43,6 +44,9 @@ abstract class VideoProgram with _$VideoProgram {
 
     /// サムネイル画像のURL。
     required String thumbnailUrl,
+
+    /// シークバー用のサムネイル並び。未生成・非対応バックエンドでは null。
+    VideoThumbnailTiles? thumbnailTiles,
 
     /// 録画ファイルの技術情報。取得できていない場合は null。
     RecordedFileInfo? recordedFile,

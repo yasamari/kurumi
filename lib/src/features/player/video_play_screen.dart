@@ -665,6 +665,9 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           // 画面タップで戻ることになり、Flutter 側では触れないため)。
           showControls: !pictureInPicture,
           cmSections: cmSections,
+          // ホバー位置のサムネイル。KonomiTV のタイル並び画像から切り出す。
+          // null (未生成・非対応) のときはプレビューを出さない。
+          seekThumbnail: widget.video.thumbnailTiles,
           seekableBottomButtonBar: [
             const MaterialPositionIndicator(),
             // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。

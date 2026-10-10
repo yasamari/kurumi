@@ -40,6 +40,49 @@ Map<String, dynamic> _$KonomiCmSectionDtoToJson(KonomiCmSectionDto instance) =>
       'end_time': instance.endTime,
     };
 
+KonomiThumbnailTileInfoDto _$KonomiThumbnailTileInfoDtoFromJson(
+  Map<String, dynamic> json,
+) => KonomiThumbnailTileInfoDto(
+  format: json['format'] as String? ?? 'WebP',
+  imageWidth: (json['image_width'] as num?)?.toInt() ?? 0,
+  imageHeight: (json['image_height'] as num?)?.toInt() ?? 0,
+  tileWidth: (json['tile_width'] as num?)?.toInt() ?? 0,
+  tileHeight: (json['tile_height'] as num?)?.toInt() ?? 0,
+  totalTiles: (json['total_tiles'] as num?)?.toInt() ?? 0,
+  columnCount: (json['column_count'] as num?)?.toInt() ?? 0,
+  rowCount: (json['row_count'] as num?)?.toInt() ?? 0,
+  intervalSec: (json['interval_sec'] as num?)?.toDouble() ?? 0,
+);
+
+Map<String, dynamic> _$KonomiThumbnailTileInfoDtoToJson(
+  KonomiThumbnailTileInfoDto instance,
+) => <String, dynamic>{
+  'format': instance.format,
+  'image_width': instance.imageWidth,
+  'image_height': instance.imageHeight,
+  'tile_width': instance.tileWidth,
+  'tile_height': instance.tileHeight,
+  'total_tiles': instance.totalTiles,
+  'column_count': instance.columnCount,
+  'row_count': instance.rowCount,
+  'interval_sec': instance.intervalSec,
+};
+
+KonomiThumbnailInfoDto _$KonomiThumbnailInfoDtoFromJson(
+  Map<String, dynamic> json,
+) => KonomiThumbnailInfoDto(
+  version: (json['version'] as num?)?.toInt() ?? 0,
+  tile: json['tile'] == null
+      ? null
+      : KonomiThumbnailTileInfoDto.fromJson(
+          json['tile'] as Map<String, dynamic>,
+        ),
+);
+
+Map<String, dynamic> _$KonomiThumbnailInfoDtoToJson(
+  KonomiThumbnailInfoDto instance,
+) => <String, dynamic>{'version': instance.version, 'tile': instance.tile};
+
 KonomiRecordedVideoDto _$KonomiRecordedVideoDtoFromJson(
   Map<String, dynamic> json,
 ) => KonomiRecordedVideoDto(
@@ -66,6 +109,11 @@ KonomiRecordedVideoDto _$KonomiRecordedVideoDtoFromJson(
   cmSections: (json['cm_sections'] as List<dynamic>?)
       ?.map((e) => KonomiCmSectionDto.fromJson(e as Map<String, dynamic>))
       .toList(),
+  thumbnailInfo: json['thumbnail_info'] == null
+      ? null
+      : KonomiThumbnailInfoDto.fromJson(
+          json['thumbnail_info'] as Map<String, dynamic>,
+        ),
 );
 
 Map<String, dynamic> _$KonomiRecordedVideoDtoToJson(
@@ -85,6 +133,7 @@ Map<String, dynamic> _$KonomiRecordedVideoDtoToJson(
   'primary_audio_channel': instance.primaryAudioChannel,
   'primary_audio_sampling_rate': instance.primaryAudioSamplingRate,
   'cm_sections': instance.cmSections,
+  'thumbnail_info': instance.thumbnailInfo,
 };
 
 KonomiRecordedProgramDto _$KonomiRecordedProgramDtoFromJson(

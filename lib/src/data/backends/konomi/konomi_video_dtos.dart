@@ -45,6 +45,70 @@ class KonomiCmSectionDto {
   Map<String, dynamic> toJson() => _$KonomiCmSectionDtoToJson(this);
 }
 
+/// `RecordedVideo.thumbnail_info.tile` のタイル並び画像情報。
+///
+/// 1枚のWebPに `tile_width` x `tile_height` のタイルを `column_count` 枚ずつ
+/// 行方向に並べたもの (`image_width` x `image_height`)。
+@JsonSerializable(fieldRename: FieldRename.snake)
+class KonomiThumbnailTileInfoDto {
+  const KonomiThumbnailTileInfoDto({
+    this.format = 'WebP',
+    this.imageWidth = 0,
+    this.imageHeight = 0,
+    this.tileWidth = 0,
+    this.tileHeight = 0,
+    this.totalTiles = 0,
+    this.columnCount = 0,
+    this.rowCount = 0,
+    this.intervalSec = 0,
+  });
+
+  factory KonomiThumbnailTileInfoDto.fromJson(Map<String, dynamic> json) =>
+      _$KonomiThumbnailTileInfoDtoFromJson(json);
+
+  final String format;
+
+  /// 並べた画像全体の幅 (px)。
+  final int imageWidth;
+
+  /// 並べた画像全体の高さ (px)。
+  final int imageHeight;
+
+  /// 1枚のタイルの幅 (px)。
+  final int tileWidth;
+
+  /// 1枚のタイルの高さ (px)。
+  final int tileHeight;
+
+  /// タイルの総枚数。
+  final int totalTiles;
+
+  /// 1行のタイル枚数。
+  final int columnCount;
+
+  /// タイルの行数。
+  final int rowCount;
+
+  /// 隣り合うタイルの時刻差 (秒)。
+  final double intervalSec;
+
+  Map<String, dynamic> toJson() => _$KonomiThumbnailTileInfoDtoToJson(this);
+}
+
+/// `RecordedVideo.thumbnail_info`。代表サムネイルとタイル並びを持つ。
+@JsonSerializable(fieldRename: FieldRename.snake)
+class KonomiThumbnailInfoDto {
+  const KonomiThumbnailInfoDto({this.version = 0, this.tile});
+
+  factory KonomiThumbnailInfoDto.fromJson(Map<String, dynamic> json) =>
+      _$KonomiThumbnailInfoDtoFromJson(json);
+
+  final int version;
+  final KonomiThumbnailTileInfoDto? tile;
+
+  Map<String, dynamic> toJson() => _$KonomiThumbnailInfoDtoToJson(this);
+}
+
 /// `RecordedProgram.recorded_video` の録画ファイル情報。使う分のみ定義する。
 @JsonSerializable(fieldRename: FieldRename.snake)
 class KonomiRecordedVideoDto {
@@ -63,6 +127,7 @@ class KonomiRecordedVideoDto {
     this.primaryAudioChannel,
     this.primaryAudioSamplingRate,
     this.cmSections,
+    this.thumbnailInfo,
   });
 
   factory KonomiRecordedVideoDto.fromJson(Map<String, dynamic> json) =>
@@ -87,6 +152,9 @@ class KonomiRecordedVideoDto {
 
   /// CM区間一覧。未解析時は null、解析済みでCMなしは空配列。
   final List<KonomiCmSectionDto>? cmSections;
+
+  /// サムネイル情報。未生成・旧サーバーでは null。
+  final KonomiThumbnailInfoDto? thumbnailInfo;
 
   Map<String, dynamic> toJson() => _$KonomiRecordedVideoDtoToJson(this);
 }

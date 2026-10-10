@@ -12,6 +12,7 @@ import 'package:media_kit_video/media_kit_video_controls/src/controls/methods/vi
 import 'package:media_kit_video/media_kit_video_controls/src/controls/widgets/video_controls_theme_data_injector.dart';
 
 import '../../domain/entities/cm_section.dart';
+import '../../domain/entities/video_thumbnail_tiles.dart';
 import 'cm_seek_bar.dart';
 
 // KURUMI-CM: media_kit_video 2.0.1 のフォーク。CM区間表示のため、テーマ・
@@ -22,12 +23,19 @@ import 'cm_seek_bar.dart';
 /// CM区間付きのモバイル標準コントロール。使い方は
 /// [MaterialVideoControls] と同じで、[cmSections] が空でないときに
 /// シークバーへ重ねて表示する。
+///
+/// [seekThumbnail] を与えると、シークバーのホバー位置にサムネイル
+/// プレビューを出す (録画再生のみ。ライブでは null)。
 Widget CmMaterialVideoControls(
   VideoState state, {
   List<CmSection> cmSections = const [],
+  VideoThumbnailTiles? seekThumbnail,
 }) {
   return VideoControlsThemeDataInjector(
-    child: _MaterialVideoControls(cmSections: cmSections),
+    child: _MaterialVideoControls(
+      cmSections: cmSections,
+      seekThumbnail: seekThumbnail,
+    ),
   );
 }
 
@@ -47,9 +55,15 @@ MaterialVideoControlsThemeData cmMobileVideoControlsThemeOf(
 /// {@macro material_video_controls}
 class _MaterialVideoControls extends StatefulWidget {
   // KURUMI-CM: CM区間一覧。シークバーとスキップボタンが使う。
-  const _MaterialVideoControls({this.cmSections = const []});
+  const _MaterialVideoControls({
+    this.cmSections = const [],
+    this.seekThumbnail,
+  });
 
   final List<CmSection> cmSections;
+
+  /// シークバーのホバー位置に出すサムネイル並び。null なら出さない。
+  final VideoThumbnailTiles? seekThumbnail;
 
   @override
   State<_MaterialVideoControls> createState() => _MaterialVideoControlsState();
@@ -544,6 +558,9 @@ class _MaterialVideoControlsState extends State<_MaterialVideoControls> {
                               ),
                               Stack(
                                 alignment: Alignment.bottomCenter,
+                                // KURUMI-CM: サムネイルプレビューは
+                                // シークバーの上に溢れて描くため切らない。
+                                clipBehavior: Clip.none,
                                 children: [
                                   // KURUMI-CM: CM区間付きシークバーに
                                   // 差し替える (テーマ・余白は共通)。
@@ -551,6 +568,7 @@ class _MaterialVideoControlsState extends State<_MaterialVideoControls> {
                                     CmSeekBar(
                                       cmSections: widget.cmSections,
                                       isDesktop: false,
+                                      seekThumbnail: widget.seekThumbnail,
                                       onSeekStart: () {
                                         _timer?.cancel();
                                       },
@@ -607,6 +625,9 @@ class _MaterialVideoControlsState extends State<_MaterialVideoControls> {
                                 cmSections: widget.cmSections,
                                 isDesktop: false,
                                 delta: _seekBarDeltaValueNotifier,
+                                // KURUMI-CM: プレビューは出さない
+                                // (ドラッグ中の位置ではないため)。
+                                seekThumbnail: null,
                               ),
                             Container(
                               height: _theme(context).buttonBarHeight,

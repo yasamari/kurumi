@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../domain/entities/cm_section.dart';
+import '../../domain/entities/video_thumbnail_tiles.dart';
 import 'cm_material_controls.dart';
 import 'cm_material_desktop_controls.dart';
 import 'player_controls_theme.dart';
@@ -58,12 +59,12 @@ enum PlayerControlsLayout {
 /// 写さないという方針を守るため)。この値が false になるのは PiP 中だけで、
 /// 通常表示には戻るのでテーマデータ側の副作用は無い。
 ///
-/// CM区間がある録画再生では、標準コントロールのうちシークバーだけ
-/// [cmSections] 対応のフォーク ([CmMaterialVideoControls] /
+/// CM区間がある録画再生、またはホバー位置のサムネイルが出せる録画再生では、
+/// 標準コントロールのうちシークバーだけをフォーク ([CmMaterialVideoControls] /
 /// [CmMaterialDesktopVideoControls]) へ差し替える。テーマデータ・ボタン行は
-/// upstream と共通で、差しているのはシークバーだけ。CM区間がない・ライブでは
-/// upstream の `AdaptiveVideoControls` をそのまま使うため、通常の再生の見た目
-/// は変わらない。差し替え理由は [CmSeekBar] のコメントを参照。
+/// upstream と共通で、差しているのはシークバーだけ。どちらもない録画再生と
+/// ライブでは upstream の `AdaptiveVideoControls` をそのまま使うため、通常の
+/// 再生の見た目は変わらない。差し替え理由は [CmSeekBar] のコメントを参照。
 class PlayerVideoView extends StatelessWidget {
   const PlayerVideoView({
     super.key,
@@ -80,6 +81,7 @@ class PlayerVideoView extends StatelessWidget {
     this.onRetry,
     this.showControls = true,
     this.cmSections = const [],
+    this.seekThumbnail,
   }) : assert(
          layout != PlayerControlsLayout.live ||
              (livePrimaryButtonBar != null &&
@@ -136,6 +138,13 @@ class PlayerVideoView extends StatelessWidget {
   /// [CmSeekbarOverlay] を足してトラック位置に重ねて描く。
   final List<CmSection> cmSections;
 
+  /// シークバーのホバー位置に出すサムネイル並び。null なら出さない。
+  ///
+  /// 録画再生 ([PlayerControlsLayout.seekable]) だけで使い、ライブでは
+  /// null のままにする。非 null のときは標準シークバーを出さず、
+  /// プレビューを重ねられるフォーク ([CmSeekBar]) を使う。
+  final VideoThumbnailTiles? seekThumbnail;
+
   @override
   Widget build(BuildContext context) {
     // 映像が画面端まで描画されているかどうか (横画面) を表す。標準コントロールは
@@ -151,9 +160,11 @@ class PlayerVideoView extends StatelessWidget {
     // テーマデータに入れておく。
     final seekBar = seekBarColorsFrom(Theme.of(context).colorScheme);
 
-    // CM区間があるときは標準シークバーを出さず、CM区間付きに置き換える。
-    final hasCmSections =
-        layout == PlayerControlsLayout.seekable && cmSections.isNotEmpty;
+    // CM区間がある・ホバー位置のサムネイルが出せる録画再生では、標準
+    // シークバーを出さずフォークに置き換える。
+    final useForkedSeekBar =
+        layout == PlayerControlsLayout.seekable &&
+        (cmSections.isNotEmpty || seekThumbnail != null);
 
     // 通常表示とフルスクリーンは余白が違うのでテーマデータを分ける
     // (縦画面の通常表示は外側の `SafeArea` がインセットを消費済み)。
@@ -256,10 +267,9 @@ class PlayerVideoView extends StatelessWidget {
     final retry = onRetry;
     final danmakuLayer = danmaku;
     final showControls = this.showControls;
-    // CM区間がある録画再生だけ、標準コントロールのうちシークバーを
-    // CM対応のフォークへ差し替える ([CmMaterialVideoControls] 参照)。
+    // CM区間がある・ホバーサムネイルが出せる録画再生だけ、標準コントロールの
+    // うちシークバーをフォークへ差し替える ([CmMaterialVideoControls] 参照)。
     // それ以外は upstream の `AdaptiveVideoControls` をそのまま使う。
-    final useCmControls = hasCmSections;
     return Stack(
       children: [
         MaterialVideoControlsTheme(
@@ -281,15 +291,20 @@ class PlayerVideoView extends StatelessWidget {
                     Positioned.fill(child: danmakuLayer),
                   // PiP 中は標準コントロールを載せない。弾幕は上に残る。
                   if (showControls)
-                    if (!useCmControls)
+                    if (!useForkedSeekBar)
                       AdaptiveVideoControls(state)
                     else if (_isDesktop(context))
                       CmMaterialDesktopVideoControls(
                         state,
                         cmSections: cmSections,
+                        seekThumbnail: seekThumbnail,
                       )
                     else
-                      CmMaterialVideoControls(state, cmSections: cmSections),
+                      CmMaterialVideoControls(
+                        state,
+                        cmSections: cmSections,
+                        seekThumbnail: seekThumbnail,
+                      ),
                 ],
               ),
             ),

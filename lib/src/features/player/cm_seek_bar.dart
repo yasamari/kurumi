@@ -6,10 +6,12 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video_controls/src/controls/methods/video_state.dart';
 
 import '../../domain/entities/cm_section.dart';
+import '../../domain/entities/video_thumbnail_tiles.dart';
 import 'cm_material_controls.dart';
 import 'cm_material_desktop_controls.dart';
 import 'cm_sections.dart';
 import 'player_controls_theme.dart';
+import 'seek_thumbnail.dart';
 
 /// トラックに重ねるCM区間の不透明度。進捗・バッファを透けさせたまま
 /// tertiary系の色味を残す。
@@ -21,6 +23,11 @@ const _cmOverlayAlpha = 0.55;
 /// トラックの3層 (地・バッファ・再生位置) にCM区間を重ね、つまみを最前面に
 /// 置く。標準シークバーと同じ余白・寸法・操作を使うため、見た目の位置は
 /// CM区間がなくても変わらない。
+///
+/// 加えて、ホバー位置 (デスクトップ)・ドラッグ中 (モバイル) のサムネイル
+/// ビュー ([SeekThumbnailPreview]) もここへ重ねる。media_kit はシークバーに
+/// 何かを重ねる口を提供しないため、ビューもフォーク内に置く (CM区間と同じ
+/// 理由)。
 ///
 /// **なぜフォークなのか**: media_kit はシークバーのマーカー類を持たず、
 /// 既存のトラックに何かを重ねる方法も提供していない。下端ボタン行の
@@ -37,6 +44,7 @@ class CmSeekBar extends StatefulWidget {
     this.onSeekEnd,
     required this.cmSections,
     required this.isDesktop,
+    this.seekThumbnail,
   });
 
   final ValueNotifier<Duration>? delta;
@@ -49,6 +57,10 @@ class CmSeekBar extends StatefulWidget {
 
   /// デスクトップ (ホバーで伸びるシークバー) かどうか。
   final bool isDesktop;
+
+  /// ホバー位置のサムネイル並び。null ならプレビューを出さない
+  /// (バックエンドが未対応・未生成のとき)。
+  final VideoThumbnailTiles? seekThumbnail;
 
   @override
   CmSeekBarState createState() => CmSeekBarState();
@@ -237,112 +249,148 @@ class CmSeekBarState extends State<CmSeekBar> {
     // KURUMI-CM: ホバー位置の表示はデスクトップだけ。
     final showHover = widget.isDesktop && hover;
     final trackHeight = showHover ? theme.hoverHeight : theme.height;
+    // KURUMI-CM: サムネイルプレビュー。デスクトップはホバー中、モバイルは
+    // ドラッグ中 (KonomiTV の Web クライアントと同じ扱い)。再生尺が未確定
+    // なら位置が出せないので出さない。
+    final thumbnail = widget.seekThumbnail;
+    final showThumbnail =
+        thumbnail != null &&
+        duration != Duration.zero &&
+        (widget.isDesktop ? hover : tapped);
     return Container(
       clipBehavior: Clip.none,
       margin: theme.margin,
       child: LayoutBuilder(
-        builder: (context, constraints) => MouseRegion(
-          cursor: SystemMouseCursors.click,
-          onHover: widget.isDesktop ? (e) => onHover(e, constraints) : null,
-          onEnter: widget.isDesktop ? (e) => onEnter(e, constraints) : null,
-          onExit: widget.isDesktop ? onExit : null,
-          child: GestureDetector(
-            onHorizontalDragUpdate: (_) {},
-            onPanStart: (e) => onPanStart(e, constraints),
-            onPanDown: (e) => onPanDown(e, constraints),
-            onPanUpdate: (e) => onPanUpdate(e, constraints),
-            child: Listener(
-              onPointerMove: (e) => onPointerMove(e, constraints),
-              onPointerDown: (_) => onPointerDown(),
-              onPointerUp: (_) => onPointerUp(),
-              child: Container(
-                color: const Color(0x00000000),
-                width: constraints.maxWidth,
-                alignment: theme.alignment,
-                height: theme.containerHeight,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  alignment: Alignment.centerLeft,
-                  children: [
-                    AnimatedContainer(
-                      width: constraints.maxWidth,
-                      height: trackHeight,
-                      alignment: Alignment.centerLeft,
-                      duration: widget.isDesktop
-                          ? const Duration(milliseconds: 150)
-                          : Duration.zero,
-                      color: theme.track,
-                      child: Stack(
-                        clipBehavior: Clip.none,
+        builder: (context, constraints) {
+          // KURUMI-CM: サムネイルプレビューの左端。トラック幅はこの
+          // `LayoutBuilder` の constraints から取る — 内側の `Stack` に
+          // `Positioned` された子は**非有界**の制約をもらうため (そのおかげで
+          // はみ出して描ける)、内側では幅が取れない。
+          final thumbnailLeft = showThumbnail
+              ? seekThumbnailPreviewLeft(
+                  pointerX: constraints.maxWidth * slider,
+                  trackWidth: constraints.maxWidth,
+                )
+              : 0.0;
+          return MouseRegion(
+            cursor: SystemMouseCursors.click,
+            onHover: widget.isDesktop ? (e) => onHover(e, constraints) : null,
+            onEnter: widget.isDesktop ? (e) => onEnter(e, constraints) : null,
+            onExit: widget.isDesktop ? onExit : null,
+            child: GestureDetector(
+              onHorizontalDragUpdate: (_) {},
+              onPanStart: (e) => onPanStart(e, constraints),
+              onPanDown: (e) => onPanDown(e, constraints),
+              onPanUpdate: (e) => onPanUpdate(e, constraints),
+              child: Listener(
+                onPointerMove: (e) => onPointerMove(e, constraints),
+                onPointerDown: (_) => onPointerDown(),
+                onPointerUp: (_) => onPointerUp(),
+                child: Container(
+                  color: const Color(0x00000000),
+                  width: constraints.maxWidth,
+                  alignment: theme.alignment,
+                  height: theme.containerHeight,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.centerLeft,
+                    children: [
+                      AnimatedContainer(
+                        width: constraints.maxWidth,
+                        height: trackHeight,
                         alignment: Alignment.centerLeft,
-                        children: [
-                          // KURUMI-CM: ホバー位置の表示 (デスクトップのみ)。
-                          if (showHover)
+                        duration: widget.isDesktop
+                            ? const Duration(milliseconds: 150)
+                            : Duration.zero,
+                        color: theme.track,
+                        child: Stack(
+                          clipBehavior: Clip.none,
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            // KURUMI-CM: ホバー位置の表示 (デスクトップのみ)。
+                            if (showHover)
+                              Container(
+                                width: constraints.maxWidth * slider,
+                                color: theme.hover,
+                              ),
                             Container(
-                              width: constraints.maxWidth * slider,
-                              color: theme.hover,
+                              width: constraints.maxWidth * bufferPercent,
+                              color: theme.buffer,
                             ),
-                          Container(
-                            width: constraints.maxWidth * bufferPercent,
-                            color: theme.buffer,
-                          ),
-                          Container(
-                            width: tapped
-                                ? constraints.maxWidth * slider
-                                : constraints.maxWidth * positionPercent,
-                            color: theme.position,
-                          ),
-                          // KURUMI-CM: CM区間。進捗より上・つまみより下に
-                          // 重ねる。再生尺が未確定なら割合が出ない。
-                          for (final fraction in fractions)
-                            Positioned(
-                              left: constraints.maxWidth * fraction.start,
-                              width:
-                                  constraints.maxWidth *
-                                  (fraction.end - fraction.start),
-                              top: 0,
-                              bottom: 0,
-                              child: Container(
-                                color: cmColor.withValues(
-                                  alpha: _cmOverlayAlpha,
+                            Container(
+                              width: tapped
+                                  ? constraints.maxWidth * slider
+                                  : constraints.maxWidth * positionPercent,
+                              color: theme.position,
+                            ),
+                            // KURUMI-CM: CM区間。進捗より上・つまみより下に
+                            // 重ねる。再生尺が未確定なら割合が出ない。
+                            for (final fraction in fractions)
+                              Positioned(
+                                left: constraints.maxWidth * fraction.start,
+                                width:
+                                    constraints.maxWidth *
+                                    (fraction.end - fraction.start),
+                                top: 0,
+                                bottom: 0,
+                                child: Container(
+                                  color: cmColor.withValues(
+                                    alpha: _cmOverlayAlpha,
+                                  ),
                                 ),
                               ),
-                            ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    Positioned(
-                      left: tapped
-                          ? (constraints.maxWidth - theme.thumbSize / 2) *
-                                slider
-                          : (constraints.maxWidth - theme.thumbSize / 2) *
-                                positionPercent,
-                      child: Center(
-                        child: AnimatedContainer(
-                          width: widget.isDesktop && !(hover || tapped)
-                              ? 0.0
-                              : theme.thumbSize,
-                          height: widget.isDesktop && !(hover || tapped)
-                              ? 0.0
-                              : theme.thumbSize,
-                          duration: widget.isDesktop
-                              ? const Duration(milliseconds: 150)
-                              : Duration.zero,
-                          decoration: BoxDecoration(
-                            color: theme.thumb,
-                            borderRadius: BorderRadius.circular(
-                              theme.thumbSize / 2,
+                      Positioned(
+                        left: tapped
+                            ? (constraints.maxWidth - theme.thumbSize / 2) *
+                                  slider
+                            : (constraints.maxWidth - theme.thumbSize / 2) *
+                                  positionPercent,
+                        child: Center(
+                          child: AnimatedContainer(
+                            width: widget.isDesktop && !(hover || tapped)
+                                ? 0.0
+                                : theme.thumbSize,
+                            height: widget.isDesktop && !(hover || tapped)
+                                ? 0.0
+                                : theme.thumbSize,
+                            duration: widget.isDesktop
+                                ? const Duration(milliseconds: 150)
+                                : Duration.zero,
+                            decoration: BoxDecoration(
+                              color: theme.thumb,
+                              borderRadius: BorderRadius.circular(
+                                theme.thumbSize / 2,
+                              ),
                             ),
                           ),
                         ),
                       ),
-                    ),
-                  ],
+                      // KURUMI-CM: サムネイルプレビュー。トラックの上に重ねる
+                      // (操作は受け付けない)。表示中だけ画像を読むので、ホバー
+                      // していない間は取得・デコードをしない。水平位置は親の
+                      // ずらしだけで与える (`Stack` の position された子は
+                      // 非有界の制約をもらうため、`Positioned` に right は
+                      // **指定しない** — tight な幅が渡り、`Container(width:)`
+                      // が押し広げられてタイルが横に何枚も見える)。
+                      if (showThumbnail)
+                        Positioned(
+                          left: thumbnailLeft,
+                          bottom: theme.containerHeight + seekThumbnailGap,
+                          child: SeekThumbnailPreview(
+                            tiles: thumbnail,
+                            fraction: slider,
+                          ),
+                        ),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
-        ),
+          );
+        },
       ),
     );
   }

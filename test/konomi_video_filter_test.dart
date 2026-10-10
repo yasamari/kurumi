@@ -101,6 +101,91 @@ void main() {
       videoThumbnailUrl(baseUrl: _baseUrl, videoId: 42),
       '$_baseUrl/api/videos/42/thumbnail',
     );
+    expect(
+      videoThumbnailTiledUrl(baseUrl: _baseUrl, videoId: 42),
+      '$_baseUrl/api/videos/42/thumbnail/tiled',
+    );
+  });
+
+  test('サムネイルのタイル並びが引き継がれる', () {
+    final dto = KonomiRecordedProgramDto(
+      id: 21,
+      title: 'タイル付き番組',
+      description: '概要',
+      duration: 2880,
+      startTime: DateTime(2026, 10, 1, 1, 0),
+      endTime: DateTime(2026, 10, 1, 1, 48),
+      recordedVideo: const KonomiRecordedVideoDto(
+        thumbnailInfo: KonomiThumbnailInfoDto(
+          version: 1,
+          tile: KonomiThumbnailTileInfoDto(
+            imageWidth: 16320,
+            imageHeight: 810,
+            tileWidth: 320,
+            tileHeight: 180,
+            totalTiles: 408,
+            columnCount: 51,
+            rowCount: 8,
+            intervalSec: 5,
+          ),
+        ),
+      ),
+    );
+
+    final tiles = buildVideoProgram(dto: dto, baseUrl: _baseUrl).thumbnailTiles;
+
+    expect(tiles, isNotNull);
+    expect(tiles!.url, '$_baseUrl/api/videos/21/thumbnail/tiled');
+    expect(tiles.tileWidth, 320);
+    expect(tiles.tileHeight, 180);
+    expect(tiles.columnCount, 51);
+    expect(tiles.totalTiles, 408);
+    expect(tiles.intervalSec, 5);
+  });
+
+  test('タイル情報が無い録画は旧仕様を仮定する', () {
+    final dto = KonomiRecordedProgramDto(
+      id: 22,
+      title: '旧仕様の番組',
+      description: '概要',
+      duration: 1800,
+      startTime: DateTime(2026, 10, 1, 1, 0),
+      endTime: DateTime(2026, 10, 1, 1, 30),
+    );
+
+    final tiles = buildVideoProgram(dto: dto, baseUrl: _baseUrl).thumbnailTiles;
+
+    expect(tiles, isNotNull);
+    expect(tiles!.tileWidth, 480);
+    expect(tiles.tileHeight, 270);
+    expect(tiles.columnCount, 34);
+    // 30分以下は5秒間隔 → 360枚。
+    expect(tiles.intervalSec, 5.0);
+    expect(tiles.totalTiles, 360);
+  });
+
+  test('尺が取れない録画はタイル並びなし', () {
+    final dto = KonomiRecordedProgramDto(
+      id: 23,
+      title: '録画中の番組',
+      description: '概要',
+      startTime: DateTime(2026, 10, 1, 1, 0),
+      endTime: DateTime(2026, 10, 1, 1, 48),
+    );
+
+    expect(
+      buildVideoProgram(dto: dto, baseUrl: _baseUrl).thumbnailTiles,
+      isNull,
+    );
+  });
+
+  test('旧仕様の間隔は尺から求める', () {
+    expect(legacyThumbnailTileIntervalSec(durationSec: 1800), 5.0);
+    expect(legacyThumbnailTileIntervalSec(durationSec: 600), 5.0);
+    expect(legacyThumbnailTileIntervalSec(durationSec: 3600), 10.0);
+    expect(legacyThumbnailTileIntervalSec(durationSec: 10800), 15.0);
+    // 最大30秒で頭打ち。
+    expect(legacyThumbnailTileIntervalSec(durationSec: 43200), 30.0);
   });
 
   test('録画ファイル情報が引き継がれる', () {
