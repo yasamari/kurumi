@@ -441,4 +441,90 @@ void main() {
       );
     });
   });
+
+  group('表示中時刻', () {
+    test('オフセット0では先頭時刻になる', () {
+      expect(
+        timetableTopVisibleTimeMs(
+          offsetPx: 0,
+          dayStartMs: dayStartMs,
+          dayEndMs: dayEndMs,
+        ),
+        dayStartMs,
+      );
+    });
+
+    test('1時間で180px進む', () {
+      expect(
+        timetableTopVisibleTimeMs(
+          offsetPx: 180,
+          dayStartMs: dayStartMs,
+          dayEndMs: dayEndMs,
+        ),
+        dayStartMs + 3600 * 1000,
+      );
+    });
+
+    test('範囲外は両端に丸める', () {
+      expect(
+        timetableTopVisibleTimeMs(
+          offsetPx: -10,
+          dayStartMs: dayStartMs,
+          dayEndMs: dayEndMs,
+        ),
+        dayStartMs,
+      );
+      expect(
+        timetableTopVisibleTimeMs(
+          offsetPx: 10000,
+          dayStartMs: dayStartMs,
+          dayEndMs: dayEndMs,
+        ),
+        dayEndMs - 1,
+      );
+    });
+
+    test('正時に切り捨てられる', () {
+      // 10:30 JST = 01:30 UTC。
+      final halfPast = _utcMs(2026, 10, 8, 1, 30);
+      final offset = timetableOffsetPx(halfPast, dayStartMs);
+      expect(
+        timetableVisibleHourMs(
+          offsetPx: offset,
+          dayStartMs: dayStartMs,
+          dayEndMs: dayEndMs,
+        ),
+        _utcMs(2026, 10, 8, 1),
+      );
+    });
+
+    test('含む正時の開始時刻が求まる', () {
+      expect(
+        timetableHourStartMs(timeMs: dayStartMs, dayStartMs: dayStartMs),
+        dayStartMs,
+      );
+      expect(
+        timetableHourStartMs(
+          timeMs: dayStartMs + 90 * 60 * 1000,
+          dayStartMs: dayStartMs,
+        ),
+        dayStartMs + 3600 * 1000,
+      );
+      // 範囲外は両端に丸める。
+      expect(
+        timetableHourStartMs(
+          timeMs: dayStartMs - 1,
+          dayStartMs: dayStartMs,
+        ),
+        dayStartMs,
+      );
+      expect(
+        timetableHourStartMs(
+          timeMs: dayStartMs + timetableDayLengthMs,
+          dayStartMs: dayStartMs,
+        ),
+        dayStartMs + timetableDayLengthMs - 3600 * 1000,
+      );
+    });
+  });
 }

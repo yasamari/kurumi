@@ -83,6 +83,55 @@ List<int> timetableDayHoursMs(int dayStartMs) {
   return [for (var i = 0; i < 24; i++) dayStartMs + i * 3600 * 1000];
 }
 
+/// 縦オフセット (px) の指す先頭時刻 (ms epoch) を返す。
+///
+/// グリッド上端に見えている時刻で、時刻ボタンの表示に使う。
+/// [offsetPx] は縦スクロールの共有オフセット。範囲外は
+/// `[dayStartMs, dayEndMs - 1]` に丸める。
+int timetableTopVisibleTimeMs({
+  required double offsetPx,
+  required int dayStartMs,
+  required int dayEndMs,
+}) {
+  final clampedOffset = offsetPx < 0 ? 0.0 : offsetPx;
+  final timeMs =
+      dayStartMs + (clampedOffset / timetablePxPerMin * 60000).round();
+  if (timeMs < dayStartMs) return dayStartMs;
+  if (timeMs >= dayEndMs) return dayEndMs - 1;
+  return timeMs;
+}
+
+/// 縦オフセット (px) の指す先頭時刻を含む正時の開始時刻 (ms epoch) を返す。
+///
+/// 時刻ボタンは正時単位 (`4時` 形式) で表示するため、スクロール中は
+/// 時間が変わったときだけ値が変わる。
+int timetableVisibleHourMs({
+  required double offsetPx,
+  required int dayStartMs,
+  required int dayEndMs,
+}) {
+  return timetableHourStartMs(
+    timeMs: timetableTopVisibleTimeMs(
+      offsetPx: offsetPx,
+      dayStartMs: dayStartMs,
+      dayEndMs: dayEndMs,
+    ),
+    dayStartMs: dayStartMs,
+  );
+}
+
+/// [timeMs] を含む正時の開始時刻 (ms epoch) を返す。
+///
+/// 放送日は4時始まりのため、`dayStartMs` からの時間数で区切る
+/// (JSTの正時に一致する)。範囲外は両端に丸める。
+int timetableHourStartMs({required int timeMs, required int dayStartMs}) {
+  if (timeMs <= dayStartMs) return dayStartMs;
+  final dayEndMs = dayStartMs + timetableDayLengthMs;
+  if (timeMs >= dayEndMs) return dayEndMs - 3600 * 1000;
+  final elapsed = timeMs - dayStartMs;
+  return dayStartMs + (elapsed ~/ (3600 * 1000)) * (3600 * 1000);
+}
+
 /// 時刻の表示ラベル (`4時` 形式、JST) を返す。
 String formatTimetableHour(int timeMs) {
   final jst = toJst(DateTime.fromMillisecondsSinceEpoch(timeMs));

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -37,12 +38,67 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
   int _scrollRequestId = 0;
   int? _scrollRequestMs;
 
+  /// グリッド上端に見えている時刻の正時 (ms epoch)。時刻ボタンに表示する。
+  ///
+  /// スクロールで毎フレーム変わるため、`setState` では持たない。
+  /// グリッドが書き込み、バーが `ValueListenableBuilder` で読むだけなので
+  /// 画面全体の作り直しは起きない。
+  late final ValueNotifier<int> _visibleHourMs = ValueNotifier(
+    _initialVisibleHourMs(),
+  );
+
+  /// [_visibleHourMs] を初期化したときの放送日開始時刻。日送りでずれたら
+  /// 初期値に戻す (スクロール位置はグリッドの作り直しで先頭へ戻るため)。
+  late int _visibleDayStartMs = timetableDayStartMsForOffset(
+    timetableDayStartMs(DateTime.now().millisecondsSinceEpoch),
+    _dayOffset,
+  );
+
+  @override
+  void dispose() {
+    _visibleHourMs.dispose();
+    super.dispose();
+  }
+
+  /// 初回表示の時刻ボタンの初期値。今日なら現在時刻の正時、過去・未来日は
+  /// その日の先頭 (4時)。
+  int _initialVisibleHourMs() {
+    final baseDayStartMs = timetableDayStartMs(
+      DateTime.now().millisecondsSinceEpoch,
+    );
+    final dayStartMs = timetableDayStartMsForOffset(
+      baseDayStartMs,
+      _dayOffset,
+    );
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs < dayStartMs || nowMs >= dayStartMs + timetableDayLengthMs) {
+      return dayStartMs;
+    }
+    return timetableHourStartMs(timeMs: nowMs, dayStartMs: dayStartMs);
+  }
+
+  /// 日送りで放送日が変わったら時刻ボタンを初期値に戻す。
+  void _syncVisibleHourMs(int dayStartMs) {
+    if (_visibleDayStartMs == dayStartMs) return;
+    _visibleDayStartMs = dayStartMs;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (nowMs >= dayStartMs && nowMs < dayStartMs + timetableDayLengthMs) {
+      _visibleHourMs.value = timetableHourStartMs(
+        timeMs: nowMs,
+        dayStartMs: dayStartMs,
+      );
+    } else {
+      _visibleHourMs.value = dayStartMs;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final baseDayStartMs = timetableDayStartMs(
       DateTime.now().millisecondsSinceEpoch,
     );
     final dayStartMs = timetableDayStartMsForOffset(baseDayStartMs, _dayOffset);
+    _syncVisibleHourMs(dayStartMs);
     final timetable = ref.watch(timetableDataProvider(dayStartMs));
     // 狭幅では詰めた表示にし、「番組表」ラベルを隠して操作部を優先する。
     final compact =
@@ -60,6 +116,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
           selectedType: null,
           onTypeSelected: (_) {},
           dayStartMs: dayStartMs,
+          visibleHourMs: _visibleHourMs,
           onPickDate: _pickDate,
           onTimeSelected: _jumpToTime,
           onGoNow: _goNow,
@@ -75,6 +132,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
                 endMs: dayStartMs + timetableDayLengthMs,
                 channels: const [],
               ),
+              visibleHourMs: _visibleHourMs,
               onProgramTap: (_, _) {},
               onChannelTap: (_) {},
             ),
@@ -111,6 +169,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
             selectedType: null,
             onTypeSelected: (_) {},
               dayStartMs: dayStartMs,
+              visibleHourMs: _visibleHourMs,
               onPickDate: _pickDate,
               onTimeSelected: _jumpToTime,
               onGoNow: _goNow,
@@ -134,6 +193,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
             onTypeSelected: (type) =>
                 setState(() => _selectedType = type),
             dayStartMs: dayStartMs,
+            visibleHourMs: _visibleHourMs,
             onPickDate: _pickDate,
             onTimeSelected: _jumpToTime,
             onGoNow: _goNow,
@@ -144,6 +204,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
           body: TimetableGrid(
             key: ValueKey(dayStartMs),
             data: filtered,
+            visibleHourMs: _visibleHourMs,
             jumpToTimeMs: _scrollRequestMs,
             scrollRequestId: _scrollRequestId,
             onRequestPreviousDay: _goPreviousDayBottom,
@@ -263,17 +324,6 @@ ButtonStyle _barButtonStyle({bool compact = false}) {
   );
 }
 
-/// バー内のアイコンボタンの見た目。狭幅では詰める。
-ButtonStyle _barIconButtonStyle({bool compact = false}) {
-  return IconButton.styleFrom(
-    minimumSize: compact ? const Size(36, 36) : const Size(48, 48),
-    padding: EdgeInsets.zero,
-    tapTargetSize: compact
-        ? MaterialTapTargetSize.shrinkWrap
-        : MaterialTapTargetSize.padded,
-  );
-}
-
 /// 番組表の1行バー。種別・日付・時刻・現在ボタンを1行に収める。
 ///
 /// 狭幅では詰めた表示にし、入り切らない場合もスクロールではなく縮小で
@@ -286,6 +336,7 @@ class _TimetableBar extends StatelessWidget implements PreferredSizeWidget {
     required this.selectedType,
     required this.onTypeSelected,
     required this.dayStartMs,
+    required this.visibleHourMs,
     required this.onPickDate,
     required this.onTimeSelected,
     required this.onGoNow,
@@ -303,6 +354,10 @@ class _TimetableBar extends StatelessWidget implements PreferredSizeWidget {
 
   final ValueChanged<ChannelType> onTypeSelected;
   final int dayStartMs;
+
+  /// グリッド上端に見えている時刻の正時。時刻ボタンに表示する。
+  final ValueListenable<int> visibleHourMs;
+
   final VoidCallback onPickDate;
   final ValueChanged<int> onTimeSelected;
   final VoidCallback onGoNow;
@@ -362,6 +417,7 @@ class _TimetableBar extends StatelessWidget implements PreferredSizeWidget {
             gap,
             _TimeMenu(
               dayStartMs: dayStartMs,
+              visibleHourMs: visibleHourMs,
               onSelected: onTimeSelected,
               compact: compact,
             ),
@@ -443,17 +499,20 @@ class _TypeMenu extends StatelessWidget {
 }
 
 /// 時刻の選択メニュー。選んだ正時へジャンプする。
+/// ボタンの表示はグリッド上端に見えている時刻の正時 (`4時` 形式)。
 class _TimeMenu extends StatelessWidget {
   const _TimeMenu({
     required this.dayStartMs,
+    required this.visibleHourMs,
     required this.onSelected,
     this.compact = false,
   });
 
   final int dayStartMs;
+  final ValueListenable<int> visibleHourMs;
   final ValueChanged<int> onSelected;
 
-  /// 狭幅ではトーン付きの時計アイコンのみにする。
+  /// 狭幅では詰めた表示にする。
   final bool compact;
 
   @override
@@ -470,19 +529,24 @@ class _TimeMenu extends StatelessWidget {
             controller.open();
           }
         }
-        if (compact) {
-          return IconButton.filledTonal(
-            tooltip: '時刻を選択',
-            style: _barIconButtonStyle(compact: true),
-            icon: const Icon(Icons.schedule_outlined, size: 20),
-            onPressed: toggleTimeMenu,
-          );
-        }
-        return FilledButton.tonalIcon(
-          onPressed: toggleTimeMenu,
-          style: _barButtonStyle(),
-          icon: const Icon(Icons.schedule_outlined, size: 20),
-          label: const Text('時刻'),
+        return ValueListenableBuilder<int>(
+          valueListenable: visibleHourMs,
+          builder: (context, hourMs, _) {
+            final label = formatTimetableHour(hourMs);
+            if (compact) {
+              return FilledButton.tonal(
+                onPressed: toggleTimeMenu,
+                style: _barButtonStyle(compact: true),
+                child: Text(label),
+              );
+            }
+            return FilledButton.tonalIcon(
+              onPressed: toggleTimeMenu,
+              style: _barButtonStyle(),
+              icon: const Icon(Icons.schedule_outlined, size: 20),
+              label: Text(label),
+            );
+          },
         );
       },
       menuChildren: [

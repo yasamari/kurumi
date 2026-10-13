@@ -34,6 +34,7 @@ class TimetableGrid extends StatefulWidget {
     required this.data,
     required this.onProgramTap,
     required this.onChannelTap,
+    this.visibleHourMs,
     this.jumpToTimeMs,
     this.scrollRequestId = 0,
     this.onRequestPreviousDay,
@@ -48,6 +49,13 @@ class TimetableGrid extends StatefulWidget {
 
   /// チャンネルヘッダータップ時のコールバック (視聴遷移用)。
   final void Function(Channel channel) onChannelTap;
+
+  /// グリッド上端に見えている時刻の正時 (ms epoch) を書き込む先。
+  ///
+  /// 上部の時刻ボタンが購読する。`ValueNotifier` で直接渡すため、
+  /// スクロール中の画面全体の作り直しは起きない。正時が変わったときだけ
+  /// 書き込む。
+  final ValueNotifier<int>? visibleHourMs;
 
   /// 外部からのスクロール要求 (時刻メニュー・現在ボタン用)。
   ///
@@ -88,6 +96,7 @@ class _TimetableGridState extends State<TimetableGrid> {
   @override
   void initState() {
     super.initState();
+    _vLink.addListener(_reportVisibleHour);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       // 初回レイアウト後に共有オフセットを配信し、端ボタンの表示を更新する。
@@ -98,12 +107,37 @@ class _TimetableGridState extends State<TimetableGrid> {
   }
 
   @override
+  void didUpdateWidget(covariant TimetableGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 種別切替では同じオフセットのまま列だけ変わる。時刻ボタンの表示を
+    // 合わせるため再計算する。
+    _reportVisibleHour();
+  }
+
+  @override
   void dispose() {
+    _vLink.removeListener(_reportVisibleHour);
     _hLink.detach(_headerController);
     _hLink.detach(_columnsController);
     _vLink.dispose();
     _hLink.dispose();
     super.dispose();
+  }
+
+  /// 縦オフセットの変化を時刻ボタンの表示へ反映する。正時が変わった
+  /// ときだけ書き込むため、スクロール中のボタンの作り直しは1時間に1回。
+  void _reportVisibleHour() {
+    final target = widget.visibleHourMs;
+    if (target == null) return;
+    final data = widget.data;
+    final hourMs = timetableVisibleHourMs(
+      offsetPx: _vLink.offset,
+      dayStartMs: data.startMs,
+      dayEndMs: data.endMs,
+    );
+    if (target.value != hourMs) {
+      target.value = hourMs;
+    }
   }
 
   @override
