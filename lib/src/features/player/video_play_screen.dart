@@ -260,12 +260,6 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   /// (`JikkyoDanmakuLayer` 参照)。回転で生き残る位置で持つ。
   final GlobalKey _danmakuFullscreenBoundaryKey = GlobalKey();
 
-  /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
-  /// 購読は弾幕の層の中だけ ([JikkyoDanmakuLayer] 参照)。
-  final ValueNotifier<double?> _danmakuCapturePixelRatio = ValueNotifier(
-    null,
-  );
-
   @override
   void initState() {
     super.initState();
@@ -444,7 +438,6 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
             _pastComments.isSupported &&
             _playback.danmakuPreferences.value.enabled &&
             _playback.videoDisplayAspect != null,
-        capturePixelRatio: _danmakuCapturePixelRatio,
         metadata: CaptureMetadata(
           capturedAt: at,
           playbackPositionSec:
@@ -597,7 +590,6 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     _danmakuStore.dispose();
     _captures.dispose();
     _cmAutoSkip.dispose();
-    _danmakuCapturePixelRatio.dispose();
     _playback.dispose();
     super.dispose();
   }
@@ -717,7 +709,6 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
                   displayAspect: _playback.videoDisplayAspect,
                   repaintKey: _danmakuBoundaryKey,
                   fullscreenRepaintKey: _danmakuFullscreenBoundaryKey,
-                  capturePixelRatio: _danmakuCapturePixelRatio,
                   child: JikkyoDanmakuOverlay(
                     controller: pastComments,
                     store: _danmakuStore,

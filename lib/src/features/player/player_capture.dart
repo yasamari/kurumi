@@ -6,7 +6,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:gal/gal.dart';
 import 'package:image/image.dart' as img;
 import 'package:media_kit/media_kit.dart';
@@ -261,7 +260,9 @@ double captureOverlayPixelRatio({
 class CaptureComposeArgs {
   const CaptureComposeArgs({
     required this.baseBytes,
-    this.overlayBytes,
+    this.overlayRgbaBytes,
+    this.overlayWidth,
+    this.overlayHeight,
     required this.exifJson,
     required this.software,
     required this.dateTime,
@@ -270,8 +271,13 @@ class CaptureComposeArgs {
   /// mpv の撮像 (PNG)。
   final Uint8List baseBytes;
 
-  /// 弾幕レイヤーの撮像 (透過 PNG)。通常キャプチャでは null。
-  final Uint8List? overlayBytes;
+  /// 弾幕レイヤーの撮像 (未加工 RGBA)。通常キャプチャでは null。
+  /// [overlayWidth]・[overlayHeight] と組で使う。
+  final Uint8List? overlayRgbaBytes;
+
+  /// 弾幕撮像の幅・高さ。RGBA バイト列の解釈に使う。
+  final int? overlayWidth;
+  final int? overlayHeight;
 
   /// XPComment に格納する番組情報 JSON。
   final Map<String, Object?> exifJson;
@@ -291,27 +297,39 @@ Uint8List composeCaptureBytes(CaptureComposeArgs args) {
   if (base == null) {
     throw StateError('キャプチャ画像を読み取れません');
   }
-  final overlayBytes = args.overlayBytes;
-  if (overlayBytes != null) {
-    final overlay = img.decodeImage(overlayBytes);
-    if (overlay != null) {
-      // 比が違うときの引き伸ばしを避け、アスペクトを保って中央に置く
-      // (一致していれば等倍のまま)。
-      final fit = captureOverlayFit(
-        baseWidth: base.width,
-        baseHeight: base.height,
-        overlayWidth: overlay.width,
-        overlayHeight: overlay.height,
-      );
-      img.compositeImage(
-        base,
-        overlay,
-        dstX: fit.dstX,
-        dstY: fit.dstY,
-        dstW: fit.dstW,
-        dstH: fit.dstH,
-      );
-    }
+  final overlayRgbaBytes = args.overlayRgbaBytes;
+  final overlayWidth = args.overlayWidth;
+  final overlayHeight = args.overlayHeight;
+  if (overlayRgbaBytes != null &&
+      overlayWidth != null &&
+      overlayHeight != null &&
+      overlayWidth > 0 &&
+      overlayHeight > 0 &&
+      overlayRgbaBytes.lengthInBytes >= overlayWidth * overlayHeight * 4) {
+    final overlay = img.Image.fromBytes(
+      width: overlayWidth,
+      height: overlayHeight,
+      bytes: overlayRgbaBytes.buffer,
+      bytesOffset: overlayRgbaBytes.offsetInBytes,
+      // 既定の RGBA 順は Flutter の rawRgba と同じ。
+      numChannels: 4,
+    );
+    // 比が違うときの引き伸ばしを避け、アスペクトを保って中央に置く
+    // (一致していれば等倍のまま)。
+    final fit = captureOverlayFit(
+      baseWidth: base.width,
+      baseHeight: base.height,
+      overlayWidth: overlay.width,
+      overlayHeight: overlay.height,
+    );
+    img.compositeImage(
+      base,
+      overlay,
+      dstX: fit.dstX,
+      dstY: fit.dstY,
+      dstW: fit.dstW,
+      dstH: fit.dstH,
+    );
   }
   base.exif = buildCaptureExif(
     json: args.exifJson,
@@ -361,12 +379,15 @@ Size? danmakuBoundarySize(GlobalKey key) {
   return size;
 }
 
-/// 弾幕レイヤーの `RepaintBoundary` を透過 PNG で撮像する。
+/// 弾幕レイヤーの `RepaintBoundary` を未加工 RGBA で撮像する。
 ///
-/// [pixelRatio] は mpv 撮像と等倍になる倍率
-/// ([captureOverlayPixelRatio])。境界が無い・撮像できないときは null。
-/// 通常キャプチャとして保存する。
-Future<Uint8List?> captureDanmakuOverlay(
+/// PNG には符号化しない。`toByteData(format: png)` の符号化はラスタースレッドで
+/// 走り、その間は映像テクスチャの更新も止まるため、動画が一瞬止まり、ライブ視聴
+/// では遅延がそのまま増える。生の RGBA なら GPU からの読み戻しと memcpy だけで
+/// 済み、重い合成・JPEG 化は `compute` (別 isolate) が担う。
+/// [pixelRatio] は mpv 撮像と等倍になる倍率 ([captureOverlayPixelRatio])。
+/// 境界が無い・撮像できないときは null。通常キャプチャとして保存する。
+Future<({Uint8List bytes, int width, int height})?> captureDanmakuOverlay(
   GlobalKey key, {
   double pixelRatio = 1.0,
 }) async {
@@ -375,8 +396,18 @@ Future<Uint8List?> captureDanmakuOverlay(
   if (boundary.size.isEmpty) return null;
   final image = await boundary.toImage(pixelRatio: pixelRatio);
   try {
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-    return byteData?.buffer.asUint8List();
+    final byteData = await image.toByteData(
+      format: ui.ImageByteFormat.rawRgba,
+    );
+    if (byteData == null) return null;
+    return (
+      bytes: byteData.buffer.asUint8List(
+        byteData.offsetInBytes,
+        byteData.lengthInBytes,
+      ),
+      width: image.width,
+      height: image.height,
+    );
   } finally {
     image.dispose();
   }
@@ -428,10 +459,11 @@ Future<void> saveCaptureToGallery(
 /// 成功時は通知しない。失敗時だけ SnackBar を出す。`onCaptured` で
 /// キャプチャタブの一覧へ追加する (上限を超えた分は古いものから破棄する)。
 ///
-/// 弾幕付きのときは mpv 撮像と等倍の解像度で弾幕を撮像する。エンジンは
-/// 画面 DPR でラスタ化しているため、そのまま撮ると DPR=1 の環境でぼやける。
-/// [capturePixelRatio] を立てて等倍の解像度で描き直させてから撮像し、
-/// 直後に戻す (配置・軌道は DPR 非依存のため表示内容は変わらない)。
+/// 弾幕付きのときは mpv 撮像と等倍の解像度で弾幕を撮像するが、表示解像度の
+/// 引き上げはしない。引き上げるとエンジンが画像キャッシュを落として描き直す
+/// うえ、撮像の符号化がラスタースレッドを塞ぎ、その間は映像テクスチャの更新も
+/// 止まる (ライブ視聴では止まった分だけ遅延が増える)。DPR=1 の環境では文字が
+/// ややぼやけるが、引き伸ばし合成で吸収する。
 Future<void> runPlayerCapture({
   required BuildContext context,
   required Player player,
@@ -439,7 +471,6 @@ Future<void> runPlayerCapture({
   GlobalKey? danmakuBoundaryKey,
   GlobalKey? fullscreenDanmakuBoundaryKey,
   required bool danmakuVisible,
-  ValueNotifier<double?>? capturePixelRatio,
   required CaptureMetadata metadata,
   required ValueChanged<CaptureEntry> onCaptured,
 }) async {
@@ -462,40 +493,23 @@ Future<void> runPlayerCapture({
   }
 
   // 弾幕の撮像は表示中のときだけ試みる。撮れなければ通常保存する
-  // (通知はしない)。
-  Uint8List? overlay;
+  // (通知はしない)。そのままの DPR で1回だけ撮り、描き直し待ちはしない
+  // (上記コメント参照)。
+  ({Uint8List bytes, int width, int height})? overlay;
   final boundaryKey = activeDanmakuBoundaryKey(
     danmakuBoundaryKey,
     fullscreenDanmakuBoundaryKey,
   );
-  final ratioNotifier = capturePixelRatio;
   if (withDanmaku && danmakuVisible && boundaryKey != null) {
-    var overrideSet = false;
-    var pixelRatio = 1.0;
     try {
+      var pixelRatio = 1.0;
       final boundarySize = danmakuBoundarySize(boundaryKey);
       final baseSize = pngSize(base);
-      if (boundarySize != null && baseSize != null && context.mounted) {
+      if (boundarySize != null && baseSize != null) {
         pixelRatio = captureOverlayPixelRatio(
           baseWidth: baseSize.width,
           boundaryWidth: boundarySize.width,
         );
-        // 画面 DPR を上回るときだけ引き上げる (下回る分は既に鮮明)。
-        if (ratioNotifier != null &&
-            pixelRatio > MediaQuery.devicePixelRatioOf(context)) {
-          ratioNotifier.value = pixelRatio;
-          overrideSet = true;
-          // 引き上げた解像度で描き直されるのを待つ (エンジンが画像
-          // キャッシュを落として描き直す)。`endOfFrame` は待機中に
-          // フレームを立てるため、停止中でも進む。
-          for (var i = 0; i < 2; i++) {
-            await SchedulerBinding.instance.endOfFrame.timeout(
-              const Duration(seconds: 2),
-              onTimeout: () {},
-            );
-            if (!context.mounted) break;
-          }
-        }
       }
       if (context.mounted) {
         overlay = await captureDanmakuOverlay(
@@ -505,15 +519,6 @@ Future<void> runPlayerCapture({
       }
     } catch (_) {
       overlay = null;
-    } finally {
-      // 引き上げは必ず戻す。破棄済みなら触らない。
-      if (overrideSet && context.mounted) {
-        try {
-          ratioNotifier?.value = null;
-        } catch (_) {
-          // 所有者の破棄と競合したら何もしない。
-        }
-      }
     }
   }
 
@@ -524,7 +529,9 @@ Future<void> runPlayerCapture({
       composeCaptureBytes,
       CaptureComposeArgs(
         baseBytes: base,
-        overlayBytes: overlay,
+        overlayRgbaBytes: overlay?.bytes,
+        overlayWidth: overlay?.width,
+        overlayHeight: overlay?.height,
         exifJson: buildCaptureExifJson(
           metadata: metadata,
           isCommentComposited: isCommentComposited,

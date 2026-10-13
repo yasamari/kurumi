@@ -363,7 +363,6 @@ class JikkyoDanmakuLayer extends StatelessWidget {
     required this.child,
     this.repaintKey,
     this.fullscreenRepaintKey,
-    this.capturePixelRatio,
   });
 
   /// 映像の表示アスペクト比 (幅 / 高さ)。未確定なら null。
@@ -394,19 +393,6 @@ class JikkyoDanmakuLayer extends StatelessWidget {
   /// フルスクリーンで別のキーを持ち、描画位置 ([isFullscreen]) で使い分ける。
   final GlobalKey? fullscreenRepaintKey;
 
-  /// 弾幕付きキャプチャの撮像時だけ立てる表示解像度の通知元。
-  ///
-  /// 弾幕エンジンは `MediaQuery.devicePixelRatio` の解像度で文字をラスタ化
-  /// するため、そのまま撮像・引き伸ばし合成すると DPR=1 の環境 (Linux) で
-  /// ぼやける。撮像の直前だけこの値 (mpv 撮像の幅 / 境界の論理幅) を立て、
-  /// エンジンに等倍の解像度で描き直させてから撮像し、直後に null へ戻す。
-  /// 配置・軌道は DPR 非依存のため表示内容は変わらない (エンジンの
-  /// `didChangeDependencies` は画像キャッシュだけ落とす)。
-  ///
-  /// 所有者は [repaintKey] と同じ State が持つ。購読はこの層の中だけに閉じ、
-  /// 映像の再構築に巻き込まない。
-  final ValueListenable<double?>? capturePixelRatio;
-
   @override
   Widget build(BuildContext context) {
     final aspect = displayAspect;
@@ -417,22 +403,6 @@ class JikkyoDanmakuLayer extends StatelessWidget {
     final repaintKey =
         isFullscreen(context) ? fullscreenRepaintKey : this.repaintKey;
     Widget content = child;
-    final capturePixelRatio = this.capturePixelRatio;
-    if (capturePixelRatio != null) {
-      content = ValueListenableBuilder<double?>(
-        valueListenable: capturePixelRatio,
-        builder: (context, ratio, cachedChild) {
-          if (ratio == null) return cachedChild!;
-          final data = MediaQuery.of(context);
-          if (data.devicePixelRatio == ratio) return cachedChild!;
-          return MediaQuery(
-            data: data.copyWith(devicePixelRatio: ratio),
-            child: cachedChild!,
-          );
-        },
-        child: child,
-      );
-    }
     if (repaintKey != null) {
       content = RepaintBoundary(key: repaintKey, child: content);
     }

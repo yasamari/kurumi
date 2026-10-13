@@ -143,11 +143,14 @@ void main() {
 
     test('弾幕レイヤーは base の解像度に合わせて合成される', () {
       final base = img.encodePng(solid(64, 36, 10, 20, 30));
-      final overlay = img.encodePng(solid(16, 9, 200, 10, 10));
+      final overlayImage = solid(16, 9, 200, 10, 10);
+      final overlayRgba = overlayImage.getBytes(order: img.ChannelOrder.rgba);
       final out = composeCaptureBytes(
         CaptureComposeArgs(
           baseBytes: base,
-          overlayBytes: overlay,
+          overlayRgbaBytes: overlayRgba,
+          overlayWidth: overlayImage.width,
+          overlayHeight: overlayImage.height,
           exifJson: buildCaptureExifJson(
             metadata: _metadata(),
             isCommentComposited: true,
@@ -159,11 +162,37 @@ void main() {
       final decoded = img.decodeImage(out)!;
       expect(decoded.width, 64);
       expect(decoded.height, 36);
+      // 16:9 同士なので全面合成され、中央は弾幕色になる。
+      final center = decoded.getPixel(32, 18);
+      expect(center.r, closeTo(200, 10));
+      expect(center.g, closeTo(10, 10));
+      expect(center.b, closeTo(10, 10));
       final comment = decoded.exif.getTag(0x9c9c)!;
       final decodedJson =
           jsonDecode(_decodeUtf16Le(comment.toData()))
               as Map<String, dynamic>;
       expect(decodedJson['is_comment_composited'], isTrue);
+    });
+
+    test('壊れた弾幕バイト列は無視して通常保存する', () {
+      final base = img.encodePng(solid(64, 36, 10, 20, 30));
+      final out = composeCaptureBytes(
+        CaptureComposeArgs(
+          baseBytes: base,
+          overlayRgbaBytes: Uint8List.fromList([1, 2, 3]),
+          overlayWidth: 16,
+          overlayHeight: 9,
+          exifJson: buildCaptureExifJson(
+            metadata: _metadata(),
+            isCommentComposited: false,
+          ),
+          software: captureSoftwareName,
+          dateTime: '2025:01:02 03:04:05',
+        ),
+      );
+      final decoded = img.decodeImage(out)!;
+      expect(decoded.width, 64);
+      expect(decoded.height, 36);
     });
   });
 
