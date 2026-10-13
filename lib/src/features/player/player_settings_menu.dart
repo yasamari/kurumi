@@ -88,7 +88,7 @@ class PlayerSettingsButton extends StatelessWidget {
   /// 実況チャンネルが対応している場合のみ弾幕ページを出す。
   final bool danmakuSupported;
 
-  /// 弾幕の表示設定 (on/off と文字サイズ・透明度・速度)。メニューを開いた
+  /// 弾幕の表示設定 (on/off と文字サイズ・不透明度・速度)。メニューを開いた
   /// 時点の値。
   final DanmakuPreferences danmakuPreferences;
 
@@ -796,7 +796,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
               : null,
         ),
         _danmakuSlider(
-          label: '透明度',
+          label: '不透明度',
           value: danmakuOpacityLabel(settings.opacity),
           sliderValue: settings.opacity,
           min: DanmakuDisplaySettings.minOpacity,

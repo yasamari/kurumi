@@ -62,7 +62,7 @@ class JikkyoDanmakuOverlay extends StatefulWidget {
   /// セッション所有の共有時計 (通常表示・フルスクリーンで共有)。
   final DanmakuClock clock;
 
-  /// 弾幕の表示設定 (on/off と文字サイズ・透明度・速度) の通知元。
+  /// 弾幕の表示設定 (on/off と文字サイズ・不透明度・速度) の通知元。
   ///
   /// ここ (弾幕の層の中) で購読する。設定変更は弾幕のサブツリーにだけ
   /// 届かせ、映像を作り直さない。

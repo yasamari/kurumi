@@ -123,7 +123,7 @@ class PlayerPlaybackController extends ChangeNotifier {
   /// 現在選択中の二重モノラルのチャンネル。null はステレオ (主＋副)。
   DualMonoChannel? get dualMonoChannel => _dualMonoChannel;
 
-  /// 弾幕の表示設定 (on/off と文字サイズ・透明度・速度) の通知元。
+  /// 弾幕の表示設定 (on/off と文字サイズ・不透明度・速度) の通知元。
   ///
   /// 向きに依存しない状態に持たせる。映像の `Stack` 内は回転で作り直される
   /// ため、ウィジェット側に持たせると回転でリセットされる。

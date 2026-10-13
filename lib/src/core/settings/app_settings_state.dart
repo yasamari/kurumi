@@ -25,7 +25,7 @@ class AppSettingsState {
   /// 弾幕の不透明度。1.0 が不透明。
   static const double defaultDanmakuOpacity = 1.0;
 
-  /// 弾幕の速度倍率。横流しの表示時間 (既定8秒) に対する倍率。
+  /// 弾幕の速度倍率。1.0 が等速で、大きいほど速い (表示時間を割る)。
   static const double defaultDanmakuSpeed = 1.0;
 
   /// 字幕は既定で非表示にする。地上波の字幕はほぼ常に流しており、見るつもり

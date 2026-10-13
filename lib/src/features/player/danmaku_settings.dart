@@ -92,10 +92,10 @@ class DanmakuDisplaySettings {
   /// 読めない。
   static const double defaultFontSize = AppSettingsState.defaultDanmakuFontSize;
 
-  /// 透明度。1.0 が不透明。
+  /// 不透明度。1.0 が不透明。
   static const double defaultOpacity = AppSettingsState.defaultDanmakuOpacity;
 
-  /// 速度倍率。横流しの表示時間 (既定8秒) に対する倍率。
+  /// 速度倍率。1.0 が等速で、大きいほど速い (表示時間を割る)。
   static const double defaultSpeed = AppSettingsState.defaultDanmakuSpeed;
 
   // 以下はスライダーの範囲と刻み。`Slider` の divisions と、値を作る側の
@@ -114,10 +114,10 @@ class DanmakuDisplaySettings {
   /// コマンド (`small` / `big`) は表現できない ([buildJikkyoDanmaku] 参照)。
   final double fontSize;
 
-  /// 透明度。0.2〜1.0。エンジン側では画面全体を包む `Opacity` になる。
+  /// 不透明度。0.2〜1.0。エンジン側では画面全体を包む `Opacity` になる。
   final double opacity;
 
-  /// 速度倍率。横流し・静止弾幕の表示時間両方をまとめて早める。
+  /// 速度倍率。1.0 が等速で、大きいほど速い。
   final double speed;
 
   DanmakuDisplaySettings copyWith({
@@ -158,16 +158,16 @@ const double _baseStaticDurationSeconds = 5.0;
 
 /// 設定と画面固定値を合わせて `DanmakuOption` を組み立てる純粋関数。
 ///
-/// 速度倍率 ([DanmakuDisplaySettings.speed]) は横流しと静止の表示時間両方に
-/// 掛ける。エンジンの不変条件「画面上の滞在時間は `duration` ちょうどで幅に
-/// 依存しない」があるため、幅の側ではなく `duration` を変える。
+/// 速度倍率 ([DanmakuDisplaySettings.speed]) は横流しと静止の表示時間両方を
+/// 割る (大きいほど速い)。エンジンの不変条件「画面上の滞在時間は `duration`
+/// ちょうどで幅に依存しない」があるため、幅の側ではなく `duration` を変える。
 DanmakuOption danmakuOptionOf(DanmakuDisplaySettings settings) {
   return DanmakuOption(
     fontSize: settings.fontSize,
     // 黒背景で読みやすくする。
     strokeWidth: 2.0,
-    duration: _baseScrollDurationSeconds * settings.speed,
-    staticDuration: _baseStaticDurationSeconds * settings.speed,
+    duration: _baseScrollDurationSeconds / settings.speed,
+    staticDuration: _baseStaticDurationSeconds / settings.speed,
     opacity: settings.opacity,
     // 全面に表示する。
     //
@@ -207,7 +207,7 @@ double danmakuFontSizeOf(double value) => danmakuStepValue(
   steps: DanmakuDisplaySettings.fontSizeSteps,
 );
 
-/// スライダーの値から透明度を作る純粋関数。
+/// スライダーの値から不透明度を作る純粋関数。
 double danmakuOpacityOf(double value) => danmakuStepValue(
   value: value,
   min: DanmakuDisplaySettings.minOpacity,
@@ -226,7 +226,7 @@ double danmakuSpeedOf(double value) => danmakuStepValue(
 /// 文字サイズのラベル。
 String danmakuFontSizeLabel(double fontSize) => '${fontSize.round()}';
 
-/// 透明度のラベル。
+/// 不透明度のラベル。
 String danmakuOpacityLabel(double opacity) => '${(opacity * 100).round()}%';
 
 /// 速度倍率のラベル。

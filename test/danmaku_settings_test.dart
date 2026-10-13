@@ -96,10 +96,18 @@ void main() {
       );
       expect(option.fontSize, 30);
       expect(option.opacity, 0.6);
-      // 既定8秒を2倍にする。画面上の滞在時間は幅に依存しない。
+      // 速度2倍なら表示時間は半分 (既定8秒→4秒)。画面上の滞在時間は幅に依存しない。
+      expect(option.duration, 4);
+      expect(option.durationInMilliseconds, 4000);
+      // 静止弾幕も速度に追従する (既定5秒→2.5秒)。
+      expect(option.staticDuration, 2.5);
+    });
+
+    test('速度を下げると遅くなる', () {
+      final option = danmakuOptionOf(
+        const DanmakuDisplaySettings(speed: 0.5),
+      );
       expect(option.duration, 16);
-      expect(option.durationInMilliseconds, 16000);
-      // 静止弾幕も速度に追従する。
       expect(option.staticDuration, 10);
     });
 
@@ -161,7 +169,7 @@ void main() {
       expect(danmakuFontSizeLabel(24), '24');
     });
 
-    test('透明度はパーセント', () {
+    test('不透明度はパーセント', () {
       expect(danmakuOpacityLabel(1.0), '100%');
       expect(danmakuOpacityLabel(0.6), '60%');
     });
