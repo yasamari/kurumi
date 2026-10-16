@@ -16,6 +16,9 @@ part of 'app_settings.dart';
 /// プレイヤー側の表示設定 (弾幕の on/off・文字サイズ・不透明度・速度、字幕の
 /// on/off、CM自動スキップ) もここに永続化する。プレイヤーは開くたびにこのスナップショットから
 /// 初期値を作る ([AppSettingsState] の既定値参照)。
+///
+/// KonomiTV の画質 (テレビ/ビデオ × Wi-Fi/モバイル回線) もここに永続化する。
+/// 再生開始時に現在の回線種別 ([NetworkTypeMonitor]) で選ぶ。
 
 @ProviderFor(AppSettings)
 final appSettingsProvider = AppSettingsProvider._();
@@ -28,6 +31,9 @@ final appSettingsProvider = AppSettingsProvider._();
 /// プレイヤー側の表示設定 (弾幕の on/off・文字サイズ・不透明度・速度、字幕の
 /// on/off、CM自動スキップ) もここに永続化する。プレイヤーは開くたびにこのスナップショットから
 /// 初期値を作る ([AppSettingsState] の既定値参照)。
+///
+/// KonomiTV の画質 (テレビ/ビデオ × Wi-Fi/モバイル回線) もここに永続化する。
+/// 再生開始時に現在の回線種別 ([NetworkTypeMonitor]) で選ぶ。
 final class AppSettingsProvider
     extends $AsyncNotifierProvider<AppSettings, AppSettingsState> {
   /// SharedPreferences backed のアプリ設定。
@@ -38,6 +44,9 @@ final class AppSettingsProvider
   /// プレイヤー側の表示設定 (弾幕の on/off・文字サイズ・不透明度・速度、字幕の
   /// on/off、CM自動スキップ) もここに永続化する。プレイヤーは開くたびにこのスナップショットから
   /// 初期値を作る ([AppSettingsState] の既定値参照)。
+  ///
+  /// KonomiTV の画質 (テレビ/ビデオ × Wi-Fi/モバイル回線) もここに永続化する。
+  /// 再生開始時に現在の回線種別 ([NetworkTypeMonitor]) で選ぶ。
   AppSettingsProvider._()
     : super(
         from: null,
@@ -57,7 +66,7 @@ final class AppSettingsProvider
   AppSettings create() => AppSettings();
 }
 
-String _$appSettingsHash() => r'ab8c7a09a9f6c896e57b854a22ea9af343695c7c';
+String _$appSettingsHash() => r'f9a980d3307fcd09534555aeef98dbe688a85c16';
 
 /// SharedPreferences backed のアプリ設定。
 ///
@@ -67,6 +76,9 @@ String _$appSettingsHash() => r'ab8c7a09a9f6c896e57b854a22ea9af343695c7c';
 /// プレイヤー側の表示設定 (弾幕の on/off・文字サイズ・不透明度・速度、字幕の
 /// on/off、CM自動スキップ) もここに永続化する。プレイヤーは開くたびにこのスナップショットから
 /// 初期値を作る ([AppSettingsState] の既定値参照)。
+///
+/// KonomiTV の画質 (テレビ/ビデオ × Wi-Fi/モバイル回線) もここに永続化する。
+/// 再生開始時に現在の回線種別 ([NetworkTypeMonitor]) で選ぶ。
 
 abstract class _$AppSettings extends $AsyncNotifier<AppSettingsState> {
   FutureOr<AppSettingsState> build();

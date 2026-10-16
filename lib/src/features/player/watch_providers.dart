@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../core/network/network_type_monitor.dart';
 import '../../core/settings/app_settings.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/entities/channel.dart';
@@ -17,12 +18,23 @@ part 'watch_providers.g.dart';
 ///
 /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
 /// 破棄・再生成で状態が初期値に戻らないようにするため。
+///
+/// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+/// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+/// ([NetworkTypeMonitor] 参照)。
 @Riverpod(keepAlive: true)
 class WatchQuality extends _$WatchQuality {
   @override
   String build() {
     final repository = ref.watch(tvRepositoryProvider);
-    return repository.getDefaultLiveQuality();
+    final networkType = NetworkTypeMonitor.instance.value.value;
+    final configured = ref.watch(
+      appSettingsProvider.select(
+        (settings) => settings.value?.konomiLiveQualityFor(networkType),
+      ),
+    );
+    if (configured == null) return repository.getDefaultLiveQuality();
+    return repository.normalizeLiveQuality(configured);
   }
 
   /// 画質を切り替える。不正値は既定画質に正規化される。

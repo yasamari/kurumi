@@ -12,6 +12,10 @@ part of 'watch_providers.dart';
 ///
 /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
 /// 破棄・再生成で状態が初期値に戻らないようにするため。
+///
+/// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+/// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+/// ([NetworkTypeMonitor] 参照)。
 
 @ProviderFor(WatchQuality)
 final watchQualityProvider = WatchQualityProvider._();
@@ -20,12 +24,20 @@ final watchQualityProvider = WatchQualityProvider._();
 ///
 /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
 /// 破棄・再生成で状態が初期値に戻らないようにするため。
+///
+/// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+/// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+/// ([NetworkTypeMonitor] 参照)。
 final class WatchQualityProvider
     extends $NotifierProvider<WatchQuality, String> {
   /// 視聴中の画質。永続化しない。
   ///
   /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
   /// 破棄・再生成で状態が初期値に戻らないようにするため。
+  ///
+  /// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+  /// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+  /// ([NetworkTypeMonitor] 参照)。
   WatchQualityProvider._()
     : super(
         from: null,
@@ -53,12 +65,16 @@ final class WatchQualityProvider
   }
 }
 
-String _$watchQualityHash() => r'd19ee03d4f6f8dbcc1adea353fe8c617a8390c96';
+String _$watchQualityHash() => r'c6b365d007fef55e9ba0c2b8144bedb8358fa498';
 
 /// 視聴中の画質。永続化しない。
 ///
 /// セッション中は保持する (keepAlive)。チャンネル切り替えやコントロールの
 /// 破棄・再生成で状態が初期値に戻らないようにするため。
+///
+/// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+/// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+/// ([NetworkTypeMonitor] 参照)。
 
 abstract class _$WatchQuality extends $Notifier<String> {
   String build();

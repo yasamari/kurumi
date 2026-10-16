@@ -348,6 +348,10 @@ final class VideoDetailFamily extends $Family
 /// HLSでは `original` を選べないため、選択時はダウンロード再生になる。
 /// 再生画面を離れても保持する (keepAlive)。画質切替でプレイヤーを作り直す
 /// ときに初期値に戻らないようにするため。
+///
+/// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+/// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+/// ([NetworkTypeMonitor] 参照)。
 
 @ProviderFor(VideoPlayQuality)
 final videoPlayQualityProvider = VideoPlayQualityProvider._();
@@ -357,6 +361,10 @@ final videoPlayQualityProvider = VideoPlayQualityProvider._();
 /// HLSでは `original` を選べないため、選択時はダウンロード再生になる。
 /// 再生画面を離れても保持する (keepAlive)。画質切替でプレイヤーを作り直す
 /// ときに初期値に戻らないようにするため。
+///
+/// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+/// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+/// ([NetworkTypeMonitor] 参照)。
 final class VideoPlayQualityProvider
     extends $NotifierProvider<VideoPlayQuality, String> {
   /// 録画再生中の画質。永続化しない。
@@ -364,6 +372,10 @@ final class VideoPlayQualityProvider
   /// HLSでは `original` を選べないため、選択時はダウンロード再生になる。
   /// 再生画面を離れても保持する (keepAlive)。画質切替でプレイヤーを作り直す
   /// ときに初期値に戻らないようにするため。
+  ///
+  /// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+  /// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+  /// ([NetworkTypeMonitor] 参照)。
   VideoPlayQualityProvider._()
     : super(
         from: null,
@@ -391,13 +403,17 @@ final class VideoPlayQualityProvider
   }
 }
 
-String _$videoPlayQualityHash() => r'457feaf54fcadb402b56f1ec8f15583ebcb87a4a';
+String _$videoPlayQualityHash() => r'cc17a8cd8dd5e74a3e629868617c5c1575596550';
 
 /// 録画再生中の画質。永続化しない。
 ///
 /// HLSでは `original` を選べないため、選択時はダウンロード再生になる。
 /// 再生画面を離れても保持する (keepAlive)。画質切替でプレイヤーを作り直す
 /// ときに初期値に戻らないようにするため。
+///
+/// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+/// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+/// ([NetworkTypeMonitor] 参照)。
 
 abstract class _$VideoPlayQuality extends $Notifier<String> {
   String build();

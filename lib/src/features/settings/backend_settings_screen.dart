@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
 import '../../core/settings/app_settings.dart';
-import '../../core/settings/app_settings_state.dart';
-import '../../core/utils/url_format.dart';
 import '../../domain/entities/backend_type.dart';
 import '../../domain/providers/backend_provider.dart';
 
@@ -30,7 +29,9 @@ class ConnectionTest extends _$ConnectionTest {
 
 /// バックエンド設定画面。
 ///
-/// 行は ListTile、区切りは Divider、編集・結果表示は Dialog のみで構成する。
+/// 種別の選択と、バックエンド別の設定画面 (Mirakurun / KonomiTV) への入口、
+/// 接続テストを並べる。行は ListTile、区切りは Divider、編集・結果表示は
+/// Dialog のみで構成する。
 class BackendSettingsScreen extends ConsumerWidget {
   const BackendSettingsScreen({super.key});
 
@@ -47,9 +48,8 @@ class BackendSettingsScreen extends ConsumerWidget {
           error: (error, _) => '接続失敗: $error',
         );
         if (message.isNotEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(message)),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(message)));
         }
       }
     });
@@ -66,57 +66,19 @@ class BackendSettingsScreen extends ConsumerWidget {
                 title: const Text('バックエンド種別'),
                 subtitle: Text(state.backendType.label),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => _showBackendTypeDialog(
-                  context,
-                  ref,
-                  state.backendType,
-                ),
+                onTap: () =>
+                    _showBackendTypeDialog(context, ref, state.backendType),
               ),
               const Divider(),
               ListTile(
-                title: const Text('Mirakurun サーバーURL'),
-                subtitle: Text(
-                  state.mirakurunBaseUrl.isEmpty
-                      ? '未設定'
-                      : state.mirakurunBaseUrl,
-                ),
+                title: const Text('Mirakurun'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => _showUrlDialog(
-                  context,
-                  ref,
-                  backendType: BackendType.mirakurun,
-                  initialValue: state.mirakurunBaseUrl,
-                  hintText: 'http://192.168.1.2:40772',
-                ),
+                onTap: () => context.go('/settings/backend/mirakurun'),
               ),
               ListTile(
-                title: const Text('KonomiTV サーバーURL'),
-                subtitle: Text(
-                  state.konomiBaseUrl.isEmpty
-                      ? '未設定'
-                      : state.konomiBaseUrl,
-                ),
+                title: const Text('KonomiTV'),
                 trailing: const Icon(Icons.chevron_right),
-                onTap: () => _showUrlDialog(
-                  context,
-                  ref,
-                  backendType: BackendType.konomiTv,
-                  initialValue: state.konomiBaseUrl,
-                  hintText: 'http://192.168.1.2:7000',
-                ),
-              ),
-              const Divider(),
-              ListTile(
-                title: const Text('番組データの更新間隔'),
-                subtitle: Text(
-                  '${state.epgRefreshIntervalHours}時間ごとに更新',
-                ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _showEpgIntervalDialog(
-                  context,
-                  ref,
-                  state.epgRefreshIntervalHours,
-                ),
+                onTap: () => context.go('/settings/backend/konomi'),
               ),
               const Divider(),
               ListTile(
@@ -158,9 +120,7 @@ class BackendSettingsScreen extends ConsumerWidget {
               groupValue: current,
               onChanged: (value) {
                 if (value != null) {
-                  ref
-                      .read(appSettingsProvider.notifier)
-                      .setBackendType(value);
+                  ref.read(appSettingsProvider.notifier).setBackendType(value);
                 }
                 Navigator.of(context).pop();
               },
@@ -178,203 +138,6 @@ class BackendSettingsScreen extends ConsumerWidget {
           ],
         );
       },
-    );
-  }
-
-  /// サーバーURLの編集ダイアログ。確定時に即保存する。
-  Future<void> _showUrlDialog(
-    BuildContext context,
-    WidgetRef ref, {
-    required BackendType backendType,
-    required String initialValue,
-    required String hintText,
-  }) {
-    return showDialog<void>(
-      context: context,
-      builder: (dialogContext) => _UrlEditDialog(
-        backendType: backendType,
-        initialValue: initialValue,
-        hintText: hintText,
-        // エラーダイアログはダイアログ自身のコンテキストではなく呼び出し元の
-        // コンテキストで出す（pop 済みでも使用可能なため）。
-        onInvalid: () =>
-            _showErrorDialog(context, 'URLの形式が正しくありません'),
-        onSave: (url) {
-          final notifier = ref.read(appSettingsProvider.notifier);
-          if (backendType == BackendType.konomiTv) {
-            notifier.setKonomiBaseUrl(url);
-          } else {
-            notifier.setMirakurunBaseUrl(url);
-          }
-        },
-      ),
-    );
-  }
-
-  /// EPG更新間隔の選択ダイアログ。1〜24時間のスライダーで選ぶ。
-  Future<void> _showEpgIntervalDialog(
-    BuildContext context,
-    WidgetRef ref,
-    int current,
-  ) {
-    return showDialog(
-      context: context,
-      builder: (context) {
-        return _EpgIntervalDialog(
-          initialValue: current,
-          onSave: (hours) => ref
-              .read(appSettingsProvider.notifier)
-              .setEpgRefreshIntervalHours(hours),
-        );
-      },
-    );
-  }
-
-  /// エラー表示ダイアログ。
-  Future<void> _showErrorDialog(BuildContext context, String message) {
-    return showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('閉じる'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-/// EPG更新間隔の選択ダイアログ。
-class _EpgIntervalDialog extends StatefulWidget {
-  const _EpgIntervalDialog({
-    required this.initialValue,
-    required this.onSave,
-  });
-
-  final int initialValue;
-  final ValueChanged<int> onSave;
-
-  @override
-  State<_EpgIntervalDialog> createState() => _EpgIntervalDialogState();
-}
-
-class _EpgIntervalDialogState extends State<_EpgIntervalDialog> {
-  late double _hours;
-
-  @override
-  void initState() {
-    super.initState();
-    _hours = widget.initialValue.toDouble();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('番組データの更新間隔'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('${_hours.round()}時間ごとに更新'),
-          Slider(
-            min: AppSettingsState.minEpgRefreshIntervalHours.toDouble(),
-            max: AppSettingsState.maxEpgRefreshIntervalHours.toDouble(),
-            divisions:
-                AppSettingsState.maxEpgRefreshIntervalHours -
-                AppSettingsState.minEpgRefreshIntervalHours,
-            label: '${_hours.round()}時間',
-            value: _hours,
-            onChanged: (value) => setState(() => _hours = value),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('キャンセル'),
-        ),
-        TextButton(
-          onPressed: () {
-            widget.onSave(_hours.round());
-            Navigator.of(context).pop();
-          },
-          child: const Text('保存'),
-        ),
-      ],
-    );
-  }
-}
-
-/// サーバーURLの入力ダイアログ。
-///
-/// [TextEditingController] はこのウィジェットが破棄されるタイミングで
-/// dispose する（ダイアログ Future の完了時点では画面遷移アニメーションが
-/// まだ進行中で、TextField が controller を参照しうるため）。
-class _UrlEditDialog extends StatefulWidget {
-  const _UrlEditDialog({
-    required this.backendType,
-    required this.initialValue,
-    required this.hintText,
-    required this.onSave,
-    required this.onInvalid,
-  });
-
-  final BackendType backendType;
-  final String initialValue;
-  final String hintText;
-  final ValueChanged<String> onSave;
-  final VoidCallback onInvalid;
-
-  @override
-  State<_UrlEditDialog> createState() => _UrlEditDialogState();
-}
-
-class _UrlEditDialogState extends State<_UrlEditDialog> {
-  late final TextEditingController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = TextEditingController(text: widget.initialValue);
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _handleSave() {
-    final url = normalizeBaseUrl(_controller.text);
-    if (url.isNotEmpty && !isValidBaseUrl(url)) {
-      widget.onInvalid();
-      return;
-    }
-    widget.onSave(url);
-    Navigator.of(context).pop();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text('${widget.backendType.label} サーバーURL'),
-      content: TextField(
-        controller: _controller,
-        keyboardType: TextInputType.url,
-        autofocus: true,
-        decoration: InputDecoration(hintText: widget.hintText),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('キャンセル'),
-        ),
-        TextButton(onPressed: _handleSave, child: const Text('保存')),
-      ],
     );
   }
 }

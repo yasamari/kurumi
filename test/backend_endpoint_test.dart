@@ -48,7 +48,10 @@ void main() {
     await notifier.setSubtitlesEnabled(true);
 
     expect(identical(container.read(backendDioProvider), dio), isTrue);
-    expect(identical(container.read(tvRepositoryProvider), tvRepository), isTrue);
+    expect(
+      identical(container.read(tvRepositoryProvider), tvRepository),
+      isTrue,
+    );
     expect(
       identical(container.read(videoRepositoryProvider), videoRepository),
       isTrue,
@@ -70,24 +73,33 @@ void main() {
 
     await container
         .read(appSettingsProvider.notifier)
-        .setEpgRefreshIntervalHours(12);
+        .setMirakurunEpgRefreshIntervalHours(12);
 
     expect(identical(container.read(backendDioProvider), dio), isTrue);
-    expect(identical(container.read(tvRepositoryProvider), tvRepository), isTrue);
+    expect(
+      identical(container.read(tvRepositoryProvider), tvRepository),
+      isTrue,
+    );
     expect(
       identical(container.read(videoRepositoryProvider), videoRepository),
       isTrue,
     );
     // 保存自体は反映されている (範囲外は丸める)。
     expect(
-      container.read(appSettingsProvider).value!.epgRefreshIntervalHours,
+      container
+          .read(appSettingsProvider)
+          .value!
+          .mirakurunEpgRefreshIntervalHours,
       12,
     );
     await container
         .read(appSettingsProvider.notifier)
-        .setEpgRefreshIntervalHours(99);
+        .setMirakurunEpgRefreshIntervalHours(99);
     expect(
-      container.read(appSettingsProvider).value!.epgRefreshIntervalHours,
+      container
+          .read(appSettingsProvider)
+          .value!
+          .mirakurunEpgRefreshIntervalHours,
       24,
     );
   });
@@ -106,7 +118,10 @@ void main() {
     final nextDio = container.read(backendDioProvider);
     expect(identical(nextDio, dio), isFalse);
     expect(nextDio.options.baseUrl, 'http://192.0.2.2:40772');
-    expect(identical(container.read(tvRepositoryProvider), tvRepository), isFalse);
+    expect(
+      identical(container.read(tvRepositoryProvider), tvRepository),
+      isFalse,
+    );
   });
 
   test('バックエンド種別を変えるとリポジトリの向き先が変わる', () async {
@@ -123,7 +138,10 @@ void main() {
         .read(appSettingsProvider.notifier)
         .setKonomiBaseUrl('http://192.0.2.3:10000');
 
-    expect(identical(container.read(tvRepositoryProvider), repository), isFalse);
+    expect(
+      identical(container.read(tvRepositoryProvider), repository),
+      isFalse,
+    );
     expect(
       container.read(backendDioProvider).options.baseUrl,
       'http://192.0.2.3:10000',

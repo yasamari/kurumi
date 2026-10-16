@@ -9,6 +9,8 @@ import '../../features/player/watch_screen.dart';
 import '../../features/reservations/reservations_screen.dart';
 import '../../features/settings/about_screen.dart';
 import '../../features/settings/backend_settings_screen.dart';
+import '../../features/settings/konomi_settings_screen.dart';
+import '../../features/settings/mirakurun_settings_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/shell/adaptive_scaffold.dart';
 import '../../features/shell/app_destinations.dart';
@@ -105,8 +107,21 @@ GoRouter appRouter(Ref ref) {
                 routes: [
                   GoRoute(
                     path: 'backend',
-                    builder: (context, state) =>
-                        const BackendSettingsScreen(),
+                    builder: (context, state) => const BackendSettingsScreen(),
+                    routes: [
+                      // Mirakurun のサーバーURLと番組データの更新間隔。
+                      GoRoute(
+                        path: 'mirakurun',
+                        builder: (context, state) =>
+                            const MirakurunSettingsScreen(),
+                      ),
+                      // KonomiTV のサーバーURLと回線別の画質設定。
+                      GoRoute(
+                        path: 'konomi',
+                        builder: (context, state) =>
+                            const KonomiSettingsScreen(),
+                      ),
+                    ],
                   ),
                   GoRoute(
                     path: 'about',
@@ -122,18 +137,15 @@ GoRouter appRouter(Ref ref) {
       GoRoute(
         path: '/watch/:channelId',
         parentNavigatorKey: rootNavigatorKey,
-        builder: (context, state) => WatchScreen(
-          channelId: state.pathParameters['channelId']!,
-        ),
+        builder: (context, state) =>
+            WatchScreen(channelId: state.pathParameters['channelId']!),
       ),
       // 録画再生もシェル外に置く。詳細 (`/videos/:id`) からのpush遷移先。
       GoRoute(
         path: '/videos/:videoId/play',
         parentNavigatorKey: rootNavigatorKey,
         builder: (context, state) {
-          final videoId = int.tryParse(
-            state.pathParameters['videoId'] ?? '',
-          );
+          final videoId = int.tryParse(state.pathParameters['videoId'] ?? '');
           if (videoId == null) {
             return const VideosScreen();
           }

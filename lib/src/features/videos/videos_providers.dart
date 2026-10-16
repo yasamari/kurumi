@@ -1,5 +1,8 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:riverpod_annotation/riverpod_annotation.dart';
 
+import '../../core/network/network_type_monitor.dart';
+import '../../core/settings/app_settings.dart';
 import '../../domain/entities/video_program.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/video_repository.dart';
@@ -162,12 +165,23 @@ Future<VideoProgram> videoDetail(Ref ref, int videoId) async {
 /// HLSでは `original` を選べないため、選択時はダウンロード再生になる。
 /// 再生画面を離れても保持する (keepAlive)。画質切替でプレイヤーを作り直す
 /// ときに初期値に戻らないようにするため。
+///
+/// 初期値は設定の回線別画質 (KonomiTV) から選ぶ。回線種別は build 時に
+/// 一度だけ読む (購読しない) ので、再生中の回線切替では画質を変えない
+/// ([NetworkTypeMonitor] 参照)。
 @Riverpod(keepAlive: true)
 class VideoPlayQuality extends _$VideoPlayQuality {
   @override
   String build() {
     final repository = ref.watch(videoRepositoryProvider);
-    return repository.getDefaultVideoQuality();
+    final networkType = NetworkTypeMonitor.instance.value.value;
+    final configured = ref.watch(
+      appSettingsProvider.select(
+        (settings) => settings.value?.konomiVideoQualityFor(networkType),
+      ),
+    );
+    if (configured == null) return repository.getDefaultVideoQuality();
+    return repository.normalizeVideoQuality(configured);
   }
 
   /// 画質を切り替える。不正値は既定画質に正規化される。

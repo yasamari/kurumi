@@ -66,8 +66,8 @@ Future<EpgSyncState?> mirakurunEpgSync(Ref ref) async {
         type: settings.value?.backendType ?? BackendType.mirakurun,
         baseUrl: settings.value?.mirakurunBaseUrl ?? '',
         intervalHours:
-            settings.value?.epgRefreshIntervalHours ??
-            AppSettingsState.defaultEpgRefreshIntervalHours,
+            settings.value?.mirakurunEpgRefreshIntervalHours ??
+            AppSettingsState.defaultMirakurunEpgRefreshIntervalHours,
       ),
     ),
   );

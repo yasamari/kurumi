@@ -227,4 +227,4 @@ final class MirakurunEpgSyncProvider
   }
 }
 
-String _$mirakurunEpgSyncHash() => r'abac08e3ef5e88386be44590b36a319a69794c8f';
+String _$mirakurunEpgSyncHash() => r'f5b1370570cfa51de2a3482fb0c6e8ba4cefb71e';

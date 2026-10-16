@@ -1,4 +1,5 @@
 import '../../domain/entities/backend_type.dart';
+import '../network/network_type.dart';
 
 /// 永続化されるアプリ設定のスナップショット。
 class AppSettingsState {
@@ -12,7 +13,12 @@ class AppSettingsState {
     this.danmakuSpeed = defaultDanmakuSpeed,
     this.subtitlesEnabled = defaultSubtitlesEnabled,
     this.cmAutoSkipEnabled = defaultCmAutoSkipEnabled,
-    this.epgRefreshIntervalHours = defaultEpgRefreshIntervalHours,
+    this.mirakurunEpgRefreshIntervalHours =
+        defaultMirakurunEpgRefreshIntervalHours,
+    this.konomiLiveQualityWifi = defaultKonomiLiveQualityWifi,
+    this.konomiLiveQualityMobile = defaultKonomiLiveQualityMobile,
+    this.konomiVideoQualityWifi = defaultKonomiVideoQualityWifi,
+    this.konomiVideoQualityMobile = defaultKonomiVideoQualityMobile,
   });
 
   /// 弾幕は既定で表示する。
@@ -36,14 +42,27 @@ class AppSettingsState {
   /// CM自動スキップは既定で無効にする。意図せず本編を飛ばすのを避ける。
   static const bool defaultCmAutoSkipEnabled = false;
 
-  /// EPGキャッシュの更新間隔の既定値 (時間)。
-  static const int defaultEpgRefreshIntervalHours = 6;
+  /// Mirakurun のEPGキャッシュ更新間隔の既定値 (時間)。
+  static const int defaultMirakurunEpgRefreshIntervalHours = 6;
 
-  /// EPGキャッシュの更新間隔の最小値 (時間)。
-  static const int minEpgRefreshIntervalHours = 1;
+  /// Mirakurun のEPGキャッシュ更新間隔の最小値 (時間)。
+  static const int minMirakurunEpgRefreshIntervalHours = 1;
 
-  /// EPGキャッシュの更新間隔の最大値 (時間)。
-  static const int maxEpgRefreshIntervalHours = 24;
+  /// Mirakurun のEPGキャッシュ更新間隔の最大値 (時間)。
+  static const int maxMirakurunEpgRefreshIntervalHours = 24;
+
+  /// KonomiTV のテレビ視聴で Wi-Fi 接続時に使う既定画質。生放送TS。
+  static const String defaultKonomiLiveQualityWifi = 'original';
+
+  /// KonomiTV のテレビ視聴でモバイル回線時に使う既定画質。通信量を抑える。
+  static const String defaultKonomiLiveQualityMobile = '480p';
+
+  /// KonomiTV のビデオ再生で Wi-Fi 接続時に使う既定画質。
+  /// `original` はダウンロード再生。
+  static const String defaultKonomiVideoQualityWifi = 'original';
+
+  /// KonomiTV のビデオ再生でモバイル回線時に使う既定画質。
+  static const String defaultKonomiVideoQualityMobile = '480p';
 
   final BackendType backendType;
   final String mirakurunBaseUrl;
@@ -69,15 +88,39 @@ class AppSettingsState {
   /// CM区間を自動で飛ばすかどうか。録画再生だけで使う。既定は無効。
   final bool cmAutoSkipEnabled;
 
-  /// EPGキャッシュの更新間隔 (時間)。1〜24。
-  /// Mirakurun 等の全量取得型バックエンドにのみ使う。
-  final int epgRefreshIntervalHours;
+  /// Mirakurun のEPGキャッシュ更新間隔 (時間)。1〜24。
+  /// 全量取得型の Mirakurun にのみ使う。
+  final int mirakurunEpgRefreshIntervalHours;
+
+  /// KonomiTV のテレビ視聴で Wi-Fi 接続時に使う画質。
+  final String konomiLiveQualityWifi;
+
+  /// KonomiTV のテレビ視聴でモバイル回線時に使う画質。
+  final String konomiLiveQualityMobile;
+
+  /// KonomiTV のビデオ再生で Wi-Fi 接続時に使う画質。
+  final String konomiVideoQualityWifi;
+
+  /// KonomiTV のビデオ再生でモバイル回線時に使う画質。
+  final String konomiVideoQualityMobile;
 
   /// 現在選択中バックエンドのベースURL。
   String get activeBaseUrl => switch (backendType) {
-        BackendType.mirakurun => mirakurunBaseUrl,
-        BackendType.konomiTv => konomiBaseUrl,
-      };
+    BackendType.mirakurun => mirakurunBaseUrl,
+    BackendType.konomiTv => konomiBaseUrl,
+  };
+
+  /// テレビ画質の回線別設定を返す。
+  String konomiLiveQualityFor(NetworkType networkType) =>
+      networkType == NetworkType.mobile
+      ? konomiLiveQualityMobile
+      : konomiLiveQualityWifi;
+
+  /// ビデオ画質の回線別設定を返す。
+  String konomiVideoQualityFor(NetworkType networkType) =>
+      networkType == NetworkType.mobile
+      ? konomiVideoQualityMobile
+      : konomiVideoQualityWifi;
 
   /// テレビ画面を表示できる状態かどうか。
   bool get isConfigured => activeBaseUrl.isNotEmpty;
@@ -92,7 +135,11 @@ class AppSettingsState {
     double? danmakuSpeed,
     bool? subtitlesEnabled,
     bool? cmAutoSkipEnabled,
-    int? epgRefreshIntervalHours,
+    int? mirakurunEpgRefreshIntervalHours,
+    String? konomiLiveQualityWifi,
+    String? konomiLiveQualityMobile,
+    String? konomiVideoQualityWifi,
+    String? konomiVideoQualityMobile,
   }) {
     return AppSettingsState(
       backendType: backendType ?? this.backendType,
@@ -104,16 +151,25 @@ class AppSettingsState {
       danmakuSpeed: danmakuSpeed ?? this.danmakuSpeed,
       subtitlesEnabled: subtitlesEnabled ?? this.subtitlesEnabled,
       cmAutoSkipEnabled: cmAutoSkipEnabled ?? this.cmAutoSkipEnabled,
-      epgRefreshIntervalHours:
-          epgRefreshIntervalHours ?? this.epgRefreshIntervalHours,
+      mirakurunEpgRefreshIntervalHours:
+          mirakurunEpgRefreshIntervalHours ??
+          this.mirakurunEpgRefreshIntervalHours,
+      konomiLiveQualityWifi:
+          konomiLiveQualityWifi ?? this.konomiLiveQualityWifi,
+      konomiLiveQualityMobile:
+          konomiLiveQualityMobile ?? this.konomiLiveQualityMobile,
+      konomiVideoQualityWifi:
+          konomiVideoQualityWifi ?? this.konomiVideoQualityWifi,
+      konomiVideoQualityMobile:
+          konomiVideoQualityMobile ?? this.konomiVideoQualityMobile,
     );
   }
 }
 
-/// EPGキャッシュの更新間隔を1〜24時間に丸める純粋関数。
-int clampEpgRefreshIntervalHours(int hours) {
+/// Mirakurun のEPGキャッシュ更新間隔を1〜24時間に丸める純粋関数。
+int clampMirakurunEpgRefreshIntervalHours(int hours) {
   return hours.clamp(
-    AppSettingsState.minEpgRefreshIntervalHours,
-    AppSettingsState.maxEpgRefreshIntervalHours,
+    AppSettingsState.minMirakurunEpgRefreshIntervalHours,
+    AppSettingsState.maxMirakurunEpgRefreshIntervalHours,
   );
 }

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:kurumi/src/core/network/network_type.dart';
 import 'package:kurumi/src/core/settings/app_settings_state.dart';
 import 'package:kurumi/src/domain/entities/backend_type.dart';
 
@@ -67,23 +68,64 @@ void main() {
     });
   });
 
-  group('更新間隔', () {
+  group('Mirakurunの更新間隔', () {
     test('既定は6時間', () {
       const settings = AppSettingsState();
-      expect(settings.epgRefreshIntervalHours, 6);
+      expect(settings.mirakurunEpgRefreshIntervalHours, 6);
       expect(
-        settings.copyWith(epgRefreshIntervalHours: 12).epgRefreshIntervalHours,
+        settings
+            .copyWith(mirakurunEpgRefreshIntervalHours: 12)
+            .mirakurunEpgRefreshIntervalHours,
         12,
       );
     });
 
     test('1〜24時間に丸める', () {
-      expect(clampEpgRefreshIntervalHours(6), 6);
-      expect(clampEpgRefreshIntervalHours(1), 1);
-      expect(clampEpgRefreshIntervalHours(24), 24);
-      expect(clampEpgRefreshIntervalHours(0), 1);
-      expect(clampEpgRefreshIntervalHours(-3), 1);
-      expect(clampEpgRefreshIntervalHours(25), 24);
+      expect(clampMirakurunEpgRefreshIntervalHours(6), 6);
+      expect(clampMirakurunEpgRefreshIntervalHours(1), 1);
+      expect(clampMirakurunEpgRefreshIntervalHours(24), 24);
+      expect(clampMirakurunEpgRefreshIntervalHours(0), 1);
+      expect(clampMirakurunEpgRefreshIntervalHours(-3), 1);
+      expect(clampMirakurunEpgRefreshIntervalHours(25), 24);
+    });
+  });
+
+  group('画質設定', () {
+    test('既定は Wi-Fi=original・モバイル=480p', () {
+      const settings = AppSettingsState();
+      expect(settings.konomiLiveQualityWifi, 'original');
+      expect(settings.konomiLiveQualityMobile, '480p');
+      expect(settings.konomiVideoQualityWifi, 'original');
+      expect(settings.konomiVideoQualityMobile, '480p');
+    });
+
+    test('回線種別ごとの画質を返す', () {
+      const settings = AppSettingsState(
+        konomiLiveQualityWifi: '1080p',
+        konomiLiveQualityMobile: '360p',
+        konomiVideoQualityWifi: '720p',
+        konomiVideoQualityMobile: '240p',
+      );
+      expect(settings.konomiLiveQualityFor(NetworkType.wifi), '1080p');
+      expect(settings.konomiLiveQualityFor(NetworkType.mobile), '360p');
+      expect(settings.konomiVideoQualityFor(NetworkType.wifi), '720p');
+      expect(settings.konomiVideoQualityFor(NetworkType.mobile), '240p');
+    });
+
+    test('copyWith で画質4項目を差し替える', () {
+      const settings = AppSettingsState();
+      final updated = settings.copyWith(
+        konomiLiveQualityWifi: '1080p',
+        konomiLiveQualityMobile: '360p',
+        konomiVideoQualityWifi: '720p',
+        konomiVideoQualityMobile: '240p',
+      );
+      expect(updated.konomiLiveQualityWifi, '1080p');
+      expect(updated.konomiLiveQualityMobile, '360p');
+      expect(updated.konomiVideoQualityWifi, '720p');
+      expect(updated.konomiVideoQualityMobile, '240p');
+      // 指定しない項目は元のまま。
+      expect(updated.backendType, settings.backendType);
     });
   });
 

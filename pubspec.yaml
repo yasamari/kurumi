@@ -97,6 +97,10 @@ dependencies:
   # (dart/package-source-builders/sqlite3/default.nix) を確認する。
   sqlite3: 3.5.0
 
+  # モバイル回線 / Wi-Fi の判定。画質設定を回線別に選ぶために使う
+  # (`lib/src/core/network/network_type_monitor.dart`)。
+  connectivity_plus: ^7.3.1
+
 # Android の libmpv を自前のビルドに差し替える。
 # media_kit_libs_android_video は Android プラットフォームのみの対象で、
 # .jar を Gradle 時に GitHub Releases から取得する。同梱版は upstream の

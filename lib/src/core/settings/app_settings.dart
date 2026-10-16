@@ -2,6 +2,7 @@ import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/entities/backend_type.dart';
+import '../network/network_type.dart';
 import 'app_settings_state.dart';
 
 part 'app_settings.g.dart';
@@ -14,6 +15,9 @@ part 'app_settings.g.dart';
 /// プレイヤー側の表示設定 (弾幕の on/off・文字サイズ・不透明度・速度、字幕の
 /// on/off、CM自動スキップ) もここに永続化する。プレイヤーは開くたびにこのスナップショットから
 /// 初期値を作る ([AppSettingsState] の既定値参照)。
+///
+/// KonomiTV の画質 (テレビ/ビデオ × Wi-Fi/モバイル回線) もここに永続化する。
+/// 再生開始時に現在の回線種別 ([NetworkTypeMonitor]) で選ぶ。
 @Riverpod(keepAlive: true)
 class AppSettings extends _$AppSettings {
   static const _keyBackendType = 'backend_type';
@@ -25,14 +29,18 @@ class AppSettings extends _$AppSettings {
   static const _keyDanmakuSpeed = 'danmaku_speed';
   static const _keySubtitlesEnabled = 'subtitles_enabled';
   static const _keyCmAutoSkipEnabled = 'cm_auto_skip_enabled';
-  static const _keyEpgRefreshIntervalHours = 'epg_refresh_interval_hours';
+  static const _keyMirakurunEpgRefreshIntervalHours =
+      'mirakurun_epg_refresh_interval_hours';
+  static const _keyKonomiLiveQualityWifi = 'konomi_live_quality_wifi';
+  static const _keyKonomiLiveQualityMobile = 'konomi_live_quality_mobile';
+  static const _keyKonomiVideoQualityWifi = 'konomi_video_quality_wifi';
+  static const _keyKonomiVideoQualityMobile = 'konomi_video_quality_mobile';
 
   @override
   Future<AppSettingsState> build() async {
     final prefs = await SharedPreferences.getInstance();
     return AppSettingsState(
-      backendType:
-          BackendType.fromName(prefs.getString(_keyBackendType)),
+      backendType: BackendType.fromName(prefs.getString(_keyBackendType)),
       mirakurunBaseUrl: prefs.getString(_keyMirakurunBaseUrl) ?? '',
       konomiBaseUrl: prefs.getString(_keyKonomiBaseUrl) ?? '',
       danmakuEnabled:
@@ -53,10 +61,22 @@ class AppSettings extends _$AppSettings {
       cmAutoSkipEnabled:
           prefs.getBool(_keyCmAutoSkipEnabled) ??
           AppSettingsState.defaultCmAutoSkipEnabled,
-      epgRefreshIntervalHours: clampEpgRefreshIntervalHours(
-        prefs.getInt(_keyEpgRefreshIntervalHours) ??
-            AppSettingsState.defaultEpgRefreshIntervalHours,
+      mirakurunEpgRefreshIntervalHours: clampMirakurunEpgRefreshIntervalHours(
+        prefs.getInt(_keyMirakurunEpgRefreshIntervalHours) ??
+            AppSettingsState.defaultMirakurunEpgRefreshIntervalHours,
       ),
+      konomiLiveQualityWifi:
+          prefs.getString(_keyKonomiLiveQualityWifi) ??
+          AppSettingsState.defaultKonomiLiveQualityWifi,
+      konomiLiveQualityMobile:
+          prefs.getString(_keyKonomiLiveQualityMobile) ??
+          AppSettingsState.defaultKonomiLiveQualityMobile,
+      konomiVideoQualityWifi:
+          prefs.getString(_keyKonomiVideoQualityWifi) ??
+          AppSettingsState.defaultKonomiVideoQualityWifi,
+      konomiVideoQualityMobile:
+          prefs.getString(_keyKonomiVideoQualityMobile) ??
+          AppSettingsState.defaultKonomiVideoQualityMobile,
     );
   }
 
@@ -123,12 +143,52 @@ class AppSettings extends _$AppSettings {
     state = AsyncData(current.copyWith(cmAutoSkipEnabled: enabled));
   }
 
-  /// EPGキャッシュの更新間隔 (時間) を保存する。範囲外は1〜24に丸める。
-  Future<void> setEpgRefreshIntervalHours(int hours) async {
-    final clamped = clampEpgRefreshIntervalHours(hours);
+  /// Mirakurun のEPGキャッシュ更新間隔 (時間) を保存する。範囲外は1〜24に丸める。
+  Future<void> setMirakurunEpgRefreshIntervalHours(int hours) async {
+    final clamped = clampMirakurunEpgRefreshIntervalHours(hours);
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_keyEpgRefreshIntervalHours, clamped);
+    await prefs.setInt(_keyMirakurunEpgRefreshIntervalHours, clamped);
     final current = await future;
-    state = AsyncData(current.copyWith(epgRefreshIntervalHours: clamped));
+    state = AsyncData(
+      current.copyWith(mirakurunEpgRefreshIntervalHours: clamped),
+    );
+  }
+
+  /// KonomiTV のテレビ視聴の画質 (回線別) を保存する。
+  Future<void> setKonomiLiveQuality({
+    required NetworkType networkType,
+    required String quality,
+  }) async {
+    final mobile = networkType == NetworkType.mobile;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      mobile ? _keyKonomiLiveQualityMobile : _keyKonomiLiveQualityWifi,
+      quality,
+    );
+    final current = await future;
+    state = AsyncData(
+      mobile
+          ? current.copyWith(konomiLiveQualityMobile: quality)
+          : current.copyWith(konomiLiveQualityWifi: quality),
+    );
+  }
+
+  /// KonomiTV のビデオ再生の画質 (回線別) を保存する。
+  Future<void> setKonomiVideoQuality({
+    required NetworkType networkType,
+    required String quality,
+  }) async {
+    final mobile = networkType == NetworkType.mobile;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      mobile ? _keyKonomiVideoQualityMobile : _keyKonomiVideoQualityWifi,
+      quality,
+    );
+    final current = await future;
+    state = AsyncData(
+      mobile
+          ? current.copyWith(konomiVideoQualityMobile: quality)
+          : current.copyWith(konomiVideoQualityWifi: quality),
+    );
   }
 }

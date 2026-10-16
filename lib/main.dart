@@ -4,6 +4,7 @@ import 'package:media_kit/media_kit.dart';
 
 import 'src/core/licenses/app_licenses.dart';
 import 'src/core/media/kurumi_audio_handler.dart';
+import 'src/core/network/network_type_monitor.dart';
 import 'src/core/router/router.dart';
 import 'src/core/theme/app_theme.dart';
 import 'src/core/theme/dynamic_color.dart';
@@ -14,6 +15,9 @@ Future<void> main() async {
   registerAppLicenses();
   // media_kit のネイティブ初期化。Linux 等で必須。
   MediaKit.ensureInitialized();
+  // モバイル回線 / Wi-Fi の監視。画質設定を回線別に選ぶために使う。
+  // 非対応環境では Wi-Fi のまま (start 内で例外を逸らす)。
+  NetworkTypeMonitor.instance.start();
   // システムのメディア操作 (Android 通知・Linux MPRIS・Windows SMTC) の受付。
   // 非対応環境では無効化し、起動自体は続ける (PiP と同じく best-effort)。
   try {
@@ -25,9 +29,7 @@ Future<void> main() async {
   // 初回フレームで既定色が不过来、取得できるまで待ってから描画を始める。
   final dynamicColorSchemes = await loadDynamicColorSchemes();
   runApp(
-    ProviderScope(
-      child: KurumiApp(dynamicColorSchemes: dynamicColorSchemes),
-    ),
+    ProviderScope(child: KurumiApp(dynamicColorSchemes: dynamicColorSchemes)),
   );
 }
 
