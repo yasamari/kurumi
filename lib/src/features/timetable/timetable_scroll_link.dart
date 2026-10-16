@@ -87,10 +87,36 @@ class TimetableScrollLink extends ChangeNotifier {
   /// そのまま効く。
   void pointerScrollBy(double delta) {
     if (delta == 0) return;
-    for (final member in _members.keys) {
-      if (member.hasClients) {
-        member.position.pointerScroll(delta);
+    // 各メンバーが個別に `pointerScroll` すると、そのたびに通知が上がって
+    // [_onScrolled] 経由で他メンバーが追従し、1回のホイールでメンバー数の
+    // 分だけ加算されてしまう。ループ中は同期を止め、最後に共有オフセットを
+    // 1回だけ更新する (全メンバーが同じ物理・同じ最大距離なので同じ量だけ
+    // 動き、揃ったままになる)。
+    _syncing = true;
+    try {
+      for (final member in _members.keys) {
+        if (member.hasClients) {
+          member.position.pointerScroll(delta);
+        }
       }
+    } finally {
+      _syncing = false;
+    }
+    _adoptLeaderOffset();
+  }
+
+  /// メンバーの現在オフセットを共有値へ取り込み、描画側へ通知する。
+  ///
+  /// 同期を止めて動かした後 ([pointerScrollBy]) に使う。値が変わらなければ
+  /// 通知しない。
+  void _adoptLeaderOffset() {
+    for (final member in _members.keys) {
+      if (!member.hasClients) continue;
+      final next = member.offset;
+      if (next == _offset) return;
+      _offset = next;
+      notifyListeners();
+      return;
     }
   }
 

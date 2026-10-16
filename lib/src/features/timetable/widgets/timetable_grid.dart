@@ -227,6 +227,7 @@ class _TimetableGridState extends State<TimetableGrid> {
                           itemBuilder: (context, index) {
                             final column = columns[index];
                             return _ColumnList(
+                              key: ValueKey(column.channel.id),
                               link: _vLink,
                               data: data,
                               column: column,
@@ -528,6 +529,7 @@ class _GutterListState extends State<_GutterList> {
 /// チャンネル1列。番組ブロックを番組尺通りの高さで並べる。
 class _ColumnList extends StatefulWidget {
   const _ColumnList({
+    super.key,
     required this.link,
     required this.data,
     required this.column,
@@ -556,13 +558,14 @@ class _ColumnListState extends State<_ColumnList> {
   Widget build(BuildContext context) {
     final data = widget.data;
     final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final gridHeightPx = timetableHeightPx(data.startMs, data.endMs);
     // 空白埋めで全列がちょうど同じ高さになる。列の高さが揃っていないと
     // オフセット共有の前提が崩れ、短い列への追従で引き戻される。
     final segments = timetableColumnSegments(
       programs: widget.column.programs,
       rangeStartMs: data.startMs,
       rangeEndMs: data.endMs,
-      gridHeightPx: timetableHeightPx(data.startMs, data.endMs),
+      gridHeightPx: gridHeightPx,
     );
     return Container(
       decoration: BoxDecoration(
@@ -575,45 +578,83 @@ class _ColumnListState extends State<_ColumnList> {
       child: Material(
         type: MaterialType.transparency,
         child: _NoScrollbar(
-          child: ListView.builder(
+          child: ListView.custom(
             controller: _controller,
             // 斜めスクロールのためドラッグは `TimetablePanScroll` に
             // 一本化する。仮想化 (可視セルだけ作る) はコントローラーの
             // 駆動で残る。
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: segments.length,
-            addAutomaticKeepAlives: false,
-            // セル内容は静的でスクロールでは再描画されないため、セル単位の
-            // 境界は作らない (レイヤー数を抑える)。
-            addRepaintBoundaries: false,
-            itemBuilder: (context, index) {
-              final segment = segments[index];
-              final program = segment.program;
-              if (program == null) {
-                return SizedBox(height: segment.heightPx);
-              }
-              final startMs = program.startAt.millisecondsSinceEpoch;
-              final endMs = program.endAt.millisecondsSinceEpoch;
-              return SizedBox(
-                height: segment.heightPx,
-                child: Padding(
-                  padding: const EdgeInsets.only(
-                    bottom: timetableCellGap,
-                    right: timetableCellGap,
+            // 総高さは空白埋めで既知なので、`ListView` の推定に任せず
+            // 正確に与える (番組のない列が早期にクランプして共有
+            // オフセットを引き戻すのを防ぐ)。
+            childrenDelegate: _ExactExtentChildDelegate(
+              (context, index) {
+                final segment = segments[index];
+                final program = segment.program;
+                if (program == null) {
+                  return SizedBox(height: segment.heightPx);
+                }
+                final startMs = program.startAt.millisecondsSinceEpoch;
+                final endMs = program.endAt.millisecondsSinceEpoch;
+                return SizedBox(
+                  height: segment.heightPx,
+                  child: Padding(
+                    padding: const EdgeInsets.only(
+                      bottom: timetableCellGap,
+                      right: timetableCellGap,
+                    ),
+                    child: TimetableProgramCell(
+                      program: program,
+                      heightPx: segment.heightPx,
+                      isOnAir: startMs <= nowMs && nowMs < endMs,
+                      onTap: () => widget.onProgramTap(program),
+                    ),
                   ),
-                  child: TimetableProgramCell(
-                    program: program,
-                    heightPx: segment.heightPx,
-                    isOnAir: startMs <= nowMs && nowMs < endMs,
-                    onTap: () => widget.onProgramTap(program),
-                  ),
-                ),
-              );
-            },
+                );
+              },
+              totalExtentPx: gridHeightPx,
+              childCount: segments.length,
+              addAutomaticKeepAlives: false,
+              // セル内容は静的でスクロールでは再描画されないため、セル単位の
+              // 境界は作らない (レイヤー数を抑える)。
+              addRepaintBoundaries: false,
+            ),
           ),
         ),
       ),
     );
+  }
+}
+
+/// 列の総高さが既知のときに `maxScrollExtent` を正確に与えるデリゲート。
+///
+/// 番組のない時間帯を1つの巨大な空白セルで埋めるため、`ListView` 既定の
+/// `estimateMaxScrollOffset` は可視範囲より下の空白をまだ構築していない
+/// 時点で総高さを過小評価する。過小評価された列はスクロール中に手前で
+/// クランプし、その `ScrollPosition` の通知が [TimetableScrollLink] の
+/// 共有オフセットを引き戻す (一部時間しか放送しない列で顕著)。総高さは
+/// `timetableColumnSegments` の空白埋めで全列・ガターと一致するため、
+/// それをそのまま `scrollExtent` として返す。
+class _ExactExtentChildDelegate extends SliverChildBuilderDelegate {
+  _ExactExtentChildDelegate(
+    super.builder, {
+    required this.totalExtentPx,
+    super.childCount,
+    super.addAutomaticKeepAlives,
+    super.addRepaintBoundaries,
+  });
+
+  /// 全列で揃えた列の総高さ (px)。
+  final double totalExtentPx;
+
+  @override
+  double? estimateMaxScrollOffset(
+    int firstIndex,
+    int lastIndex,
+    double leadingScrollOffset,
+    double trailingScrollOffset,
+  ) {
+    return totalExtentPx;
   }
 }
 
