@@ -202,6 +202,12 @@ class PlayerVideoView extends StatelessWidget {
         );
       }
       var theme = MaterialVideoControlsThemeData(
+        // 左右のダブルタップで±10秒シークする (録画再生のみ)。既定は false
+        // なので明示する。連鎖と「指を離してから確定」は media_kit の
+        // `_ForwardSeekIndicator` / `_BackwardSeekIndicator` が持つ (タップの
+        // 度に 10 秒ずつ積み、離して 400ms 後にまとめてシーク)。シーク位置は
+        // `seekOnDoubleTapForwardDuration` の既定 10 秒。
+        seekOnDoubleTap: true,
         // 既定 (`EdgeInsets.zero`) ではシークバーがボタン行の下・画面端に落ち
         // るので、横画面・フルスクリーンではボタン行の上へ持ち上げる。
         seekBarMargin: insets.seekBarMargin,
