@@ -369,9 +369,7 @@ void main() {
         duration: 2 * hourMs,
         name: '今',
         description: '概要',
-        genres: const [
-          MirakurunProgramGenreDto(lv1: 1, lv2: 1),
-        ],
+        genres: const [MirakurunProgramGenreDto(lv1: 1, lv2: 1)],
         extended: const {'出演者': 'テスト太郎'},
       ),
     ];

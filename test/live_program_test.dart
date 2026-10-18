@@ -55,14 +55,8 @@ void main() {
   group('対象判定', () {
     test('NID/SID不一致は対象外', () {
       final eit = _section(sectionNumber: 0, descriptors: const []);
-      expect(
-        isLiveEitSection(eit, networkId: 999, serviceId: 1),
-        isFalse,
-      );
-      expect(
-        buildLiveTvProgram(eit, networkId: 999, serviceId: 1),
-        isNull,
-      );
+      expect(isLiveEitSection(eit, networkId: 999, serviceId: 1), isFalse);
+      expect(buildLiveTvProgram(eit, networkId: 999, serviceId: 1), isNull);
     });
 
     test('current_nextなし・他TSは対象外', () {
@@ -111,11 +105,7 @@ void main() {
       const content = ContentDescriptor([
         ContentNibble(level1: 0x1, level2: 0x1, userNibble: 0xFF),
       ]);
-      final descriptors = [
-        ...short,
-        ...parseDescriptors(extended),
-        content,
-      ];
+      final descriptors = [...short, ...parseDescriptors(extended), content];
       final program = buildLiveTvProgram(
         _section(sectionNumber: 0, descriptors: descriptors),
         networkId: 1,

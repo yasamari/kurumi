@@ -43,16 +43,10 @@ void main() {
   });
 
   group('再生中の音声トラックの位置', () {
-    const tracks = [
-      AudioTrack('1', null, null),
-      AudioTrack('2', null, null),
-    ];
+    const tracks = [AudioTrack('1', null, null), AudioTrack('2', null, null)];
 
     test('一覧にあればその位置', () {
-      expect(
-        currentAudioTrackIndex(tracks: tracks, current: tracks[1]),
-        1,
-      );
+      expect(currentAudioTrackIndex(tracks: tracks, current: tracks[1]), 1);
     });
 
     test('auto など一覧に無ければ先頭', () {
@@ -64,10 +58,7 @@ void main() {
 
     test('空なら -1', () {
       expect(
-        currentAudioTrackIndex(
-          tracks: const [],
-          current: AudioTrack.auto(),
-        ),
+        currentAudioTrackIndex(tracks: const [], current: AudioTrack.auto()),
         -1,
       );
     });
@@ -76,27 +67,18 @@ void main() {
   group('音声ページの表示方法', () {
     test('mpv が2本以上ならトラック一覧 (EIT の判定より優先)', () {
       expect(
-        audioMenuMode(
-          realAudioTrackCount: 2,
-          layout: LiveAudioLayout.dualMono,
-        ),
+        audioMenuMode(realAudioTrackCount: 2, layout: LiveAudioLayout.dualMono),
         AudioMenuMode.tracks,
       );
       expect(
-        audioMenuMode(
-          realAudioTrackCount: 2,
-          layout: LiveAudioLayout.unknown,
-        ),
+        audioMenuMode(realAudioTrackCount: 2, layout: LiveAudioLayout.unknown),
         AudioMenuMode.tracks,
       );
     });
 
     test('1本でデュアルモノラルなら主音声・副音声だけ', () {
       expect(
-        audioMenuMode(
-          realAudioTrackCount: 1,
-          layout: LiveAudioLayout.dualMono,
-        ),
+        audioMenuMode(realAudioTrackCount: 1, layout: LiveAudioLayout.dualMono),
         AudioMenuMode.dualMono,
       );
     });
@@ -113,10 +95,7 @@ void main() {
         );
       }
       expect(
-        audioMenuMode(
-          realAudioTrackCount: 0,
-          layout: LiveAudioLayout.dualMono,
-        ),
+        audioMenuMode(realAudioTrackCount: 0, layout: LiveAudioLayout.dualMono),
         AudioMenuMode.dualMono,
       );
     });
@@ -124,7 +103,10 @@ void main() {
 
   group('音声の表示名', () {
     const oneTrack = [AudioTrack('1', null, null)];
-    const twoTracks = [AudioTrack('1', null, null), AudioTrack('2', null, null)];
+    const twoTracks = [
+      AudioTrack('1', null, null),
+      AudioTrack('2', null, null),
+    ];
 
     test('トラック一覧なら再生中のトラックの名', () {
       expect(

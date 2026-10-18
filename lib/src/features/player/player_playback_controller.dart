@@ -250,7 +250,12 @@ class PlayerPlaybackController extends ChangeNotifier {
   /// `video-params` 受信時の処理。有効な映像サイズと表示アスペクト比を拾う。
   void _onVideoParams(VideoParams params) {
     if (_disposed) return;
-    if (hasValidVideoSize(dw: params.dw, dh: params.dh, w: params.w, h: params.h)) {
+    if (hasValidVideoSize(
+      dw: params.dw,
+      dh: params.dh,
+      w: params.w,
+      h: params.h,
+    )) {
       _hasVideo = true;
       _clearErrorIfRecovered();
     }

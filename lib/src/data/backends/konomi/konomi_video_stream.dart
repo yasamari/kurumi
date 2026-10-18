@@ -37,10 +37,7 @@ const originalKonomiVideoQuality = 'original';
 /// 配信されることがあるため、動画コーデックが MPEG-2 の場合にのみ解除する。
 /// HLSはサーバー側でプログレッシブに再エンコード済みのため常時不要。
 /// コーデック不明時は `original` のみ解除する (生放送TSの可能性があるため)。
-bool needsVideoDeinterlace({
-  required bool isOriginal,
-  String? videoCodec,
-}) {
+bool needsVideoDeinterlace({required bool isOriginal, String? videoCodec}) {
   if (!isOriginal) return false;
   if (videoCodec == null) return true;
   return videoCodec.toUpperCase() == 'MPEG-2';

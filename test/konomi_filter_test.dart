@@ -64,10 +64,7 @@ void main() {
     expect(items[0].channel.name, 'A局');
     expect(items[0].nowOnAir?.title, '今');
     expect(items[0].nextUp?.title, '次');
-    expect(
-      items[0].channel.logoUrl,
-      '$_baseUrl/api/channels/gr011/logo',
-    );
+    expect(items[0].channel.logoUrl, '$_baseUrl/api/channels/gr011/logo');
     expect(items[1].channel.name, '番組なし局');
     expect(items[1].nowOnAir, isNull);
     expect(items[1].nextUp, isNull);
@@ -101,10 +98,7 @@ void main() {
       baseUrl: _baseUrl,
     );
 
-    expect(
-      items.map((e) => e.channel.name).toList(),
-      ['B局', 'A局', 'BS局'],
-    );
+    expect(items.map((e) => e.channel.name).toList(), ['B局', 'A局', 'BS局']);
   });
 
   test('ジャンルを表示用ラベルに変換する', () {
@@ -135,9 +129,7 @@ void main() {
             description: '概要',
             startTime: DateTime(2026, 9, 29, 10, 5),
             endTime: DateTime(2026, 9, 29, 10, 55),
-            genres: const [
-              KonomiGenreDto(major: 'アニメ', middle: 'アニメ'),
-            ],
+            genres: const [KonomiGenreDto(major: 'アニメ', middle: 'アニメ')],
             detail: const {'出演者': 'テスト太郎'},
           ),
         ),

@@ -68,12 +68,12 @@ class EpgDao extends DatabaseAccessor<EpgDatabase> with _$EpgDaoMixin {
     required int fetchedAtMs,
   }) async {
     await transaction(() async {
-      await (delete(epgChannels)
-            ..where((c) => c.sourceBackend.equals(sourceBackend)))
-          .go();
-      await (delete(epgPrograms)
-            ..where((p) => p.sourceBackend.equals(sourceBackend)))
-          .go();
+      await (delete(
+        epgChannels,
+      )..where((c) => c.sourceBackend.equals(sourceBackend))).go();
+      await (delete(
+        epgPrograms,
+      )..where((p) => p.sourceBackend.equals(sourceBackend))).go();
       await batch((b) {
         b.insertAll(epgChannels, channels);
         b.insertAll(epgPrograms, programs);
@@ -93,15 +93,15 @@ class EpgDao extends DatabaseAccessor<EpgDatabase> with _$EpgDaoMixin {
   /// 指定バックエンドの行・同期状態をすべて消す。
   Future<void> clearBackend(String sourceBackend) async {
     await transaction(() async {
-      await (delete(epgChannels)
-            ..where((c) => c.sourceBackend.equals(sourceBackend)))
-          .go();
-      await (delete(epgPrograms)
-            ..where((p) => p.sourceBackend.equals(sourceBackend)))
-          .go();
-      await (delete(epgSyncMeta)
-            ..where((m) => m.sourceBackend.equals(sourceBackend)))
-          .go();
+      await (delete(
+        epgChannels,
+      )..where((c) => c.sourceBackend.equals(sourceBackend))).go();
+      await (delete(
+        epgPrograms,
+      )..where((p) => p.sourceBackend.equals(sourceBackend))).go();
+      await (delete(
+        epgSyncMeta,
+      )..where((m) => m.sourceBackend.equals(sourceBackend))).go();
     });
   }
 
@@ -122,9 +122,7 @@ class EpgDao extends DatabaseAccessor<EpgDatabase> with _$EpgDaoMixin {
   }
 
   /// 番組表用: 指定バックエンドの全チャンネルを取得APIの応答順で返す。
-  Future<List<EpgChannel>> timetableChannels({
-    required String sourceBackend,
-  }) {
+  Future<List<EpgChannel>> timetableChannels({required String sourceBackend}) {
     return (select(epgChannels)
           ..where((c) => c.sourceBackend.equals(sourceBackend))
           ..orderBy([(c) => OrderingTerm(expression: c.sortOrder)]))
@@ -160,12 +158,10 @@ class EpgDao extends DatabaseAccessor<EpgDatabase> with _$EpgDaoMixin {
     required String sourceBackend,
     required String baseUrl,
   }) {
-    return (select(epgSyncMeta)
-          ..where(
-            (m) =>
-                m.sourceBackend.equals(sourceBackend) &
-                m.baseUrl.equals(baseUrl),
-          ))
+    return (select(epgSyncMeta)..where(
+          (m) =>
+              m.sourceBackend.equals(sourceBackend) & m.baseUrl.equals(baseUrl),
+        ))
         .getSingleOrNull();
   }
 

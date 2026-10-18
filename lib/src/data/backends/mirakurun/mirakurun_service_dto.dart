@@ -5,10 +5,7 @@ part 'mirakurun_service_dto.g.dart';
 /// `GET /api/services` の1要素。不要フィールドは読み捨てる。
 @JsonSerializable()
 class MirakurunChannelDto {
-  const MirakurunChannelDto({
-    required this.type,
-    required this.channel,
-  });
+  const MirakurunChannelDto({required this.type, required this.channel});
 
   factory MirakurunChannelDto.fromJson(Map<String, dynamic> json) =>
       _$MirakurunChannelDtoFromJson(json);

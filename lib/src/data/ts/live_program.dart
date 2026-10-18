@@ -52,9 +52,9 @@ TvProgram? buildLiveTvProgram(
   final startAt = decodeEitStartTime(event.startTimeBytes);
   final durationSecs = decodeEitDuration(event.durationBytes);
   final start = startAt ?? liveProgramEmptyStart;
-  final end = durationSecs == null ? start : start.add(
-    Duration(seconds: durationSecs),
-  );
+  final end = durationSecs == null
+      ? start
+      : start.add(Duration(seconds: durationSecs));
 
   final shorts = event.descriptors.whereType<ShortEventDescriptor>().toList();
   final extendeds = event.descriptors
@@ -81,7 +81,11 @@ TvProgram? buildLiveTvProgram(
           final last = detailParts.last;
           final merged = Uint8List(last.raw.length + item.item.length)
             ..setRange(0, last.raw.length, last.raw)
-            ..setRange(last.raw.length, last.raw.length + item.item.length, item.item);
+            ..setRange(
+              last.raw.length,
+              last.raw.length + item.item.length,
+              item.item,
+            );
           detailParts[detailParts.length - 1] = (head: last.head, raw: merged);
         }
       } else {
@@ -97,10 +101,9 @@ TvProgram? buildLiveTvProgram(
     }
   }
   for (final part in detailParts) {
-    var head = part.head.replaceAll('◇', '').replaceAll(
-      RegExp(r'[ \r\n]+'),
-      '',
-    );
+    var head = part.head
+        .replaceAll('◇', '')
+        .replaceAll(RegExp(r'[ \r\n]+'), '');
     if (head.isEmpty) head = '番組内容';
     while (detail.containsKey(head)) {
       head += '\t';
@@ -124,7 +127,9 @@ TvProgram? buildLiveTvProgram(
           continue;
         }
       }
-      final label = middle.isEmpty || middle == major ? major : '$major・$middle';
+      final label = middle.isEmpty || middle == major
+          ? major
+          : '$major・$middle';
       if (label.isEmpty || genres.contains(label)) continue;
       genres.add(label);
     }
@@ -200,12 +205,7 @@ const Map<int, Map<int, String>> _contentMiddle = {
     0x7: '番組紹介・お知らせ',
     0xF: 'その他',
   },
-  0x3: {
-    0x0: '国内ドラマ',
-    0x1: '海外ドラマ',
-    0x2: '時代劇',
-    0xF: 'その他',
-  },
+  0x3: {0x0: '国内ドラマ', 0x1: '海外ドラマ', 0x2: '時代劇', 0xF: 'その他'},
   0x4: {
     0x0: '国内ロック・ポップス',
     0x1: '海外ロック・ポップス',
@@ -230,18 +230,8 @@ const Map<int, Map<int, String>> _contentMiddle = {
     0x6: '料理バラエティ',
     0xF: 'その他',
   },
-  0x6: {
-    0x0: '洋画',
-    0x1: '邦画',
-    0x2: 'アニメ',
-    0xF: 'その他',
-  },
-  0x7: {
-    0x0: '国内アニメ',
-    0x1: '海外アニメ',
-    0x2: '特撮',
-    0xF: 'その他',
-  },
+  0x6: {0x0: '洋画', 0x1: '邦画', 0x2: 'アニメ', 0xF: 'その他'},
+  0x7: {0x0: '国内アニメ', 0x1: '海外アニメ', 0x2: '特撮', 0xF: 'その他'},
   0x8: {
     0x0: '社会・時事',
     0x1: '歴史・紀行',
@@ -295,9 +285,7 @@ const Map<int, Map<int, String>> _contentMiddle = {
     0x3: 'サーバー型番組付属情報',
     0x4: 'IP放送用番組付属情報',
   },
-  0xF: {
-    0xF: 'その他',
-  },
+  0xF: {0xF: 'その他'},
 };
 
 /// 番組付属情報 (KonomiTV `ProgramUtils.USER_TYPE` と同等)。

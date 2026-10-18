@@ -18,7 +18,8 @@ ThemeData buildLightTheme(ColorScheme? dynamicScheme) {
 /// ダークテーマを生成する。引数の意味は [buildLightTheme] と同じ。
 ThemeData buildDarkTheme(ColorScheme? dynamicScheme) {
   return ThemeData(
-    colorScheme: dynamicScheme ??
+    colorScheme:
+        dynamicScheme ??
         ColorScheme.fromSeed(
           seedColor: _fallbackSeed,
           brightness: Brightness.dark,

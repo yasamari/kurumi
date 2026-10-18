@@ -50,21 +50,27 @@ typedef _TapCreateNative = Pointer<KurumiTap> Function(Uint64 capacity);
 typedef _TapCreateDart = Pointer<KurumiTap> Function(int capacity);
 
 typedef _TapRefNative = Void Function(Pointer<KurumiTap> tap);
-typedef _TapRefDart = void Function(Pointer<KurumiTap> tap);typedef _TapPushNative
-    = Uint64 Function(
-      Pointer<KurumiTap> tap,
-      Pointer<Uint8> data,
-      Uint64 len,
-    );
-typedef _TapPushDart
-    = int Function(Pointer<KurumiTap> tap, Pointer<Uint8> data, int len);
+typedef _TapRefDart = void Function(Pointer<KurumiTap> tap);
+typedef _TapPushNative = Uint64 Function(
+  Pointer<KurumiTap> tap,
+  Pointer<Uint8> data,
+  Uint64 len,
+);
+typedef _TapPushDart = int Function(
+  Pointer<KurumiTap> tap,
+  Pointer<Uint8> data,
+  int len,
+);
 
 typedef _TapSignalNative = Void Function(Pointer<KurumiTap> tap);
 typedef _TapSignalDart = void Function(Pointer<KurumiTap> tap);
 
 /// `kurumi_stream_open` のアドレスを mpv へ渡すための型。
-typedef _StreamOpenNative
-    = Int32 Function(Pointer<Void> userData, Pointer<Char> uri, Pointer<Void> info);
+typedef _StreamOpenNative = Int32 Function(
+  Pointer<Void> userData,
+  Pointer<Char> uri,
+  Pointer<Void> info,
+);
 
 /// tap ライブラリの制御 API。テスト時は差し替え可能。
 abstract interface class StreamTapNative {

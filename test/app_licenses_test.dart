@@ -9,10 +9,7 @@ void main() {
     expect(metas, isNotEmpty);
     final names = metas.map((m) => m.packageName).toList();
     expect(names, contains('kurumi'));
-    expect(
-      names.any((n) => n.contains('mpv') || n.contains('libmpv')),
-      isTrue,
-    );
+    expect(names.any((n) => n.contains('mpv') || n.contains('libmpv')), isTrue);
     for (final meta in metas) {
       expect(meta.description, isNotEmpty);
       expect(meta.licenseText, isNotEmpty);

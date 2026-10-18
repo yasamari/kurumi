@@ -77,14 +77,8 @@ void main() {
       expect(companion.endAtMs.value, startAt + 2 * _hourMs);
       expect(companion.title.value, 'TEST番組！');
       expect(companion.description.value, '概要～詳細');
-      expect(
-        jsonDecode(companion.genresJson.value),
-        isA<List<dynamic>>(),
-      );
-      expect(
-        jsonDecode(companion.detailJson.value),
-        {'出演者': 'ABC'},
-      );
+      expect(jsonDecode(companion.genresJson.value), isA<List<dynamic>>());
+      expect(jsonDecode(companion.detailJson.value), {'出演者': 'ABC'});
     });
   });
 
@@ -119,10 +113,7 @@ void main() {
       expect(item.channel.networkId, 1);
       expect(item.channel.serviceId, 101);
       expect(item.channel.channelNumber, '011');
-      expect(
-        item.channel.logoUrl,
-        '$_baseUrl/api/services/32736/logo',
-      );
+      expect(item.channel.logoUrl, '$_baseUrl/api/services/32736/logo');
       expect(item.nowOnAir?.eventId, 1001);
       expect(item.nowOnAir?.title, '今');
       expect(item.nowOnAir?.genres, ['ニュース・報道']);

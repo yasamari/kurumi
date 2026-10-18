@@ -206,9 +206,8 @@ class _TimetableGridState extends State<TimetableGrid> {
                           itemCount: columns.length,
                           itemBuilder: (context, index) => _ChannelHeader(
                             column: columns[index],
-                            onTap: () => widget.onChannelTap(
-                              columns[index].channel,
-                            ),
+                            onTap: () =>
+                                widget.onChannelTap(columns[index].channel),
                           ),
                         ),
                       ),
@@ -259,10 +258,7 @@ class _TimetableGridState extends State<TimetableGrid> {
                                         color: outline,
                                       ),
                                     ),
-                                  _NowLine(
-                                    data: data,
-                                    offset: _vLink.offset,
-                                  ),
+                                  _NowLine(data: data, offset: _vLink.offset),
                                 ],
                               ),
                             ),
@@ -372,9 +368,7 @@ class _EdgeButtons extends StatelessWidget {
         final max = verticalLink.maxOffset;
         // 内容がビューポートに収まる (max が 0) ときは出さない。
         final showTop =
-            onRequestPreviousDay != null &&
-            max > 0 &&
-            verticalLink.offset <= 1;
+            onRequestPreviousDay != null && max > 0 && verticalLink.offset <= 1;
         final showBottom =
             onRequestNextDay != null &&
             max > 0 &&
@@ -489,8 +483,7 @@ class _GutterListState extends State<_GutterList> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final hours =
-        (widget.data.endMs - widget.data.startMs) ~/ 3600000;
+    final hours = (widget.data.endMs - widget.data.startMs) ~/ 3600000;
     return _NoScrollbar(
       child: ListView.builder(
         controller: _controller,
@@ -511,13 +504,14 @@ class _GutterListState extends State<_GutterList> {
             alignment: Alignment.topCenter,
             padding: const EdgeInsets.only(top: 2),
             decoration: BoxDecoration(
-              border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
+              border: Border(
+                right: BorderSide(color: colorScheme.outlineVariant),
+              ),
             ),
             child: Text(
               '$hour',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-              ),
+              style: Theme.of(context).textTheme.labelSmall
+                  ?.copyWith(color: colorScheme.onSurfaceVariant),
             ),
           );
         },
@@ -570,7 +564,9 @@ class _ColumnListState extends State<_ColumnList> {
     return Container(
       decoration: BoxDecoration(
         border: Border(
-          right: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
+          right: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
         ),
       ),
       // 波紋描画用の `Material` は列に1つだけ置く (セルごとの `Material` は
@@ -680,44 +676,41 @@ class _ChannelHeader extends StatelessWidget {
       ),
       // 波紋描画用の `Material` はヘッダー行が持つ。
       child: InkWell(
-          onTap: onTap,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              child: Row(
-                children: [
-                  if (channel.logoUrl != null)
-                    ChannelLogo(channel: channel, width: 52),
-                  if (channel.logoUrl != null) const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (channel.channelNumber.isNotEmpty)
-                          Text(
-                            channel.channelNumber,
-                            style: Theme.of(context).textTheme.labelSmall
-                                ?.copyWith(
-                                  color: colorScheme.onSurfaceVariant,
-                                ),
-                            maxLines: 1,
-                          ),
+        onTap: onTap,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+            child: Row(
+              children: [
+                if (channel.logoUrl != null)
+                  ChannelLogo(channel: channel, width: 52),
+                if (channel.logoUrl != null) const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (channel.channelNumber.isNotEmpty)
                         Text(
-                          channel.name,
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
+                          channel.channelNumber,
+                          style: Theme.of(context).textTheme.labelSmall
+                              ?.copyWith(color: colorScheme.onSurfaceVariant),
+                          maxLines: 1,
                         ),
-                      ],
-                    ),
+                      Text(
+                        channel.name,
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(fontWeight: FontWeight.bold),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
+        ),
       ),
     );
   }
@@ -790,10 +783,8 @@ class _NowLineState extends State<_NowLine> {
               ),
               child: Text(
                 label,
-                style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                  color: colorScheme.onError,
-                  height: 1.0,
-                ),
+                style: Theme.of(context).textTheme.labelSmall
+                    ?.copyWith(color: colorScheme.onError, height: 1.0),
               ),
             ),
           ),

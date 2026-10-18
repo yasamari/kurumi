@@ -10,10 +10,7 @@ import '../../epg/epg_database.dart';
 /// EPGキャッシュのチャンネル行を表示用 [Channel] に変換する純粋関数。
 ///
 /// ロゴURLは保存せず、読み出し時の `baseUrl` から組み立てる。
-Channel channelFromEpgChannelRow(
-  EpgChannel row, {
-  required String baseUrl,
-}) {
+Channel channelFromEpgChannelRow(EpgChannel row, {required String baseUrl}) {
   return Channel(
     id: row.remoteId,
     name: row.name,
@@ -21,9 +18,7 @@ Channel channelFromEpgChannelRow(
     networkId: row.networkId,
     serviceId: row.serviceId,
     channelNumber: row.channelNumber,
-    logoUrl: row.hasLogo
-        ? '$baseUrl/api/services/${row.remoteId}/logo'
-        : null,
+    logoUrl: row.hasLogo ? '$baseUrl/api/services/${row.remoteId}/logo' : null,
   );
 }
 

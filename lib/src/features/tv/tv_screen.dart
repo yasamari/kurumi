@@ -22,16 +22,13 @@ class TvScreen extends ConsumerWidget {
     return channels.when(
       skipLoadingOnReload: true,
       skipLoadingOnRefresh: true,
-      loading: () => const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      ),
+      loading: () =>
+          const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (error, stackTrace) {
         if (error is BackendUnconfiguredException) {
           return Scaffold(
             appBar: AppBar(title: const Text('テレビ')),
-            body: _Unconfigured(
-              onOpenSettings: () => context.go('/settings'),
-            ),
+            body: _Unconfigured(onOpenSettings: () => context.go('/settings')),
           );
         }
         return Scaffold(
@@ -76,9 +73,7 @@ class TvScreen extends ConsumerWidget {
                 for (final type in types)
                   _ChannelGrid(
                     items: items
-                        .where(
-                          (item) => item.channel.channelType == type,
-                        )
+                        .where((item) => item.channel.channelType == type)
                         .toList(),
                   ),
               ],
@@ -107,10 +102,8 @@ class _ChannelGrid extends ConsumerWidget {
       child: LayoutBuilder(
         builder: (context, constraints) {
           // グリッドと同じ条件で列数を見積もり、1列なら高さ可変のリストにする。
-          final usableWidth =
-              constraints.maxWidth - _padding.horizontal;
-          final singleColumn =
-              usableWidth <= _maxCrossAxisExtent + _spacing;
+          final usableWidth = constraints.maxWidth - _padding.horizontal;
+          final singleColumn = usableWidth <= _maxCrossAxisExtent + _spacing;
           if (singleColumn) {
             return ListView.separated(
               padding: _padding,
@@ -126,8 +119,7 @@ class _ChannelGrid extends ConsumerWidget {
           }
           return GridView.builder(
             padding: _padding,
-            gridDelegate:
-                const SliverGridDelegateWithMaxCrossAxisExtent(
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: _maxCrossAxisExtent,
               mainAxisSpacing: _spacing,
               crossAxisSpacing: _spacing,
@@ -165,10 +157,7 @@ class _Unconfigured extends StatelessWidget {
           const SizedBox(height: 16),
           Text('サーバーが設定されていません', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          FilledButton(
-            onPressed: onOpenSettings,
-            child: const Text('設定を開く'),
-          ),
+          FilledButton(onPressed: onOpenSettings, child: const Text('設定を開く')),
         ],
       ),
     );
@@ -190,11 +179,7 @@ class _Error extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 64, color: theme.colorScheme.error),
             const SizedBox(height: 16),
             Text('取得に失敗しました', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),

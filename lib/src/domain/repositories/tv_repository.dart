@@ -30,7 +30,10 @@ abstract class TvRepository {
   ///
   /// [quality] はKonomiTVの画質指定 (例: `original`)。Mirakurunでは無視され、
   /// `decode=1` 固定のストリームを返す。未設定時は [BackendUnconfiguredException]。
-  Future<LiveStream> getLiveStream(Channel channel, {String quality = 'original'});
+  Future<LiveStream> getLiveStream(
+    Channel channel, {
+    String quality = 'original',
+  });
 
   /// ライブ視聴で選択可能な画質一覧。
   ///

@@ -71,9 +71,8 @@ class _VideoDetailScreenState extends ConsumerState<VideoDetailScreen> {
                     Text('$error', textAlign: TextAlign.center),
                     const SizedBox(height: 16),
                     FilledButton(
-                      onPressed: () => ref.invalidate(
-                        videoDetailProvider(widget.videoId),
-                      ),
+                      onPressed: () =>
+                          ref.invalidate(videoDetailProvider(widget.videoId)),
                       child: const Text('再試行'),
                     ),
                   ],

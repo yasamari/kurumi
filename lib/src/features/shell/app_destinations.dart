@@ -5,13 +5,7 @@ import '../../domain/entities/backend_type.dart';
 /// ナビゲーションの区画。`appDestinations` および router のブランチと
 /// 同じ順序で並べる。新区画の追加時は [isSectionAvailable] の switch にも
 /// 1行追加する (網羅 switch のため書き忘れはコンパイルエラーになる)。
-enum AppSection {
-  tv,
-  videos,
-  timetable,
-  reservations,
-  settings,
-}
+enum AppSection { tv, videos, timetable, reservations, settings }
 
 /// ボトムナビ相当の行き先定義。Bar / Rail / Drawer で共有する。
 ///

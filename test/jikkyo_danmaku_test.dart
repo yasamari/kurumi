@@ -22,8 +22,14 @@ void main() {
   group('jikkyoCommentColorOf', () {
     test('固定の色は明るさによらず同じ値を返す', () {
       for (final brightness in Brightness.values) {
-        expect(jikkyoCommentColorOf('red', brightness), const Color(0xFFFF0000));
-        expect(jikkyoCommentColorOf('cyan', brightness), const Color(0xFF00FFFF));
+        expect(
+          jikkyoCommentColorOf('red', brightness),
+          const Color(0xFFFF0000),
+        );
+        expect(
+          jikkyoCommentColorOf('cyan', brightness),
+          const Color(0xFF00FFFF),
+        );
         expect(
           jikkyoCommentColorOf('purple', brightness),
           const Color(0xFFCC00FF),
@@ -32,17 +38,35 @@ void main() {
     });
 
     test('白と黒は明るさに応じて反転する', () {
-      expect(jikkyoCommentColorOf('white', Brightness.light), const Color(0xFF000000));
-      expect(jikkyoCommentColorOf('white', Brightness.dark), const Color(0xFFFFFFFF));
-      expect(jikkyoCommentColorOf('black', Brightness.light), const Color(0xFFFFFFFF));
-      expect(jikkyoCommentColorOf('black', Brightness.dark), const Color(0xFF000000));
+      expect(
+        jikkyoCommentColorOf('white', Brightness.light),
+        const Color(0xFF000000),
+      );
+      expect(
+        jikkyoCommentColorOf('white', Brightness.dark),
+        const Color(0xFFFFFFFF),
+      );
+      expect(
+        jikkyoCommentColorOf('black', Brightness.light),
+        const Color(0xFFFFFFFF),
+      );
+      expect(
+        jikkyoCommentColorOf('black', Brightness.dark),
+        const Color(0xFF000000),
+      );
     });
 
     test('未知の色名は白 (黒テーマ) / 黒 (ライトテーマ) として扱う', () {
       // 未知のトークンは `parseJikkyoCommentMail` が既定値に落とすため通常は
       // 流れないが、直接渡された場合も落ちないこと。
-      expect(jikkyoCommentColorOf('???', Brightness.light), const Color(0xFF000000));
-      expect(jikkyoCommentColorOf('???', Brightness.dark), const Color(0xFFFFFFFF));
+      expect(
+        jikkyoCommentColorOf('???', Brightness.light),
+        const Color(0xFF000000),
+      );
+      expect(
+        jikkyoCommentColorOf('???', Brightness.dark),
+        const Color(0xFFFFFFFF),
+      );
     });
   });
 
@@ -76,9 +100,7 @@ void main() {
     });
 
     test('本文とコメ番をそのまま保持する', () {
-      final danmaku = buildJikkyoDanmaku(
-        comment(no: 4242, mail: 'green'),
-      );
+      final danmaku = buildJikkyoDanmaku(comment(no: 4242, mail: 'green'));
       expect(danmaku.text, 'コメント4242');
       // 将来 findDanmaku で当たり判定した際の識別用にコメ番を保持する。
       expect(danmaku.extra, 4242);
@@ -87,9 +109,7 @@ void main() {
     test('サイズコマンドは画面共通サイズのため無視する', () {
       // `DanmakuOption.fontSize` は画面全体で1つなので per-item の表現はできない。
       // `small` を付けても種別・色が既定のまま変化しないことを確認する。
-      final danmaku = buildJikkyoDanmaku(
-        comment(no: 1, mail: 'big red'),
-      );
+      final danmaku = buildJikkyoDanmaku(comment(no: 1, mail: 'big red'));
       expect(danmaku.type, DanmakuItemType.scroll);
       expect(danmaku.color, const Color(0xFFFF0000));
     });
@@ -109,31 +129,19 @@ void main() {
 
   group('danmakuClockShouldRun', () {
     test('再生中かつ非バッファのときだけ進める', () {
-      expect(
-        danmakuClockShouldRun(playing: true, buffering: false),
-        isTrue,
-      );
+      expect(danmakuClockShouldRun(playing: true, buffering: false), isTrue);
     });
 
     test('一時停止中は止める', () {
-      expect(
-        danmakuClockShouldRun(playing: false, buffering: false),
-        isFalse,
-      );
+      expect(danmakuClockShouldRun(playing: false, buffering: false), isFalse);
     });
 
     test('バッファ中は止める (playing は停滞で変わらない)', () {
-      expect(
-        danmakuClockShouldRun(playing: true, buffering: true),
-        isFalse,
-      );
+      expect(danmakuClockShouldRun(playing: true, buffering: true), isFalse);
     });
 
     test('停止かつバッファ中も止める', () {
-      expect(
-        danmakuClockShouldRun(playing: false, buffering: true),
-        isFalse,
-      );
+      expect(danmakuClockShouldRun(playing: false, buffering: true), isFalse);
     });
   });
 
@@ -165,13 +173,7 @@ void main() {
 
   group('danmakuBirthMsOf', () {
     test('投稿時刻と録画開始の差がそのまま birth になる', () {
-      expect(
-        danmakuBirthMsOf(
-          comment: comment(no: 8),
-          syncStart: base,
-        ),
-        8000,
-      );
+      expect(danmakuBirthMsOf(comment: comment(no: 8), syncStart: base), 8000);
     });
 
     test('録画開始ちょうどは 0 になる', () {

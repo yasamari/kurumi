@@ -2,11 +2,7 @@ import 'package:flutter/material.dart';
 
 /// テレビ以外のタブで使う仮画面。
 class PlaceholderScreen extends StatelessWidget {
-  const PlaceholderScreen({
-    super.key,
-    required this.title,
-    required this.icon,
-  });
+  const PlaceholderScreen({super.key, required this.title, required this.icon});
 
   final String title;
   final IconData icon;
@@ -20,16 +16,9 @@ class PlaceholderScreen extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 64,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            Icon(icon, size: 64, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 16),
-            Text(
-              '$titleは準備中です',
-              style: theme.textTheme.titleMedium,
-            ),
+            Text('$titleは準備中です', style: theme.textTheme.titleMedium),
           ],
         ),
       ),

@@ -73,7 +73,12 @@ Uint8List _sectionBytes({
   final crc = mpeg2CrcOf(without);
   final out = BytesBuilder()
     ..add(without)
-    ..add([(crc >> 24) & 0xFF, (crc >> 16) & 0xFF, (crc >> 8) & 0xFF, crc & 0xFF]);
+    ..add([
+      (crc >> 24) & 0xFF,
+      (crc >> 16) & 0xFF,
+      (crc >> 8) & 0xFF,
+      crc & 0xFF,
+    ]);
   return out.toBytes();
 }
 

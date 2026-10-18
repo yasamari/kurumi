@@ -206,7 +206,10 @@ img.ExifData buildCaptureExif({
     if (bytes[i] != signature[i]) return null;
   }
   // シグネチャ直後の長さ (4B) + 種別 (4B) が `IHDR` のものだけ読む。
-  if (bytes[12] != 73 || bytes[13] != 72 || bytes[14] != 68 || bytes[15] != 82) {
+  if (bytes[12] != 73 ||
+      bytes[13] != 72 ||
+      bytes[14] != 68 ||
+      bytes[15] != 82) {
     return null;
   }
   final data = ByteData.sublistView(bytes);
@@ -241,10 +244,7 @@ double captureOverlayPixelRatio({
   if (overlayWidth <= 0 || overlayHeight <= 0) {
     return (dstX: 0, dstY: 0, dstW: baseWidth, dstH: baseHeight);
   }
-  final scale = math.min(
-    baseWidth / overlayWidth,
-    baseHeight / overlayHeight,
-  );
+  final scale = math.min(baseWidth / overlayWidth, baseHeight / overlayHeight);
   final dstW = (overlayWidth * scale).round();
   final dstH = (overlayHeight * scale).round();
   return (
@@ -348,10 +348,7 @@ Uint8List composeCaptureBytes(CaptureComposeArgs args) {
 /// よい — 撮像は `screenshot-raw subtitles` で mpv 描画済みの字幕を拾うため、
 /// アプリが `sub-visibility` で直接制御している字幕がそのまま写る。
 Future<Uint8List?> takePlayerScreenshot(Player player) {
-  return player.screenshot(
-    format: 'image/png',
-    includeLibassSubtitles: true,
-  );
+  return player.screenshot(format: 'image/png', includeLibassSubtitles: true);
 }
 
 /// 撮像に使う弾幕境界のキーを選ぶ。
@@ -396,9 +393,7 @@ Future<({Uint8List bytes, int width, int height})?> captureDanmakuOverlay(
   if (boundary.size.isEmpty) return null;
   final image = await boundary.toImage(pixelRatio: pixelRatio);
   try {
-    final byteData = await image.toByteData(
-      format: ui.ImageByteFormat.rawRgba,
-    );
+    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
     if (byteData == null) return null;
     return (
       bytes: byteData.buffer.asUint8List(
@@ -476,9 +471,8 @@ Future<void> runPlayerCapture({
 }) async {
   void notifyFailure(String message) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(message)));
   }
 
   Uint8List? base;

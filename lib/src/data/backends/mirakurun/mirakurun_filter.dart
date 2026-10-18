@@ -48,6 +48,7 @@ typedef _SeenService = ({
   String tunerChannel,
   int eventId,
 });
+
 /// 仕様:
 /// - `/api/programs` を参照し、現在放送中の番組があるサービスだけ残す
 /// - 同じ放送のサービス (サブチャンネル) で同じ `eventId` は1つにまとめる
@@ -75,7 +76,7 @@ List<ChannelItem> buildMirakurunChannelItems({
   for (final service in services) {
     final candidates =
         programsByService['${service.networkId}:${service.serviceId}'] ??
-            const <MirakurunProgramDto>[];
+        const <MirakurunProgramDto>[];
 
     MirakurunProgramDto? present;
     MirakurunProgramDto? next;
@@ -172,8 +173,7 @@ Map<String, String> mirakurunDetailStrings(Map<String, dynamic> extended) {
     if (value == null) continue;
     final text = value is String ? value : value.toString();
     if (text.isEmpty) continue;
-    detail[formatProgramText(entry.key)] =
-        formatProgramText(text);
+    detail[formatProgramText(entry.key)] = formatProgramText(text);
   }
   return detail;
 }

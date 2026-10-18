@@ -6,8 +6,7 @@ import '../../../domain/repositories/video_repository.dart';
 import 'konomi_api_client.dart';
 import 'konomi_video_filter.dart';
 import 'konomi_video_stream.dart' hide needsVideoDeinterlace;
-import 'konomi_video_stream.dart' as video_stream
-    show needsVideoDeinterlace;
+import 'konomi_video_stream.dart' as video_stream show needsVideoDeinterlace;
 
 /// KonomiTV向け [VideoRepository] 実装。
 ///
@@ -15,7 +14,7 @@ import 'konomi_video_stream.dart' as video_stream
 /// ページサイズはサーバー固定で30件。
 class KonomiVideoRepository implements VideoRepository {
   KonomiVideoRepository(Dio dio, {required this.baseUrl})
-      : _client = KonomiApiClient(dio);
+    : _client = KonomiApiClient(dio);
 
   final String baseUrl;
   final KonomiApiClient _client;
@@ -102,16 +101,15 @@ class KonomiVideoRepository implements VideoRepository {
   String getDefaultVideoQuality() => defaultKonomiVideoQuality;
 
   @override
-  String normalizeVideoQuality(String quality) => normalizeKonomiVideoQuality(quality);
+  String normalizeVideoQuality(String quality) =>
+      normalizeKonomiVideoQuality(quality);
 
   @override
-  bool isOriginalVideoQuality(String quality) => isOriginalKonomiVideoQuality(quality);
+  bool isOriginalVideoQuality(String quality) =>
+      isOriginalKonomiVideoQuality(quality);
 
   @override
-  bool needsVideoDeinterlace({
-    required bool isOriginal,
-    String? videoCodec,
-  }) {
+  bool needsVideoDeinterlace({required bool isOriginal, String? videoCodec}) {
     // 同名のトップレベル純粋関数に委譲する (修飾なしで呼ぶとこのメソッド自身の
     // 無限再帰になるため、プレフィックス付きで参照する)。
     return video_stream.needsVideoDeinterlace(

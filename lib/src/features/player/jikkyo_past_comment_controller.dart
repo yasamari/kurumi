@@ -25,10 +25,10 @@ class JikkyoPastCommentController extends ChangeNotifier
   JikkyoPastCommentController({
     required VideoProgram video,
     JikkyoKakologClient? kakolog,
-  })  : _kakolog = kakolog ?? JikkyoKakologClient(),
-        _jkId = _resolveJkId(video),
-        _syncStart = _resolveSyncStart(video),
-        _fetchEnd = _resolveFetchEnd(video) {
+  }) : _kakolog = kakolog ?? JikkyoKakologClient(),
+       _jkId = _resolveJkId(video),
+       _syncStart = _resolveSyncStart(video),
+       _fetchEnd = _resolveFetchEnd(video) {
     if (_jkId == null) {
       _state = const JikkyoCommentsState(
         status: JikkyoCommentStatus.unsupported,

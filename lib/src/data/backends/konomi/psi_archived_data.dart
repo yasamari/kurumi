@@ -199,15 +199,16 @@ class PsiArchivedDataParser {
         _timeListCount = 0;
         position = sectionListPosition + dictionaryDataSize % 2;
       } else {
-        position +=
-            dictionaryLen * 2 + ((dictionaryDataSize + 1) ~/ 2) * 2;
+        position += dictionaryLen * 2 + ((dictionaryDataSize + 1) ~/ 2) * 2;
       }
 
       position += _codeListPosition;
       timeListPosition += _timeListCount * 4;
-      for (;
+      for (
+        ;
         _timeListCount < timeListLen;
-        _timeListCount++, timeListPosition += 4) {
+        _timeListCount++, timeListPosition += 4
+      ) {
         var initTime = _initTime;
         var currTime = _currTime;
         final absTime = u32(timeListPosition);
@@ -223,17 +224,17 @@ class PsiArchivedDataParser {
             final sec =
                 ((currTime + 0x40000000 - initTime) & 0x3FFFFFFF) / 11250;
             if (sec >= 0) {
-              for (;
+              for (
+                ;
                 _codeCount < n;
-                _codeCount++, position += 2, _codeListPosition += 2) {
+                _codeCount++, position += 2, _codeListPosition += 2
+              ) {
                 final code = u16(position) - 4096;
                 final dict = _dict![code]!;
                 final pid = _pids![code];
                 final packets = Uint8List.fromList(dict);
                 setTsPacketHeader(packets, pid, _counters);
-                out.add(
-                  PsiTsChunk(second: sec, packets: packets, pid: pid),
-                );
+                out.add(PsiTsChunk(second: sec, packets: packets, pid: pid));
               }
               _codeCount = 0;
             } else {

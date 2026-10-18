@@ -79,9 +79,9 @@ class VideoDetailPane extends StatelessWidget {
                       onPressed: recordedFile == null
                           ? null
                           : () => showVideoFileInfoSheet(
-                                context: context,
-                                info: recordedFile,
-                              ),
+                              context: context,
+                              info: recordedFile,
+                            ),
                       icon: const Icon(Icons.info_outline),
                       tooltip: 'ファイル情報',
                     ),

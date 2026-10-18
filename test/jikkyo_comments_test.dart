@@ -33,7 +33,10 @@ void main() {
   test('コメント番が重複したら既存を優先して1件にまとめる', () {
     final merged = mergeJikkyoComments(
       existing: [comment(1, content: '既存')],
-      incoming: [comment(1, content: '重複'), comment(2)],
+      incoming: [
+        comment(1, content: '重複'),
+        comment(2),
+      ],
     );
     expect(merged.map((c) => c.no).toList(), [1, 2]);
     expect(merged.first.content, '既存');
@@ -76,7 +79,10 @@ void main() {
   });
 
   test('受け皿が空なら空のままになる', () {
-    expect(mergeJikkyoComments(existing: const [], incoming: const []), isEmpty);
+    expect(
+      mergeJikkyoComments(existing: const [], incoming: const []),
+      isEmpty,
+    );
   });
 
   test('コメ番に欠番があっても壊れない', () {

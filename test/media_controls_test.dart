@@ -53,10 +53,7 @@ void main() {
     });
 
     test('EIT未受信時はチャンネル名をタイトルにする', () {
-      final item = liveMediaItem(
-        channelId: '1',
-        channelTitle: '011 NHK総合',
-      );
+      final item = liveMediaItem(channelId: '1', channelTitle: '011 NHK総合');
       expect(item.title, '011 NHK総合');
       expect(item.artist, isNull);
       expect(item.artUri, isNull);

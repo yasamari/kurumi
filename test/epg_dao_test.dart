@@ -58,8 +58,7 @@ void main() {
   late EpgDao dao;
 
   // 2026-09-29 10:30 JST 相当の固定時刻。
-  final nowMs =
-      DateTime(2026, 9, 29, 10, 30).millisecondsSinceEpoch;
+  final nowMs = DateTime(2026, 9, 29, 10, 30).millisecondsSinceEpoch;
 
   setUp(() {
     db = EpgDatabase.forTesting(NativeDatabase.memory());
@@ -135,10 +134,7 @@ void main() {
       ],
     );
 
-    final rows = await dao.nowOnAir(
-      sourceBackend: _backend,
-      nowMs: nowMs,
-    );
+    final rows = await dao.nowOnAir(sourceBackend: _backend, nowMs: nowMs);
 
     expect(rows.map((r) => r.name), ['A局', 'B局']);
     expect(rows[0].present?.title, 'A現在');
@@ -185,10 +181,7 @@ void main() {
       ],
     );
 
-    final rows = await dao.nowOnAir(
-      sourceBackend: _backend,
-      nowMs: nowMs,
-    );
+    final rows = await dao.nowOnAir(sourceBackend: _backend, nowMs: nowMs);
 
     expect(rows.map((r) => r.name), ['A局']);
   });
@@ -230,10 +223,7 @@ void main() {
       ],
     );
 
-    final rows = await dao.nowOnAir(
-      sourceBackend: _backend,
-      nowMs: nowMs,
-    );
+    final rows = await dao.nowOnAir(sourceBackend: _backend, nowMs: nowMs);
 
     expect(rows.map((r) => r.name), ['親局']);
   });
@@ -283,10 +273,7 @@ void main() {
       ],
     );
 
-    final rows = await dao.nowOnAir(
-      sourceBackend: _backend,
-      nowMs: nowMs,
-    );
+    final rows = await dao.nowOnAir(sourceBackend: _backend, nowMs: nowMs);
 
     expect(rows.map((r) => r.name), ['BS-TBS']);
   });
@@ -331,10 +318,7 @@ void main() {
       ],
     );
 
-    final rows = await dao.nowOnAir(
-      sourceBackend: _backend,
-      nowMs: nowMs,
-    );
+    final rows = await dao.nowOnAir(sourceBackend: _backend, nowMs: nowMs);
 
     expect(rows.map((r) => r.name), ['A局', 'B局']);
   });
@@ -379,10 +363,7 @@ void main() {
       ],
     );
 
-    final rows = await dao.nowOnAir(
-      sourceBackend: _backend,
-      nowMs: nowMs,
-    );
+    final rows = await dao.nowOnAir(sourceBackend: _backend, nowMs: nowMs);
 
     expect(rows, hasLength(2));
   });
@@ -423,10 +404,7 @@ void main() {
       ],
     );
 
-    final rows = await dao.nowOnAir(
-      sourceBackend: _backend,
-      nowMs: nowMs,
-    );
+    final rows = await dao.nowOnAir(sourceBackend: _backend, nowMs: nowMs);
 
     expect(rows.map((r) => r.name), ['親局', 'サブ']);
   });
@@ -470,10 +448,7 @@ void main() {
       ],
     );
 
-    final rows = await dao.nowOnAir(
-      sourceBackend: _backend,
-      nowMs: nowMs,
-    );
+    final rows = await dao.nowOnAir(sourceBackend: _backend, nowMs: nowMs);
 
     expect(rows, hasLength(1));
     expect(rows[0].present?.title, '開始ちょうど');
@@ -505,10 +480,7 @@ void main() {
       fetchedAtMs: nowMs,
     );
 
-    final rows = await dao.nowOnAir(
-      sourceBackend: _backend,
-      nowMs: nowMs,
-    );
+    final rows = await dao.nowOnAir(sourceBackend: _backend, nowMs: nowMs);
 
     expect(rows, isEmpty);
   });

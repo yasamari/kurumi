@@ -1268,4 +1268,3 @@ const Map<int, String> aribGaiji2Unicode = {
   0x764A: "\u{9EB4}",
   0x764B: "\u{9EB5}",
 };
-

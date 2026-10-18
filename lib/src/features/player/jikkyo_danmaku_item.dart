@@ -54,10 +54,7 @@ int danmakuBirthMsOf({
 /// バッファ (`paused-for-cache`) 中は映像が止まっているため、弾幕の
 /// スクロールも止める (時計を凍結する)。一時停止中も同様。mpv の `playing`
 /// はキャッシュ停滞で変わらないため、`buffering` との合成が必要。
-bool danmakuClockShouldRun({
-  required bool playing,
-  required bool buffering,
-}) {
+bool danmakuClockShouldRun({required bool playing, required bool buffering}) {
   return playing && !buffering;
 }
 

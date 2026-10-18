@@ -8,11 +8,7 @@ import 'package:kurumi/src/features/tv/tv_providers.dart';
 
 const _hourMs = 3600 * 1000;
 
-ChannelItem _item({
-  required String id,
-  int? presentEndMs,
-  int? nextStartMs,
-}) {
+ChannelItem _item({required String id, int? presentEndMs, int? nextStartMs}) {
   TvProgram? program(int eventId, int startMs, int endMs) {
     return TvProgram(
       eventId: eventId,

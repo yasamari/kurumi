@@ -35,9 +35,7 @@ String formatSamplingRate(int hz) {
   if (hz < 0) return unknownMediaValue;
   if (hz < 1000) return '$hz Hz';
   final khz = hz / 1000;
-  final text = khz % 1 == 0
-      ? khz.toStringAsFixed(0)
-      : khz.toStringAsFixed(1);
+  final text = khz % 1 == 0 ? khz.toStringAsFixed(0) : khz.toStringAsFixed(1);
   return '$text kHz';
 }
 

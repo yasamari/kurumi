@@ -30,13 +30,12 @@ class JikkyoCommentController extends ChangeNotifier
     implements JikkyoCommentSource {
   JikkyoCommentController({required String channelId})
     : _channelId = channelId,
-      _state =
-          channelId.isEmpty
-              ? const JikkyoCommentsState(
-                status: JikkyoCommentStatus.unsupported,
-                message: unsupportedChannelMessage,
-              )
-              : const JikkyoCommentsState();
+      _state = channelId.isEmpty
+          ? const JikkyoCommentsState(
+              status: JikkyoCommentStatus.unsupported,
+              message: unsupportedChannelMessage,
+            )
+          : const JikkyoCommentsState();
 
   /// 実況チャンネル ID (`jk1` 等)。空文字なら実非対応。
   final String _channelId;
@@ -57,6 +56,7 @@ class JikkyoCommentController extends ChangeNotifier
 
   /// バックログとライブコメントの境界コメ番。`null` は未確定。
   int? _backfillBoundary;
+
   /// 現在の状態。
   @override
   JikkyoCommentsState get state => _state;

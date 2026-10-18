@@ -60,6 +60,7 @@ int _danmakuRetentionMs(VideoProgram video) {
   return end.difference(start).inMilliseconds +
       const Duration(seconds: 30).inMilliseconds;
 }
+
 /// HLS視聴セッション ID を生成する。クライアント側で適宜生成した
 /// ランダム値でよく、衝突しなければ形式は問わない (32桁hex)。
 String generateVideoSessionId() {
@@ -132,10 +133,7 @@ class _SettingsGuide extends StatelessWidget {
             style: TextStyle(color: Colors.white, fontSize: 16),
           ),
           const SizedBox(height: 16),
-          FilledButton(
-            onPressed: onOpenSettings,
-            child: const Text('設定を開く'),
-          ),
+          FilledButton(onPressed: onOpenSettings, child: const Text('設定を開く')),
         ],
       ),
     );
@@ -174,11 +172,7 @@ class _VideoPlayBody extends ConsumerWidget {
 /// ここが持つ。配置は [PlayerSplitLayout] に任せ、向きでサブツリーごと作り
 /// 直されないようにしている。
 class _VideoPlayer extends ConsumerStatefulWidget {
-  const _VideoPlayer({
-    super.key,
-    required this.video,
-    required this.quality,
-  });
+  const _VideoPlayer({super.key, required this.video, required this.quality});
 
   final VideoProgram video;
   final String quality;
@@ -205,9 +199,8 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           opacity: preferences.settings.opacity,
           speed: preferences.settings.speed,
         ),
-    onSubtitlesEnabledChanged: (enabled) => ref
-        .read(appSettingsProvider.notifier)
-        .setSubtitlesEnabled(enabled),
+    onSubtitlesEnabledChanged: (enabled) =>
+        ref.read(appSettingsProvider.notifier).setSubtitlesEnabled(enabled),
   );
   late final JikkyoPastCommentController _pastComments;
   late final String _sessionId;
@@ -222,10 +215,13 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
 
   /// 弾幕の共有状態。向きに依存しない位置なので、画面回転・フルスクリーンで
   /// 作り直されても描画中の弾幕が保たれる ([JikkyoDanmakuOverlay] 参照)。
-  late final DanmakuClock _danmakuClock =
-      DanmakuClock(initialMs: 0, running: false);
-  late final DanmakuStore<int> _danmakuStore =
-      DanmakuStore<int>(retentionMs: _danmakuRetentionMs(widget.video));
+  late final DanmakuClock _danmakuClock = DanmakuClock(
+    initialMs: 0,
+    running: false,
+  );
+  late final DanmakuStore<int> _danmakuStore = DanmakuStore<int>(
+    retentionMs: _danmakuRetentionMs(widget.video),
+  );
 
   VideoStreamInfo? _stream;
   String? _streamError;
@@ -284,11 +280,13 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
       ),
     );
     try {
-      _stream = ref.read(videoRepositoryProvider).getVideoStream(
-        videoId: widget.video.id,
-        quality: widget.quality,
-        sessionId: _sessionId,
-      );
+      _stream = ref
+          .read(videoRepositoryProvider)
+          .getVideoStream(
+            videoId: widget.video.id,
+            quality: widget.quality,
+            sessionId: _sessionId,
+          );
     } on BackendUnconfiguredException {
       _streamError = 'サーバーが設定されていません';
     }
@@ -310,16 +308,19 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     // 弾幕時計は再生位置に追従させる。位置通知の間は壁時計で外挿して滑らかに
     // 進め、ずれが開いたら補正する。一時停止・バッファ中は凍結する。
     _playingSub = _playback.player.stream.playing.listen(_onPlayingForDanmaku);
-    _bufferingSub =
-        _playback.player.stream.buffering.listen(_onBufferingForDanmaku);
-    _danmakuPositionSub =
-        _playback.player.stream.position.listen(_onPositionForDanmaku);
+    _bufferingSub = _playback.player.stream.buffering.listen(
+      _onBufferingForDanmaku,
+    );
+    _danmakuPositionSub = _playback.player.stream.position.listen(
+      _onPositionForDanmaku,
+    );
     // CM自動スキップ。設定オンの間、CM区間に入ったら終端へ飛ばす。
     // 購読はここだけで行い、映像の再構築には波及させない。
     _cmSkipSub = _playback.player.stream.position.listen(_onPositionForCmSkip);
     // 再生尺が分かり次第、システム通知の番組情報と再生状態に反映する。
-    _durationSub =
-        _playback.player.stream.duration.listen(_onDurationForSystemMedia);
+    _durationSub = _playback.player.stream.duration.listen(
+      _onDurationForSystemMedia,
+    );
     if (_stream != null) {
       _startKeepAlive();
       _initialize();
@@ -339,11 +340,13 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   Future<void> _keepAlive() async {
     if (!mounted) return;
     try {
-      await ref.read(videoRepositoryProvider).keepVideoStreamAlive(
-        videoId: widget.video.id,
-        quality: widget.quality,
-        sessionId: _sessionId,
-      );
+      await ref
+          .read(videoRepositoryProvider)
+          .keepVideoStreamAlive(
+            videoId: widget.video.id,
+            quality: widget.quality,
+            sessionId: _sessionId,
+          );
     } catch (_) {
       // 維持失敗は再生エラーとして表面化するためここでは無視する。
     }
@@ -630,9 +633,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     if (_streamError != null) {
       return PlayerPlaceholderScaffold(
         backFallbackPath: '/videos',
-        child: _SettingsGuide(
-          onOpenSettings: () => context.go('/settings'),
-        ),
+        child: _SettingsGuide(onOpenSettings: () => context.go('/settings')),
       );
     }
     // PiP への入退室を購読する。向きと同じく親を差し替えず、矩形と情報パネルの
@@ -640,8 +641,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     // この State と mpv のプレイヤーが失われる)。
     return ValueListenableBuilder<bool>(
       valueListenable: PipMode.instance.active,
-      builder: (context, pictureInPicture, _) =>
-          _buildLayout(pictureInPicture),
+      builder: (context, pictureInPicture, _) => _buildLayout(pictureInPicture),
     );
   }
 
@@ -679,84 +679,84 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           onKeyEvent: _onKeyEvent,
           child: PlayerVideoView(
             videoController: _playback.videoController,
-          topButtonBar: buildPlayerTopButtonBar(
-            title: widget.video.title,
-            backFallbackPath: '/videos',
-          ),
-          layout: PlayerControlsLayout.seekable,
-          // PiP 中は標準コントロールを出さない (操作はシステムの PiP ボタンと
-          // 画面タップで戻ることになり、Flutter 側では触れないため)。
-          showControls: !pictureInPicture,
-          cmSections: cmSections,
-          // ホバー位置のサムネイル。KonomiTV のタイル並び画像から切り出す。
-          // null (未生成・非対応) のときはプレビューを出さない。
-          seekThumbnail: widget.video.thumbnailTiles,
-          // コメント数グラフ。実況対応チャンネルのときだけ非 null にする
-          // (取得前でも渡すため、コメント到着でフォークの切替は起きない)。
-          commentGraph: pastComments.isSupported ? _commentGraph : null,
-          seekableBottomButtonBar: [
-            const MaterialPositionIndicator(),
-            // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
-            CmSkipButton(player: _playback.player, cmSections: cmSections),
-            const Spacer(),
-            CaptureButton(onPressed: () => _capture(withDanmaku: false)),
-            DanmakuCaptureButton(
-              onPressed: () => _capture(withDanmaku: true),
+            topButtonBar: buildPlayerTopButtonBar(
+              title: widget.video.title,
+              backFallbackPath: '/videos',
             ),
-            SubtitleToggleButton(
-              enabled: _playback.subtitlesEnabled,
-              onToggled: _playback.toggleSubtitles,
-            ),
-            settingsButton(),
-            const PipModeButton(),
-            const MaterialFullscreenButton(),
-          ],
-          seekableDesktopBottomButtonBar: [
-            const MaterialDesktopSkipPreviousButton(),
-            const MaterialDesktopPlayOrPauseButton(),
-            const MaterialDesktopSkipNextButton(),
-            const MaterialDesktopVolumeButton(),
-            const MaterialDesktopPositionIndicator(),
-            // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
-            CmSkipButton(player: _playback.player, cmSections: cmSections),
-            const Spacer(),
-            CaptureButton(onPressed: () => _capture(withDanmaku: false)),
-            DanmakuCaptureButton(
-              onPressed: () => _capture(withDanmaku: true),
-            ),
-            SubtitleToggleButton(
-              enabled: _playback.subtitlesEnabled,
-              onToggled: _playback.toggleSubtitles,
-            ),
-            settingsButton(),
-            const PipModeButton(),
-            // デスクトップでは PiP ボタン (Android 専用) の場所 情報パネルを
-            // 隠すボタンになる。
-            InfoPanelToggleButton(
-              visible: infoPanel.visible,
-              onToggled: infoPanel.toggle,
-            ),
-            const MaterialDesktopFullscreenButton(),
-          ],
-          danmaku: pastComments.isSupported
-              ? JikkyoDanmakuLayer(
-                  displayAspect: _playback.videoDisplayAspect,
-                  repaintKey: _danmakuBoundaryKey,
-                  fullscreenRepaintKey: _danmakuFullscreenBoundaryKey,
-                  child: JikkyoDanmakuOverlay(
-                    controller: pastComments,
-                    store: _danmakuStore,
-                    clock: _danmakuClock,
-                    preferences: _playback.danmakuPreferences,
-                    birthMsOf: (comment) => danmakuBirthMsOf(
-                      comment: comment,
-                      syncStart: pastComments.syncStart,
+            layout: PlayerControlsLayout.seekable,
+            // PiP 中は標準コントロールを出さない (操作はシステムの PiP ボタンと
+            // 画面タップで戻ることになり、Flutter 側では触れないため)。
+            showControls: !pictureInPicture,
+            cmSections: cmSections,
+            // ホバー位置のサムネイル。KonomiTV のタイル並び画像から切り出す。
+            // null (未生成・非対応) のときはプレビューを出さない。
+            seekThumbnail: widget.video.thumbnailTiles,
+            // コメント数グラフ。実況対応チャンネルのときだけ非 null にする
+            // (取得前でも渡すため、コメント到着でフォークの切替は起きない)。
+            commentGraph: pastComments.isSupported ? _commentGraph : null,
+            seekableBottomButtonBar: [
+              const MaterialPositionIndicator(),
+              // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
+              CmSkipButton(player: _playback.player, cmSections: cmSections),
+              const Spacer(),
+              CaptureButton(onPressed: () => _capture(withDanmaku: false)),
+              DanmakuCaptureButton(
+                onPressed: () => _capture(withDanmaku: true),
+              ),
+              SubtitleToggleButton(
+                enabled: _playback.subtitlesEnabled,
+                onToggled: _playback.toggleSubtitles,
+              ),
+              settingsButton(),
+              const PipModeButton(),
+              const MaterialFullscreenButton(),
+            ],
+            seekableDesktopBottomButtonBar: [
+              const MaterialDesktopSkipPreviousButton(),
+              const MaterialDesktopPlayOrPauseButton(),
+              const MaterialDesktopSkipNextButton(),
+              const MaterialDesktopVolumeButton(),
+              const MaterialDesktopPositionIndicator(),
+              // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。
+              CmSkipButton(player: _playback.player, cmSections: cmSections),
+              const Spacer(),
+              CaptureButton(onPressed: () => _capture(withDanmaku: false)),
+              DanmakuCaptureButton(
+                onPressed: () => _capture(withDanmaku: true),
+              ),
+              SubtitleToggleButton(
+                enabled: _playback.subtitlesEnabled,
+                onToggled: _playback.toggleSubtitles,
+              ),
+              settingsButton(),
+              const PipModeButton(),
+              // デスクトップでは PiP ボタン (Android 専用) の場所 情報パネルを
+              // 隠すボタンになる。
+              InfoPanelToggleButton(
+                visible: infoPanel.visible,
+                onToggled: infoPanel.toggle,
+              ),
+              const MaterialDesktopFullscreenButton(),
+            ],
+            danmaku: pastComments.isSupported
+                ? JikkyoDanmakuLayer(
+                    displayAspect: _playback.videoDisplayAspect,
+                    repaintKey: _danmakuBoundaryKey,
+                    fullscreenRepaintKey: _danmakuFullscreenBoundaryKey,
+                    child: JikkyoDanmakuOverlay(
+                      controller: pastComments,
+                      store: _danmakuStore,
+                      clock: _danmakuClock,
+                      preferences: _playback.danmakuPreferences,
+                      birthMsOf: (comment) => danmakuBirthMsOf(
+                        comment: comment,
+                        syncStart: pastComments.syncStart,
+                      ),
                     ),
-                  ),
-                )
-              : null,
-          errorMessage: _playback.errorMessage,
-          onRetry: _open,
+                  )
+                : null,
+            errorMessage: _playback.errorMessage,
+            onRetry: _open,
           ),
         );
       },

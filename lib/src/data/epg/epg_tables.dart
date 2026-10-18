@@ -72,16 +72,13 @@ class EpgPrograms extends Table {
   TextColumn get description => text().withDefault(const Constant(''))();
 
   /// 表示用ジャンルラベル配列のJSON。既定 `'[]'`。
-  TextColumn get genresJson =>
-      text().withDefault(const Constant('[]'))();
+  TextColumn get genresJson => text().withDefault(const Constant('[]'))();
 
   /// 番組詳細 (キー→説明文) のJSON。既定 `'{}'`。
-  TextColumn get detailJson =>
-      text().withDefault(const Constant('{}'))();
+  TextColumn get detailJson => text().withDefault(const Constant('{}'))();
 
   @override
-  Set<Column> get primaryKey =>
-      {sourceBackend, networkId, serviceId, eventId};
+  Set<Column> get primaryKey => {sourceBackend, networkId, serviceId, eventId};
 }
 
 /// EPG同期状態テーブル。

@@ -56,10 +56,7 @@ class CaptureListPanel extends StatelessWidget {
   }
 
   /// 拡大ダイアログ。画像だけを表示する (画像・枠外タップで閉じる)。
-  Future<void> _showCaptureDetail(
-    BuildContext context,
-    CaptureEntry entry,
-  ) {
+  Future<void> _showCaptureDetail(BuildContext context, CaptureEntry entry) {
     return showDialog<void>(
       context: context,
       builder: (context) => Dialog(

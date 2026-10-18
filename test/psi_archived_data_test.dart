@@ -74,10 +74,7 @@ void main() {
 
     test('マジック不正で例外を送出する', () {
       final parser = PsiArchivedDataParser();
-      expect(
-        () => parser.addBytes(Uint8List(32)),
-        throwsA(isA<StateError>()),
-      );
+      expect(() => parser.addBytes(Uint8List(32)), throwsA(isA<StateError>()));
     });
   });
 }

@@ -33,7 +33,7 @@ const _retentionMs = 60000;
 /// `DanmakuScreen` の 1 画面分の窓管理を模したもの。
 class _View {
   _View(this.store, {int? trackCount})
-      : trackCount = trackCount ?? (_viewHeight / _danmakuHeight).floor();
+    : trackCount = trackCount ?? (_viewHeight / _danmakuHeight).floor();
 
   final DanmakuStore<int> store;
   final int trackCount;
@@ -46,13 +46,14 @@ class _View {
   bool _cursorsInit = false;
 
   ScrollTrackAllocator _newTracks() => ScrollTrackAllocator(
-        trackCount: trackCount,
-        viewWidth: _viewWidth,
-        durationMs: _durationMs,
-      );
+    trackCount: trackCount,
+    viewWidth: _viewWidth,
+    durationMs: _durationMs,
+  );
 
   void _initCursors(int now) {
-    _cursorBirth = (now - trackReplaySpanMs(durationMs: _durationMs)).floor() - 1;
+    _cursorBirth =
+        (now - trackReplaySpanMs(durationMs: _durationMs)).floor() - 1;
     _cursorsInit = true;
   }
 
@@ -108,7 +109,8 @@ class _View {
   }
 }
 
-DanmakuItem<int> _danmaku(int birth, int length, int serial) => DanmakuItem<int>(
+DanmakuItem<int> _danmaku(int birth, int length, int serial) =>
+    DanmakuItem<int>(
       content: DanmakuContentItem<int>('#$serial', extra: serial),
       width: length * 26.0 + 2.0,
       height: _danmakuHeight,
@@ -197,7 +199,9 @@ void main() {
           };
           for (final entry in existing.entries) {
             final track = freshTracks[entry.key];
-            if (track != null && track != entry.value) mismatches.add(entry.key);
+            if (track != null && track != entry.value) {
+              mismatches.add(entry.key);
+            }
           }
           expect(fresh.alive, isNotEmpty);
         },

@@ -17,14 +17,14 @@ class JikkyoKakologException implements Exception {
 /// (`recorded_video` の `recording_start/end_time`) を指定する。
 class JikkyoKakologClient {
   JikkyoKakologClient()
-      : _dio = Dio(
-          BaseOptions(
-            baseUrl: 'https://jikkyo.tsukumijima.net',
-            connectTimeout: const Duration(seconds: 10),
-            // 過去ログ応答は重いためサーバー実装に合わせて30秒待つ
-            receiveTimeout: const Duration(seconds: 30),
-          ),
-        );
+    : _dio = Dio(
+        BaseOptions(
+          baseUrl: 'https://jikkyo.tsukumijima.net',
+          connectTimeout: const Duration(seconds: 10),
+          // 過去ログ応答は重いためサーバー実装に合わせて30秒待つ
+          receiveTimeout: const Duration(seconds: 30),
+        ),
+      );
 
   final Dio _dio;
 
@@ -65,9 +65,7 @@ class JikkyoKakologClient {
         },
       );
     } on DioException {
-      throw const JikkyoKakologException(
-        '過去ログAPIに接続できませんでした',
-      );
+      throw const JikkyoKakologException('過去ログAPIに接続できませんでした');
     }
     final data = response.data;
     if (data is Map<String, dynamic> && data['error'] is String) {

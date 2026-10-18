@@ -28,15 +28,8 @@ void main() {
     ];
 
     test('種別ごとに表示順で取り出す', () {
-      expect(channelIdsOfSameType(items, ChannelType.gr()), [
-        '1',
-        '2',
-        '3',
-      ]);
-      expect(channelIdsOfSameType(items, ChannelType.bs()), [
-        '10',
-        '11',
-      ]);
+      expect(channelIdsOfSameType(items, ChannelType.gr()), ['1', '2', '3']);
+      expect(channelIdsOfSameType(items, ChannelType.bs()), ['10', '11']);
       expect(channelIdsOfSameType(items, ChannelType.catv()), ['20']);
     });
 

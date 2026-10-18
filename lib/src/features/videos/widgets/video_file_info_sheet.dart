@@ -49,10 +49,7 @@ class _VideoFileInfoBody extends StatelessWidget {
         ),
         const SizedBox(height: 8),
         _InfoRow(label: 'ファイルパス', value: info.filePath, selectable: true),
-        _InfoRow(
-          label: 'ファイルサイズ',
-          value: formatFileSize(info.fileSize),
-        ),
+        _InfoRow(label: 'ファイルサイズ', value: formatFileSize(info.fileSize)),
         _InfoRow(
           label: '録画期間',
           value: formatRecordingPeriod(
@@ -65,10 +62,7 @@ class _VideoFileInfoBody extends StatelessWidget {
           value: formatFileDateTime(info.fileModifiedAt),
         ),
         const Divider(height: 32),
-        _InfoRow(
-          label: '動画コーデック',
-          value: formatMediaText(info.videoCodec),
-        ),
+        _InfoRow(label: '動画コーデック', value: formatMediaText(info.videoCodec)),
         _InfoRow(
           label: '解像度',
           value: formatResolution(info.resolutionWidth, info.resolutionHeight),
@@ -79,15 +73,9 @@ class _VideoFileInfoBody extends StatelessWidget {
               ? unknownMediaValue
               : formatFrameRate(info.frameRate!),
         ),
-        _InfoRow(
-          label: 'スキャン方式',
-          value: formatScanType(info.scanType),
-        ),
+        _InfoRow(label: 'スキャン方式', value: formatScanType(info.scanType)),
         const Divider(height: 32),
-        _InfoRow(
-          label: '音声コーデック',
-          value: formatMediaText(info.audioCodec),
-        ),
+        _InfoRow(label: '音声コーデック', value: formatMediaText(info.audioCodec)),
         _InfoRow(
           label: '音声チャンネル',
           value: formatAudioChannel(info.audioChannel),

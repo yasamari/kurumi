@@ -24,17 +24,11 @@ void main() {
     });
 
     test('Mirakurun時はビデオと録画予約を除く', () {
-      expect(
-        visibleBranchIndices(BackendType.mirakurun),
-        const [0, 2, 4],
-      );
+      expect(visibleBranchIndices(BackendType.mirakurun), const [0, 2, 4]);
     });
 
     test('KonomiTV時は全て表示する', () {
-      expect(
-        visibleBranchIndices(BackendType.konomiTv),
-        const [0, 1, 2, 3, 4],
-      );
+      expect(visibleBranchIndices(BackendType.konomiTv), const [0, 1, 2, 3, 4]);
     });
 
     test('Mirakurun時はビデオと録画予約のパスを利用不可にする', () {

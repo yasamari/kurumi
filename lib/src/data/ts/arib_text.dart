@@ -84,9 +84,7 @@ class _AribDecoder {
 
   void _flushSjis() {
     if (sjis.isEmpty) return;
-    result.write(
-      Windows31JDecoder(allowMalformed: true).convert(sjis),
-    );
+    result.write(Windows31JDecoder(allowMalformed: true).convert(sjis));
     sjis.clear();
   }
 
@@ -368,9 +366,7 @@ class _AribDecoder {
       return const [];
     }
     final row = first < 0x5F ? 0x70 : 0xB0;
-    final cell = (first & 1) != 0
-        ? (second > 0x5F ? 0x20 : 0x1F)
-        : 0x7E;
+    final cell = (first & 1) != 0 ? (second > 0x5F ? 0x20 : 0x1F) : 0x7E;
     first = (((first + 1) >> 1) + row) & 0xFF;
     second = (second + cell) & 0xFF;
     return [first, second];

@@ -73,7 +73,9 @@ void main() {
     return KonomiTimetableResponse.fromJson({'channels': channels});
   }
 
-  KonomiChannelsResponse channelsOf(Map<String, List<Map<String, dynamic>>> byType) {
+  KonomiChannelsResponse channelsOf(
+    Map<String, List<Map<String, dynamic>>> byType,
+  ) {
     return KonomiChannelsResponse.fromJson(byType);
   }
 
@@ -124,8 +126,12 @@ void main() {
       },
     ]);
     final channels = channelsOf({
-      'GR': [_liveChannelJson(displayChannelId: 'GR_A', type: 'GR', isDisplay: true)],
-      'BS': [_liveChannelJson(displayChannelId: 'BS_B', type: 'BS', isDisplay: true)],
+      'GR': [
+        _liveChannelJson(displayChannelId: 'GR_A', type: 'GR', isDisplay: true),
+      ],
+      'BS': [
+        _liveChannelJson(displayChannelId: 'BS_B', type: 'BS', isDisplay: true),
+      ],
     });
 
     final columns = buildKonomiTimetableColumns(
@@ -169,7 +175,11 @@ void main() {
     ]);
     final channels = channelsOf({
       'GR': [
-        _liveChannelJson(displayChannelId: 'GR_HIDDEN', type: 'GR', isDisplay: false),
+        _liveChannelJson(
+          displayChannelId: 'GR_HIDDEN',
+          type: 'GR',
+          isDisplay: false,
+        ),
       ],
     });
 

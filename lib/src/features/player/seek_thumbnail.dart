@@ -89,10 +89,7 @@ double seekThumbnailPreviewLeft({
 }
 
 /// 並びの行数を求める純粋関数 (最後の行は黒埋めされることがある)。
-int seekThumbnailRowCount({
-  required int totalTiles,
-  required int columnCount,
-}) {
+int seekThumbnailRowCount({required int totalTiles, required int columnCount}) {
   final columns = math.max(1, columnCount);
   if (totalTiles <= 0) return 1;
   return (totalTiles + columns - 1) ~/ columns;

@@ -22,7 +22,8 @@ class AppLicenseMeta {
 List<AppLicenseMeta> buildAppLicenseMetas() => const [
   AppLicenseMeta(
     packageName: 'kurumi',
-    description: 'kurumi itself (Copyright (C) 2026 yasamari, GPL-3.0-or-later)',
+    description:
+        'kurumi itself (Copyright (C) 2026 yasamari, GPL-3.0-or-later)',
     licenseText:
         'Distributed under the GNU General Public License v3.0 or later. '
         'See the bundled LICENSE or https://www.gnu.org/licenses/gpl-3.0.html. '

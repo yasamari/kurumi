@@ -103,9 +103,8 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
   @override
   void initState() {
     super.initState();
-    _measuredFontSize = danmakuOptionOf(
-      widget.preferences.value.settings,
-    ).fontSize;
+    _measuredFontSize = danmakuOptionOf(widget.preferences.value.settings)
+        .fontSize;
     widget.preferences.addListener(_onPreferencesChanged);
     if (_isLive) {
       // 弾幕に出すのは購読直後のバックログを除いた新規コメントだけ。
@@ -222,7 +221,12 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
       controller.addDanmaku(content, birthTick: birthTick, key: key);
     } else {
       widget.store.add(
-        DanmakuItem(content: content, width: 0, height: 0, birthTick: birthTick),
+        DanmakuItem(
+          content: content,
+          width: 0,
+          height: 0,
+          birthTick: birthTick,
+        ),
         key: key,
       );
     }
@@ -428,12 +432,15 @@ class JikkyoDanmakuLayer extends StatelessWidget {
     // 通常表示とフルスクリーンで撮像境界のキーを使い分ける (上記コメント参照)。
     // 同一キーでの重複を避けるため、フルスクリーン側は [fullscreenRepaintKey]
     // だけを見る (null なら境界なし)。
-    final repaintKey =
-        isFullscreen(context) ? fullscreenRepaintKey : this.repaintKey;
+    final repaintKey = isFullscreen(context)
+        ? fullscreenRepaintKey
+        : this.repaintKey;
     Widget content = child;
     if (repaintKey != null) {
       content = RepaintBoundary(key: repaintKey, child: content);
     }
-    return Align(child: AspectRatio(aspectRatio: aspect, child: content));
+    return Align(
+      child: AspectRatio(aspectRatio: aspect, child: content),
+    );
   }
 }

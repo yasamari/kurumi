@@ -46,9 +46,7 @@ class KonomiTsPackets {
     );
     await for (final chunk in upstream) {
       if (cancelToken.isCancelled) break;
-      final bytes = chunk is Uint8List
-          ? chunk
-          : Uint8List.fromList(chunk);
+      final bytes = chunk is Uint8List ? chunk : Uint8List.fromList(chunk);
       for (final psi in parser.addBytes(bytes)) {
         if (psi.pid != 0x12) continue;
         yield psi.packets;

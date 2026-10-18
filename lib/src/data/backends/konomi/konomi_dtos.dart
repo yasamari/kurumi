@@ -114,7 +114,14 @@ class KonomiChannelsResponse {
   final List<KonomiChannelDto> bs4k;
 
   /// GR→BS→CS→CATV→SKY→BS4K の順に結合する。
-  List<KonomiChannelDto> get allInOrder => [...gr, ...bs, ...cs, ...catv, ...sky, ...bs4k];
+  List<KonomiChannelDto> get allInOrder => [
+    ...gr,
+    ...bs,
+    ...cs,
+    ...catv,
+    ...sky,
+    ...bs4k,
+  ];
 
   Map<String, dynamic> toJson() => _$KonomiChannelsResponseToJson(this);
 }

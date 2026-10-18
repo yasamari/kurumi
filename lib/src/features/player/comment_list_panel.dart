@@ -46,10 +46,7 @@ const livePinEpsilon = 1.0;
 /// リストは `reverse: true` (index 0 が最新・下端) のため、古い順の添字を
 /// 反転する。[dueCount] は [countDuePastComments] の戻り値。再生位置より前の
 /// コメントが無ければ最古 (末尾) を指す。
-int playbackBuilderIndex({
-  required int commentCount,
-  required int dueCount,
-}) {
+int playbackBuilderIndex({required int commentCount, required int dueCount}) {
   if (commentCount <= 0) return 0;
   return (commentCount - dueCount).clamp(0, commentCount - 1);
 }
@@ -501,13 +498,13 @@ class _CommentListPanelState extends State<CommentListPanel> {
             curve: Curves.easeOut,
           )
           .then((_) {
-        // 連続する新着で次の移動が始まっていたら旗を保つ。古い完了で戻すと
-        // 移動中の通知をユーザー操作と誤検出して追従を切ってしまう。
-        if (generation == _livePinGeneration) {
-          _programmatic = false;
-          _livePinAnimating = false;
-        }
-      }),
+            // 連続する新着で次の移動が始まっていたら旗を保つ。古い完了で戻すと
+            // 移動中の通知をユーザー操作と誤検出して追従を切ってしまう。
+            if (generation == _livePinGeneration) {
+              _programmatic = false;
+              _livePinAnimating = false;
+            }
+          }),
     );
   }
 
@@ -642,7 +639,11 @@ class _CommentListPanelState extends State<CommentListPanel> {
   /// 近傍のアニメーション (`scrollTo`) は対象がキャッシュ内に配置済みのため
   /// オフセットの移動だけで済み、Sliver の組み直しが走らない。遠方の瞬時移動
   /// (`jumpTo`) は Sliver を組み直すが1回きりなので、連続する追従では使わない。
-  void _moveTo({required int index, required double alignment, bool animate = false}) {
+  void _moveTo({
+    required int index,
+    required double alignment,
+    bool animate = false,
+  }) {
     if (!mounted || !_items.isAttached) return;
     if (animate) {
       _programmatic = true;
@@ -879,10 +880,7 @@ class _Message extends StatelessWidget {
               ),
               textAlign: TextAlign.center,
             ),
-            if (action != null) ...[
-              const SizedBox(height: 16),
-              action!,
-            ],
+            if (action != null) ...[const SizedBox(height: 16), action!],
           ],
         ),
       ),

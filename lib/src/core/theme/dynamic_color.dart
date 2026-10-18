@@ -50,8 +50,9 @@ const List<String> composeDynamicColorRoles = <String>[
   'surfaceTint',
 ];
 
-const MethodChannel _androidChannel =
-    MethodChannel('io.github.yasamari.kurumi/dynamic_color');
+const MethodChannel _androidChannel = MethodChannel(
+  'io.github.yasamari.kurumi/dynamic_color',
+);
 
 /// システムの Dynamic Color を取得する。取得できない場合は null。
 ///
@@ -75,7 +76,9 @@ Future<DynamicColorSchemes?> loadDynamicColorSchemes() async {
 Future<DynamicColorSchemes?> _loadFromAndroid() async {
   final Object? result;
   try {
-    result = await _androidChannel.invokeMethod<Object?>('getDynamicColorSchemes');
+    result = await _androidChannel.invokeMethod<Object?>(
+      'getDynamicColorSchemes',
+    );
   } on MissingPluginException {
     return null;
   } on PlatformException {

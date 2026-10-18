@@ -16,10 +16,7 @@ import 'app_destinations.dart';
 /// は表示しない。ブランチ index と表示 index の対応は
 /// [visibleBranchIndices] で取る。
 class AdaptiveScaffold extends ConsumerWidget {
-  const AdaptiveScaffold({
-    super.key,
-    required this.navigationShell,
-  });
+  const AdaptiveScaffold({super.key, required this.navigationShell});
 
   final StatefulNavigationShell navigationShell;
 

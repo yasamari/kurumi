@@ -135,10 +135,7 @@ class PlayerRetryView extends StatelessWidget {
     );
     final backFallback = backFallbackPath;
     if (backFallback == null) return content;
-    return PlayerStatusOverlay(
-      backFallbackPath: backFallback,
-      child: content,
-    );
+    return PlayerStatusOverlay(backFallbackPath: backFallback, child: content);
   }
 }
 

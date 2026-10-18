@@ -51,11 +51,8 @@ void main() {
 
   group('scrollDanmakuGone', () {
     test('duration 経過で画面を完全退出する', () {
-      bool goneAt(int now) => scrollDanmakuGone(
-        birthTick: 1000,
-        nowMs: now,
-        durationMs: 8000,
-      );
+      bool goneAt(int now) =>
+          scrollDanmakuGone(birthTick: 1000, nowMs: now, durationMs: 8000);
       expect(goneAt(8999), isFalse);
       expect(goneAt(9000), isTrue);
       expect(goneAt(12000), isTrue);
@@ -185,7 +182,10 @@ void main() {
     });
 
     test('静的弾幕も記録された軌道を使い続ける', () {
-      final tracks = StaticTrackAllocator(trackCount: 4, staticDurationMs: 5000);
+      final tracks = StaticTrackAllocator(
+        trackCount: 4,
+        staticDurationMs: 5000,
+      );
       final first = danmaku(0, 100, 0);
       final second = danmaku(100, 100, 1);
       expect(admitStaticTrack(first, tracks), 0);
@@ -193,13 +193,19 @@ void main() {
       expect(admitStaticTrack(second, tracks), 1);
 
       tracks.rewind();
-      final rebuilt = StaticTrackAllocator(trackCount: 4, staticDurationMs: 5000);
+      final rebuilt = StaticTrackAllocator(
+        trackCount: 4,
+        staticDurationMs: 5000,
+      );
       expect(admitStaticTrack(first, rebuilt), 0);
       expect(admitStaticTrack(second, rebuilt), 1);
     });
 
     test('静的弾幕は minTrack を下回らない', () {
-      final tracks = StaticTrackAllocator(trackCount: 6, staticDurationMs: 5000);
+      final tracks = StaticTrackAllocator(
+        trackCount: 6,
+        staticDurationMs: 5000,
+      );
       final item = danmaku(0, 100, 0);
       expect(admitStaticTrack(item, tracks, minTrack: 2), 2);
       expect(item.track, 2);
@@ -344,10 +350,11 @@ void main() {
       store.add(item(birth: 3000));
       store.add(item(birth: 1000));
       store.add(item(birth: 2000));
-      expect(
-        store.scrollItems.map((e) => e.birthTick).toList(),
-        [1000, 2000, 3000],
-      );
+      expect(store.scrollItems.map((e) => e.birthTick).toList(), [
+        1000,
+        2000,
+        3000,
+      ]);
     });
 
     test('同じキーは二重登録しない', () {
@@ -361,31 +368,17 @@ void main() {
     test('addAll は birth 順に一括マージし重複を落とす', () {
       final store = DanmakuStore<int>();
       addTearDown(store.dispose);
-      final accepted = store.addAll(
-        [
-          (
-            content: DanmakuContentItem<int>('c3'),
-            birthTick: 3000,
-            key: 'k3',
-          ),
-          (
-            content: DanmakuContentItem<int>('c1'),
-            birthTick: 1000,
-            key: 'k1',
-          ),
-          (
-            content: DanmakuContentItem<int>('c1-dup'),
-            birthTick: 1000,
-            key: 'k1',
-          ),
-        ],
-        0,
-      );
+      final accepted = store.addAll([
+        (content: DanmakuContentItem<int>('c3'), birthTick: 3000, key: 'k3'),
+        (content: DanmakuContentItem<int>('c1'), birthTick: 1000, key: 'k1'),
+        (
+          content: DanmakuContentItem<int>('c1-dup'),
+          birthTick: 1000,
+          key: 'k1',
+        ),
+      ], 0);
       expect(accepted, 2);
-      expect(
-        store.scrollItems.map((e) => e.birthTick).toList(),
-        [1000, 3000],
-      );
+      expect(store.scrollItems.map((e) => e.birthTick).toList(), [1000, 3000]);
     });
 
     test('保持期間を過ぎたものだけ落としキーを忘れる', () {
@@ -446,10 +439,7 @@ void main() {
       addTearDown(store.dispose);
       final scroll = item(birth: 1000);
       final top = DanmakuItem<int>(
-        content: DanmakuContentItem<int>(
-          '上',
-          type: DanmakuItemType.top,
-        ),
+        content: DanmakuContentItem<int>('上', type: DanmakuItemType.top),
         width: 50,
         height: 20,
         birthTick: 1000,

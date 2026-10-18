@@ -11,7 +11,7 @@ import 'mirakurun_live.dart';
 /// Mirakurun向け [TvRepository] 実装。
 class MirakurunTvRepository implements TvRepository {
   MirakurunTvRepository(Dio dio, {required this.baseUrl})
-      : _client = MirakurunApiClient(dio);
+    : _client = MirakurunApiClient(dio);
 
   final String baseUrl;
   final MirakurunApiClient _client;

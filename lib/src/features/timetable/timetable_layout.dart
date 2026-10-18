@@ -150,7 +150,9 @@ double timetableJumpTargetPx({
 }) {
   final target =
       timetableOffsetPx(timeMs, dayStartMs) - viewportHeightPx * 0.25;
-  return target.clamp(0.0, max(0.0, gridHeightPx - viewportHeightPx)).toDouble();
+  return target
+      .clamp(0.0, max(0.0, gridHeightPx - viewportHeightPx))
+      .toDouble();
 }
 
 /// 指定日が今日の放送日かどうか。
@@ -286,7 +288,10 @@ List<TimetableChannel> timetableColumnsOfType(
   List<TimetableChannel> columns,
   ChannelType type,
 ) {
-  return [for (final column in columns) if (column.channel.channelType == type) column];
+  return [
+    for (final column in columns)
+      if (column.channel.channelType == type) column,
+  ];
 }
 
 /// ジャンルラベル列から大分類名を取り出す。
@@ -352,8 +357,7 @@ List<TimetableColumnSegment> timetableColumnSegments({
   required int rangeEndMs,
   required double gridHeightPx,
 }) {
-  final sorted = [...programs]
-    ..sort((a, b) => a.startAt.compareTo(b.startAt));
+  final sorted = [...programs]..sort((a, b) => a.startAt.compareTo(b.startAt));
   final segments = <TimetableColumnSegment>[];
   var cursor = 0.0;
   for (final program in sorted) {
@@ -376,20 +380,28 @@ List<TimetableColumnSegment> timetableColumnSegments({
     // 合計が全体高さを超え、列の高さ不揃いが再発するため。
     final clippedTop = max(top, cursor);
     if (clippedTop > cursor) {
-      segments.add(
-        (topPx: cursor, heightPx: clippedTop - cursor, program: null),
-      );
+      segments.add((
+        topPx: cursor,
+        heightPx: clippedTop - cursor,
+        program: null,
+      ));
     }
     final bottom = max(top + height, clippedTop);
     if (bottom > clippedTop) {
-      segments.add((topPx: clippedTop, heightPx: bottom - clippedTop, program: program));
+      segments.add((
+        topPx: clippedTop,
+        heightPx: bottom - clippedTop,
+        program: program,
+      ));
     }
     cursor = bottom;
   }
   if (cursor < gridHeightPx) {
-    segments.add(
-      (topPx: cursor, heightPx: gridHeightPx - cursor, program: null),
-    );
+    segments.add((
+      topPx: cursor,
+      heightPx: gridHeightPx - cursor,
+      program: null,
+    ));
   }
   return segments;
 }

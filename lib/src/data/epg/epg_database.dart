@@ -28,19 +28,19 @@ class EpgDatabase extends _$EpgDatabase {
     Index(
       'epg_programs_service_time',
       'CREATE INDEX epg_programs_service_time ON epg_programs '
-      '(source_backend, network_id, service_id, start_at_ms)',
+          '(source_backend, network_id, service_id, start_at_ms)',
     ),
     // 期間重なり取得用 (将来の番組表画面用)。
     Index(
       'epg_programs_span',
       'CREATE INDEX epg_programs_span ON epg_programs '
-      '(source_backend, start_at_ms, end_at_ms)',
+          '(source_backend, start_at_ms, end_at_ms)',
     ),
     // 将来の番組検索用下地 (FTS5 は作らない)。
     Index(
       'epg_programs_title',
       'CREATE INDEX epg_programs_title ON epg_programs '
-      '(source_backend, title)',
+          '(source_backend, title)',
     ),
   ];
 

@@ -71,9 +71,8 @@ class WatchScreen extends ConsumerWidget {
     // ため、設定全体を購読せずこの値だけを見る。
     final showQualityMenu = ref.watch(
       appSettingsProvider.select(
-        (settings) =>
-            (settings.value?.backendType ?? BackendType.mirakurun)
-                .supportsLiveQualitySelection,
+        (settings) => (settings.value?.backendType ?? BackendType.mirakurun)
+            .supportsLiveQualitySelection,
       ),
     );
 
@@ -106,8 +105,7 @@ class WatchScreen extends ConsumerWidget {
         );
       },
       data: (items) {
-        final item =
-            items.where((e) => e.channel.id == channelId).firstOrNull;
+        final item = items.where((e) => e.channel.id == channelId).firstOrNull;
         if (item == null) {
           return PlayerPlaceholderScaffold(
             child: PlayerRetryView(
@@ -158,10 +156,9 @@ String? channelZapId(
   if (channelIds.length <= 1) return null;
   final index = channelIds.indexOf(currentId);
   if (index < 0) return null;
-  final target =
-      isNext
-          ? (index + 1) % channelIds.length
-          : (index - 1 + channelIds.length) % channelIds.length;
+  final target = isNext
+      ? (index + 1) % channelIds.length
+      : (index - 1 + channelIds.length) % channelIds.length;
   return channelIds[target];
 }
 
@@ -197,10 +194,9 @@ class _ChannelZapButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final items = ref.watch(nowOnAirChannelsProvider).value;
-    final ids =
-        items == null
-            ? const <String>[]
-            : channelIdsOfSameType(items, channel.channelType);
+    final ids = items == null
+        ? const <String>[]
+        : channelIdsOfSameType(items, channel.channelType);
     final target = channelZapId(ids, channel.id, isNext: isNext);
     return IconButton(
       icon: Icon(isNext ? Icons.skip_next : Icons.skip_previous),
@@ -436,8 +432,9 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
   /// 描画中の弾幕が保たれる ([JikkyoDanmakuOverlay] 参照)。
   /// ライブは巻き戻さないため保持は直近のみ。
   late final DanmakuClock _danmakuClock = DanmakuClock();
-  late final DanmakuStore<int> _danmakuStore =
-      DanmakuStore<int>(retentionMs: _liveDanmakuRetentionMs);
+  late final DanmakuStore<int> _danmakuStore = DanmakuStore<int>(
+    retentionMs: _liveDanmakuRetentionMs,
+  );
 
   /// 最新の EIT[p/f] 取得状態。`_LivePlayerState` が開設のたびに更新する。
   final ValueNotifier<LivePsiController?> _psiNotifier = ValueNotifier(null);
@@ -482,8 +479,7 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
     // `_LivePlayer` の State が破棄され、mpv と PSI 取得が落ちる)。
     return ValueListenableBuilder<bool>(
       valueListenable: PipMode.instance.active,
-      builder: (context, pictureInPicture, _) =>
-          _buildLayout(pictureInPicture),
+      builder: (context, pictureInPicture, _) => _buildLayout(pictureInPicture),
     );
   }
 
@@ -546,12 +542,11 @@ class _WatchLayoutState extends ConsumerState<_WatchLayout> {
           // KonomiTVは `original` (生放送TS) のときだけデインタレースする。
           // Mirakurun (`decode=1` 固定) も生放送TSのためデインタレースする。
           // トランスコード済み画質はプログレッシブのため不要。
-          deinterlace:
-              widget.showQualityMenu
-                  ? ref
-                      .read(tvRepositoryProvider)
-                      .isOriginalLiveQuality(live.qualityLabel)
-                  : true,
+          deinterlace: widget.showQualityMenu
+              ? ref
+                    .read(tvRepositoryProvider)
+                    .isOriginalLiveQuality(live.qualityLabel)
+              : true,
         );
       },
     );
@@ -997,7 +992,10 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
   ///
   /// オプションはデコーダ生成時に読まれるため、必ず `open` より前に渡す。
   Future<void> _initialize() async {
-    await applyLiveMpvOptions(_playback.player, deinterlace: widget.deinterlace);
+    await applyLiveMpvOptions(
+      _playback.player,
+      deinterlace: widget.deinterlace,
+    );
     if (!mounted) return;
     await _open();
   }
@@ -1135,86 +1133,79 @@ class _LivePlayerState extends ConsumerState<_LivePlayer> {
           onKeyEvent: _onKeyEvent,
           child: PlayerVideoView(
             videoController: _playback.videoController,
-          topButtonBar: buildPlayerTopButtonBar(
-            title: widget.title,
-            backFallbackPath: '/tv',
-          ),
-          layout: PlayerControlsLayout.live,
-          // PiP 中は標準コントロールを出さない (操作はシステムの PiP ボタンと
-          // 画面タップで戻ることになり、Flutter 側では触れないため)。
-          showControls: !widget.pictureInPicture,
-          livePrimaryButtonBar: [
-            const Spacer(flex: 2),
-            _ChannelZapButton(
-              channel: widget.item.channel,
-              isNext: false,
+            topButtonBar: buildPlayerTopButtonBar(
+              title: widget.title,
+              backFallbackPath: '/tv',
             ),
-            const Spacer(),
-            const MaterialPlayOrPauseButton(iconSize: 56.0),
-            const Spacer(),
-            _ChannelZapButton(channel: widget.item.channel, isNext: true),
-            const Spacer(flex: 2),
-          ],
-          // 下部バーは「キャプチャ → 弾幕付きキャプチャ → 字幕 → 設定 →
-          // PiP → フルスクリーン」の並び。
-          // (デスクトップは PiP の代わりに情報パネルの表示切替が入る)
-          liveBottomButtonBar: [
-            const Spacer(),
-            CaptureButton(onPressed: () => _capture(withDanmaku: false)),
-            DanmakuCaptureButton(
-              onPressed: () => _capture(withDanmaku: true),
-            ),
-            SubtitleToggleButton(
-              enabled: _playback.subtitlesEnabled,
-              onToggled: _playback.toggleSubtitles,
-            ),
-            settingsButton(),
-            const PipModeButton(),
-            const MaterialFullscreenButton(),
-          ],
-          liveDesktopBottomButtonBar: [
-            _ChannelZapButton(
-              channel: widget.item.channel,
-              isNext: false,
-            ),
-            const MaterialDesktopPlayOrPauseButton(),
-            _ChannelZapButton(channel: widget.item.channel, isNext: true),
-            const MaterialDesktopVolumeButton(),
-            const Spacer(),
-            CaptureButton(onPressed: () => _capture(withDanmaku: false)),
-            DanmakuCaptureButton(
-              onPressed: () => _capture(withDanmaku: true),
-            ),
-            SubtitleToggleButton(
-              enabled: _playback.subtitlesEnabled,
-              onToggled: _playback.toggleSubtitles,
-            ),
-            settingsButton(),
-            const PipModeButton(),
-            // デスクトップでは PiP ボタン (Android 専用) の場所 情報パネルを
-            // 隠すボタンになる。
-            InfoPanelToggleButton(
-              visible: infoPanel.visible,
-              onToggled: infoPanel.toggle,
-            ),
-            const MaterialDesktopFullscreenButton(),
-          ],
-          danmaku: jikkyo.isSupported
-              ? JikkyoDanmakuLayer(
-                  displayAspect: _playback.videoDisplayAspect,
-                  repaintKey: widget.danmakuBoundaryKey,
-                  fullscreenRepaintKey:
-                      widget.danmakuFullscreenBoundaryKey,
-                  child: JikkyoDanmakuOverlay(
-                    controller: jikkyo,
-                    store: widget.danmakuStore,
-                    clock: widget.danmakuClock,
-                    preferences: _playback.danmakuPreferences,
-                  ),
-                )
-              : null,
-          errorMessage: _playback.errorMessage,
-          onRetry: _open,
+            layout: PlayerControlsLayout.live,
+            // PiP 中は標準コントロールを出さない (操作はシステムの PiP ボタンと
+            // 画面タップで戻ることになり、Flutter 側では触れないため)。
+            showControls: !widget.pictureInPicture,
+            livePrimaryButtonBar: [
+              const Spacer(flex: 2),
+              _ChannelZapButton(channel: widget.item.channel, isNext: false),
+              const Spacer(),
+              const MaterialPlayOrPauseButton(iconSize: 56.0),
+              const Spacer(),
+              _ChannelZapButton(channel: widget.item.channel, isNext: true),
+              const Spacer(flex: 2),
+            ],
+            // 下部バーは「キャプチャ → 弾幕付きキャプチャ → 字幕 → 設定 →
+            // PiP → フルスクリーン」の並び。
+            // (デスクトップは PiP の代わりに情報パネルの表示切替が入る)
+            liveBottomButtonBar: [
+              const Spacer(),
+              CaptureButton(onPressed: () => _capture(withDanmaku: false)),
+              DanmakuCaptureButton(
+                onPressed: () => _capture(withDanmaku: true),
+              ),
+              SubtitleToggleButton(
+                enabled: _playback.subtitlesEnabled,
+                onToggled: _playback.toggleSubtitles,
+              ),
+              settingsButton(),
+              const PipModeButton(),
+              const MaterialFullscreenButton(),
+            ],
+            liveDesktopBottomButtonBar: [
+              _ChannelZapButton(channel: widget.item.channel, isNext: false),
+              const MaterialDesktopPlayOrPauseButton(),
+              _ChannelZapButton(channel: widget.item.channel, isNext: true),
+              const MaterialDesktopVolumeButton(),
+              const Spacer(),
+              CaptureButton(onPressed: () => _capture(withDanmaku: false)),
+              DanmakuCaptureButton(
+                onPressed: () => _capture(withDanmaku: true),
+              ),
+              SubtitleToggleButton(
+                enabled: _playback.subtitlesEnabled,
+                onToggled: _playback.toggleSubtitles,
+              ),
+              settingsButton(),
+              const PipModeButton(),
+              // デスクトップでは PiP ボタン (Android 専用) の場所 情報パネルを
+              // 隠すボタンになる。
+              InfoPanelToggleButton(
+                visible: infoPanel.visible,
+                onToggled: infoPanel.toggle,
+              ),
+              const MaterialDesktopFullscreenButton(),
+            ],
+            danmaku: jikkyo.isSupported
+                ? JikkyoDanmakuLayer(
+                    displayAspect: _playback.videoDisplayAspect,
+                    repaintKey: widget.danmakuBoundaryKey,
+                    fullscreenRepaintKey: widget.danmakuFullscreenBoundaryKey,
+                    child: JikkyoDanmakuOverlay(
+                      controller: jikkyo,
+                      store: widget.danmakuStore,
+                      clock: widget.danmakuClock,
+                      preferences: _playback.danmakuPreferences,
+                    ),
+                  )
+                : null,
+            errorMessage: _playback.errorMessage,
+            onRetry: _open,
           ),
         );
       },

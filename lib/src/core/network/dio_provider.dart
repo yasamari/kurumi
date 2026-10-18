@@ -18,7 +18,9 @@ part 'dio_provider.g.dart';
 @riverpod
 Dio backendDio(Ref ref) {
   final baseUrl = ref.watch(
-    appSettingsProvider.select((settings) => settings.value?.activeBaseUrl ?? ''),
+    appSettingsProvider.select(
+      (settings) => settings.value?.activeBaseUrl ?? '',
+    ),
   );
   return Dio(
     BaseOptions(

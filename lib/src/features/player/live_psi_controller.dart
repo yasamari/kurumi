@@ -73,8 +73,7 @@ class LivePsiController extends ChangeNotifier {
         kept.clear();
         for (var offset = 0; offset + 188 <= batch.length; offset += 188) {
           if (batch[offset] != 0x47) continue;
-          final pid =
-              ((batch[offset + 1] & 0x1F) << 8) | batch[offset + 2];
+          final pid = ((batch[offset + 1] & 0x1F) << 8) | batch[offset + 2];
           if (pid != 0x12) continue;
           kept.add(batch.sublist(offset, offset + 188));
         }

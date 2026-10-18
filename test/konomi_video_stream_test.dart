@@ -84,17 +84,11 @@ void main() {
   test('リポジトリは純粋関数に委譲する (無限再帰しない)', () {
     final repository = KonomiVideoRepository(Dio(), baseUrl: _baseUrl);
     expect(
-      repository.needsVideoDeinterlace(
-        isOriginal: true,
-        videoCodec: 'MPEG-2',
-      ),
+      repository.needsVideoDeinterlace(isOriginal: true, videoCodec: 'MPEG-2'),
       isTrue,
     );
     expect(
-      repository.needsVideoDeinterlace(
-        isOriginal: false,
-        videoCodec: 'MPEG-2',
-      ),
+      repository.needsVideoDeinterlace(isOriginal: false, videoCodec: 'MPEG-2'),
       isFalse,
     );
   });

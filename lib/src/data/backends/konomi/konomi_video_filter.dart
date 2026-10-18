@@ -129,11 +129,9 @@ VideoThumbnailTiles? buildVideoThumbnailTiles({
   final columnCount = dto?.columnCount ?? 0;
   final totalTiles = dto?.totalTiles ?? 0;
   final intervalSec =
-      dto?.intervalSec ?? legacyThumbnailTileIntervalSec(durationSec: durationSec);
-  if (tileWidth > 0 &&
-      tileHeight > 0 &&
-      columnCount > 0 &&
-      totalTiles > 0) {
+      dto?.intervalSec ??
+      legacyThumbnailTileIntervalSec(durationSec: durationSec);
+  if (tileWidth > 0 && tileHeight > 0 && columnCount > 0 && totalTiles > 0) {
     return VideoThumbnailTiles(
       url: videoThumbnailTiledUrl(baseUrl: baseUrl, videoId: videoId),
       tileWidth: tileWidth,
@@ -171,10 +169,8 @@ double legacyThumbnailTileIntervalSec({required double durationSec}) {
 }
 
 /// サムネイル画像のURLを組み立てる純粋関数。
-String videoThumbnailUrl({
-  required String baseUrl,
-  required int videoId,
-}) => '$baseUrl/api/videos/$videoId/thumbnail';
+String videoThumbnailUrl({required String baseUrl, required int videoId}) =>
+    '$baseUrl/api/videos/$videoId/thumbnail';
 
 /// シークバー用のサムネイル並び画像のURLを組み立てる純粋関数。
 String videoThumbnailTiledUrl({

@@ -15,6 +15,7 @@ void main() {
       mail: '',
     );
   }
+
   test('再生位置の行の表示添字を求める', () {
     // reverse (index 0 が最新・下端) のため古い順の添字を反転する。
     // 3件中2件が再生位置までなら、表示添字は 3 - 2 = 1。
@@ -94,11 +95,7 @@ void main() {
     // 上限到達時は先頭が捨てられても末尾の新着だけ数える。
     final capped = [for (var no = 3; no <= 7; no++) comment(no)];
     expect(
-      countAppendedLiveComments(
-        comments: capped,
-        prevLength: 5,
-        prevMaxNo: 5,
-      ),
+      countAppendedLiveComments(comments: capped, prevLength: 5, prevMaxNo: 5),
       2,
     );
     // 新着がなければ 0。
@@ -121,7 +118,11 @@ void main() {
     );
     // 空なら 0。
     expect(
-      countAppendedLiveComments(comments: const [], prevLength: 0, prevMaxNo: 0),
+      countAppendedLiveComments(
+        comments: const [],
+        prevLength: 0,
+        prevMaxNo: 0,
+      ),
       0,
     );
   });

@@ -30,24 +30,24 @@ ChannelType channelTypeFromString(String? value) {
 /// タブ表示用のラベルと並び順。
 extension ChannelTypeUi on ChannelType {
   String get label => switch (this) {
-        ChannelTypeGr() => '地デジ',
-        ChannelTypeBs() => 'BS',
-        ChannelTypeCs() => 'CS',
-        ChannelTypeCatv() => 'CATV',
-        ChannelTypeSky() => 'SKY',
-        ChannelTypeBs4k() => 'BS4K',
-        ChannelTypeUnknown() => 'その他',
-      };
+    ChannelTypeGr() => '地デジ',
+    ChannelTypeBs() => 'BS',
+    ChannelTypeCs() => 'CS',
+    ChannelTypeCatv() => 'CATV',
+    ChannelTypeSky() => 'SKY',
+    ChannelTypeBs4k() => 'BS4K',
+    ChannelTypeUnknown() => 'その他',
+  };
 
   int get sortOrder => switch (this) {
-        ChannelTypeGr() => 0,
-        ChannelTypeBs() => 1,
-        ChannelTypeCs() => 2,
-        ChannelTypeCatv() => 3,
-        ChannelTypeSky() => 4,
-        ChannelTypeBs4k() => 5,
-        ChannelTypeUnknown() => 6,
-      };
+    ChannelTypeGr() => 0,
+    ChannelTypeBs() => 1,
+    ChannelTypeCs() => 2,
+    ChannelTypeCatv() => 3,
+    ChannelTypeSky() => 4,
+    ChannelTypeBs4k() => 5,
+    ChannelTypeUnknown() => 6,
+  };
 }
 
 /// チャンネル一覧に含まれる種別を正規順で重複なく返す。

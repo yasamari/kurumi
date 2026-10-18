@@ -351,10 +351,7 @@ void main() {
     );
 
     expect(columns.map((c) => c.channel.name), ['親局']);
-    expect(
-      columns.single.programs.map((p) => p.title),
-      ['午前', '午後'],
-    );
+    expect(columns.single.programs.map((p) => p.title), ['午前', '午後']);
   });
 
   test('時間が重なる別番組があると列は分かれる', () {

@@ -79,19 +79,9 @@ void main() {
     final comments = parseKakologPacket([
       _chat(no: 1, date: 1, content: '通常'),
       _chat(no: 2, date: 2, deleted: '1', content: '削除済み'),
-      _chat(
-        no: 3,
-        date: 3,
-        content: '/nicoad {"message": "広告"}',
-        premium: '3',
-      ),
+      _chat(no: 3, date: 3, content: '/nicoad {"message": "広告"}', premium: '3'),
       // premium が運営以外のコマンド付きは残す (サーバーと同規則)
-      _chat(
-        no: 4,
-        date: 4,
-        content: '/emotion happiness',
-        premium: '1',
-      ),
+      _chat(no: 4, date: 4, content: '/emotion happiness', premium: '1'),
       _chat(no: 5, date: 5, content: ''),
     ]);
 
@@ -104,7 +94,9 @@ void main() {
     expect(parseKakologPacket({'packet': []}), isEmpty);
     expect(
       parseKakologPacket([
-        {'chat': {'content': 'キー不足'}},
+        {
+          'chat': {'content': 'キー不足'},
+        },
         '文字列',
         {'chat': '文字列'},
       ]),
@@ -125,10 +117,7 @@ void main() {
       isJikkyoOperatorComment(content: '/nicoad {}', premium: null),
       isFalse,
     );
-    expect(
-      isJikkyoOperatorComment(content: '通常コメント', premium: '3'),
-      isFalse,
-    );
+    expect(isJikkyoOperatorComment(content: '通常コメント', premium: '3'), isFalse);
     expect(isJikkyoOperatorComment(content: null, premium: '3'), isFalse);
   });
 
@@ -159,7 +148,10 @@ void main() {
     expect(single.length, 1);
 
     expect(
-      splitKakologRange(start: start, end: start.subtract(const Duration(seconds: 1))),
+      splitKakologRange(
+        start: start,
+        end: start.subtract(const Duration(seconds: 1)),
+      ),
       isEmpty,
     );
   });

@@ -10,11 +10,7 @@ import '../../../domain/entities/video_program.dart';
 /// 構成 (右列・上から): 番組タイトル (最大2行) / 放送時間 / チャンネル行
 /// (ロゴ+番号・局名)。選択中の強調表示はしない。
 class VideoListTile extends StatelessWidget {
-  const VideoListTile({
-    super.key,
-    required this.video,
-    required this.onTap,
-  });
+  const VideoListTile({super.key, required this.video, required this.onTap});
 
   final VideoProgram video;
   final VoidCallback onTap;
@@ -46,8 +42,7 @@ class VideoListTile extends StatelessWidget {
                       child: Image.network(
                         video.thumbnailUrl,
                         fit: BoxFit.cover,
-                        errorBuilder: (context, error, stackTrace) =>
-                            Container(
+                        errorBuilder: (context, error, stackTrace) => Container(
                           color: theme.colorScheme.surfaceContainerHighest,
                           alignment: Alignment.center,
                           child: Icon(

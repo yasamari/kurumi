@@ -47,33 +47,33 @@ final class _MpvStreamCbInfo extends Struct {
   external Pointer<NativeFunction<_CloseNative>> cancelFn;
 }
 
-typedef _ReadNative
-    = Int64 Function(Pointer<Void> cookie, Pointer<Char> buf, Uint64 nbytes);
+typedef _ReadNative = Int64 Function(
+  Pointer<Void> cookie,
+  Pointer<Char> buf,
+  Uint64 nbytes,
+);
 typedef _SeekNative = Int64 Function(Pointer<Void> cookie, Int64 offset);
 typedef _SizeNative = Int64 Function(Pointer<Void> cookie);
 typedef _CloseNative = Void Function(Pointer<Void> cookie);
 
-typedef _AddRoNative
-    = Int32 Function(
-      Pointer<_MpvHandle> ctx,
-      Pointer<Char> protocol,
-      Pointer<Void> userData,
-      Pointer<NativeFunction<_OpenNative>> open,
-    );
-typedef _AddRoDart
-    = int Function(
-      Pointer<_MpvHandle> ctx,
-      Pointer<Char> protocol,
-      Pointer<Void> userData,
-      Pointer<NativeFunction<_OpenNative>> open,
-    );
+typedef _AddRoNative = Int32 Function(
+  Pointer<_MpvHandle> ctx,
+  Pointer<Char> protocol,
+  Pointer<Void> userData,
+  Pointer<NativeFunction<_OpenNative>> open,
+);
+typedef _AddRoDart = int Function(
+  Pointer<_MpvHandle> ctx,
+  Pointer<Char> protocol,
+  Pointer<Void> userData,
+  Pointer<NativeFunction<_OpenNative>> open,
+);
 
-typedef _OpenNative
-    = Int32 Function(
-      Pointer<Void> userData,
-      Pointer<Char> uri,
-      Pointer<_MpvStreamCbInfo> info,
-    );
+typedef _OpenNative = Int32 Function(
+  Pointer<Void> userData,
+  Pointer<Char> uri,
+  Pointer<_MpvStreamCbInfo> info,
+);
 
 /// tap 用プロトコル (`kurumi-ts://`) を [player] の mpv に登録する。
 ///

@@ -118,15 +118,11 @@ void main() {
 
   test('空かっこや閉じていないかっこは記号にしない', () {
     final segments = parseProgramTextSymbols('[]未定[字');
-    expect(segments, [
-      (text: '[]未定[字', isSymbol: false),
-    ]);
+    expect(segments, [(text: '[]未定[字', isSymbol: false)]);
   });
 
   test('記号なし・空文字は通常文のまま', () {
-    expect(parseProgramTextSymbols('ニュース'), [
-      (text: 'ニュース', isSymbol: false),
-    ]);
+    expect(parseProgramTextSymbols('ニュース'), [(text: 'ニュース', isSymbol: false)]);
     expect(parseProgramTextSymbols(''), isEmpty);
   });
 }

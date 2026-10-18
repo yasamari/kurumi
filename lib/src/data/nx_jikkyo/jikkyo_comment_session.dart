@@ -198,11 +198,19 @@ class JikkyoCommentSession {
     };
 
     final frame = jsonEncode([
-      {'ping': {'content': 'rs:0'}},
-      {'ping': {'content': 'ps:0'}},
+      {
+        'ping': {'content': 'rs:0'},
+      },
+      {
+        'ping': {'content': 'ps:0'},
+      },
       {'thread': thread},
-      {'ping': {'content': 'pf:0'}},
-      {'ping': {'content': 'rf:0'}},
+      {
+        'ping': {'content': 'pf:0'},
+      },
+      {
+        'ping': {'content': 'rf:0'},
+      },
     ]);
     try {
       channel.sink.add(frame);

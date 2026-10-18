@@ -117,10 +117,7 @@ void main() {
 
     test('今日判定ができる', () {
       expect(isTimetableToday(dayStartMs, _utcMs(2026, 10, 8, 1)), isTrue);
-      expect(
-        isTimetableToday(dayStartMs, _utcMs(2026, 10, 8, 20)),
-        isFalse,
-      );
+      expect(isTimetableToday(dayStartMs, _utcMs(2026, 10, 8, 20)), isFalse);
     });
   });
 
@@ -190,10 +187,7 @@ void main() {
 
   group('ドラッグオフセット', () {
     test('指の移動と逆方向へ動く', () {
-      expect(
-        timetableDragOffset(offset: 100, maxOffset: 1000, delta: 30),
-        70,
-      );
+      expect(timetableDragOffset(offset: 100, maxOffset: 1000, delta: 30), 70);
       expect(
         timetableDragOffset(offset: 100, maxOffset: 1000, delta: -30),
         130,
@@ -204,10 +198,7 @@ void main() {
       // 下端 (先頭)。上へ引っ張っても 0 より行かない。
       expect(timetableDragOffset(offset: 10, maxOffset: 500, delta: 40), 0);
       // 上端 (末尾)。下へ引っ張っても最大値を超えない。
-      expect(
-        timetableDragOffset(offset: 490, maxOffset: 500, delta: -40),
-        500,
-      );
+      expect(timetableDragOffset(offset: 490, maxOffset: 500, delta: -40), 500);
     });
 
     test('内容がビューポートより短ければ動かない', () {
@@ -340,9 +331,7 @@ void main() {
     });
 
     test('未知の大分類は灰色になる', () {
-      expect(
-        timetableGenreSeedColor(''), const Color(0xFF9E9E9E),
-      );
+      expect(timetableGenreSeedColor(''), const Color(0xFF9E9E9E));
       expect(
         timetableGenreSeedColor('ニュース') == const Color(0xFF9E9E9E),
         isFalse,
@@ -512,10 +501,7 @@ void main() {
       );
       // 範囲外は両端に丸める。
       expect(
-        timetableHourStartMs(
-          timeMs: dayStartMs - 1,
-          dayStartMs: dayStartMs,
-        ),
+        timetableHourStartMs(timeMs: dayStartMs - 1, dayStartMs: dayStartMs),
         dayStartMs,
       );
       expect(

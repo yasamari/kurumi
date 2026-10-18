@@ -45,10 +45,7 @@ class TimetableProgramCell extends StatelessWidget {
             Container(width: 4, color: seed),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 6,
-                  vertical: 2,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                 child: _CellBody(
                   showText: showText,
                   timeLabel: timeLabel,
@@ -89,10 +86,8 @@ class _CellBody extends StatelessWidget {
       color: colorScheme.onSurface,
       height: 1.25,
     );
-    final timeStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
-      color: colorScheme.onSurfaceVariant,
-      height: 1.2,
-    );
+    final timeStyle = Theme.of(context).textTheme.labelSmall
+        ?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.2);
     if (showText) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -108,10 +103,8 @@ class _CellBody extends StatelessWidget {
               title,
               style: titleStyle,
               trailingText: description.isNotEmpty ? description : null,
-              trailingStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: colorScheme.onSurfaceVariant,
-                height: 1.3,
-              ),
+              trailingStyle: Theme.of(context).textTheme.bodySmall
+                  ?.copyWith(color: colorScheme.onSurfaceVariant, height: 1.3),
               // セル高が bounds になるため実質無制限。
               // maxLines なしの ellipsis は1行化するため必須。
               maxLines: 1000,

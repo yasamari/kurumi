@@ -13,7 +13,7 @@ import 'konomi_live.dart';
 /// チャンネル一覧に現在・次番組が同梱されるため `/api/channels` 1回で足りる。
 class KonomiTvRepository implements TvRepository {
   KonomiTvRepository(Dio dio, {required this.baseUrl})
-      : _client = KonomiApiClient(dio);
+    : _client = KonomiApiClient(dio);
 
   final String baseUrl;
   final KonomiApiClient _client;
@@ -54,8 +54,10 @@ class KonomiTvRepository implements TvRepository {
   String getDefaultLiveQuality() => defaultKonomiQuality;
 
   @override
-  String normalizeLiveQuality(String quality) => normalizeKonomiQuality(quality);
+  String normalizeLiveQuality(String quality) =>
+      normalizeKonomiQuality(quality);
 
   @override
-  bool isOriginalLiveQuality(String quality) => isOriginalKonomiQuality(quality);
+  bool isOriginalLiveQuality(String quality) =>
+      isOriginalKonomiQuality(quality);
 }

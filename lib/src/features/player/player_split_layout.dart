@@ -10,12 +10,7 @@ const double playerPanelWidth = 400.0;
 const double playerVideoAspectRatio = 16 / 9;
 
 /// 矩形。横・縦位置と大きさ。
-typedef PlayerRect = ({
-  double left,
-  double top,
-  double width,
-  double height,
-});
+typedef PlayerRect = ({double left, double top, double width, double height});
 
 /// 映像と情報パネルの配置を求める。
 ///
@@ -124,8 +119,7 @@ class PlayerSplitLayout extends StatelessWidget {
     final pictureInPicture = this.pictureInPicture;
     final info = this.info;
     final video = this.video;
-    final visibility =
-        isDesktopPlatform(context) ? infoVisible : null;
+    final visibility = isDesktopPlatform(context) ? infoVisible : null;
 
     Widget layout(bool infoVisible) => LayoutBuilder(
       builder: (context, constraints) {
@@ -154,13 +148,12 @@ class PlayerSplitLayout extends StatelessWidget {
       top: !isLandscape,
       right: !isLandscape,
       bottom: !isLandscape,
-      child:
-          visibility == null
-              ? layout(true)
-              : ValueListenableBuilder<bool>(
-                valueListenable: visibility,
-                builder: (context, visible, _) => layout(visible),
-              ),
+      child: visibility == null
+          ? layout(true)
+          : ValueListenableBuilder<bool>(
+              valueListenable: visibility,
+              builder: (context, visible, _) => layout(visible),
+            ),
     );
   }
 

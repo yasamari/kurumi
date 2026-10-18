@@ -239,9 +239,7 @@ class _VideoListViewState extends ConsumerState<_VideoListView> {
       loading: () => const Center(child: CircularProgressIndicator()),
       error: (error, _) {
         if (error is BackendUnconfiguredException) {
-          return _Unconfigured(
-            onOpenSettings: () => context.go('/settings'),
-          );
+          return _Unconfigured(onOpenSettings: () => context.go('/settings'));
         }
         return _Error(
           message: '$error',
@@ -250,9 +248,7 @@ class _VideoListViewState extends ConsumerState<_VideoListView> {
       },
       data: (state) {
         if (state.items.isEmpty) {
-          return _Empty(
-            onRetry: () => ref.invalidate(videosListProvider),
-          );
+          return _Empty(onRetry: () => ref.invalidate(videosListProvider));
         }
         return RefreshIndicator(
           onRefresh: () => ref.refresh(videosListProvider.future),
@@ -260,8 +256,7 @@ class _VideoListViewState extends ConsumerState<_VideoListView> {
             controller: _scrollController,
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: state.items.length + (state.hasMore ? 1 : 0),
-            separatorBuilder: (context, index) =>
-                const SizedBox(height: 12),
+            separatorBuilder: (context, index) => const SizedBox(height: 12),
             itemBuilder: (context, index) {
               if (index >= state.items.length) {
                 return const Padding(
@@ -270,10 +265,7 @@ class _VideoListViewState extends ConsumerState<_VideoListView> {
                 );
               }
               final video = state.items[index];
-              return VideoListTile(
-                video: video,
-                onTap: () => _onTap(video),
-              );
+              return VideoListTile(video: video, onTap: () => _onTap(video));
             },
           ),
         );
@@ -290,9 +282,7 @@ class _DetailSlot extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedId = ref.watch(selectedVideoIdProvider);
     final items = ref.watch(videosListProvider).value?.items;
-    final video = items
-        ?.where((item) => item.id == selectedId)
-        .firstOrNull;
+    final video = items?.where((item) => item.id == selectedId).firstOrNull;
 
     if (video == null) return const _NoSelection();
     return VideoDetailPane(video: video);
@@ -346,10 +336,7 @@ class _Unconfigured extends StatelessWidget {
           const SizedBox(height: 16),
           Text('サーバーが設定されていません', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          FilledButton(
-            onPressed: onOpenSettings,
-            child: const Text('設定を開く'),
-          ),
+          FilledButton(onPressed: onOpenSettings, child: const Text('設定を開く')),
         ],
       ),
     );
@@ -371,11 +358,7 @@ class _Error extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 64, color: theme.colorScheme.error),
             const SizedBox(height: 16),
             Text('取得に失敗しました', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),

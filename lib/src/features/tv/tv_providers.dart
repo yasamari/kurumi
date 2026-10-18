@@ -95,10 +95,10 @@ Future<List<ChannelItem>> nowOnAirChannels(Ref ref) async {
   }
   // 次の番組境界で自分を作り直す。KonomiTV は再取得、Mirakurun は再計算。
   final nowMs = DateTime.now().millisecondsSinceEpoch;
-  final delayMs =
-      nextChannelListTickMs(items: items, nowMs: nowMs) - nowMs;
-  final floorMs =
-      backendType == BackendType.konomiTv ? _konomiRefetchFloorMs : 0;
+  final delayMs = nextChannelListTickMs(items: items, nowMs: nowMs) - nowMs;
+  final floorMs = backendType == BackendType.konomiTv
+      ? _konomiRefetchFloorMs
+      : 0;
   final timer = Timer(
     Duration(milliseconds: delayMs < floorMs ? floorMs : delayMs),
     ref.invalidateSelf,

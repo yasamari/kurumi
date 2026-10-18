@@ -10,15 +10,15 @@ enum VideoSortOrder {
 
   /// KonomiTV API の `order` パラメーター値。
   String get queryParam => switch (this) {
-        VideoSortOrder.newest => 'desc',
-        VideoSortOrder.oldest => 'asc',
-      };
+    VideoSortOrder.newest => 'desc',
+    VideoSortOrder.oldest => 'asc',
+  };
 
   /// ソートメニュー表示用のラベル。
   String get label => switch (this) {
-        VideoSortOrder.newest => '新しい順',
-        VideoSortOrder.oldest => '古い順',
-      };
+    VideoSortOrder.newest => '新しい順',
+    VideoSortOrder.oldest => '古い順',
+  };
 }
 
 /// 録画番組一覧の1ページ分。
@@ -99,8 +99,5 @@ abstract class VideoRepository {
   /// `original` (ダウンロード再生) でも既にインターレース解除済みの動画が
   /// 配信されることがあるため、動画コーデックが MPEG-2 の場合にのみ解除する。
   /// HLSはサーバー側でプログレッシブに再エンコード済みのため常時不要。
-  bool needsVideoDeinterlace({
-    required bool isOriginal,
-    String? videoCodec,
-  });
+  bool needsVideoDeinterlace({required bool isOriginal, String? videoCodec});
 }

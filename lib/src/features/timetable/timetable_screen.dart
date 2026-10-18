@@ -66,10 +66,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
     final baseDayStartMs = timetableDayStartMs(
       DateTime.now().millisecondsSinceEpoch,
     );
-    final dayStartMs = timetableDayStartMsForOffset(
-      baseDayStartMs,
-      _dayOffset,
-    );
+    final dayStartMs = timetableDayStartMsForOffset(baseDayStartMs, _dayOffset);
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     if (nowMs < dayStartMs || nowMs >= dayStartMs + timetableDayLengthMs) {
       return dayStartMs;
@@ -101,8 +98,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
     _syncVisibleHourMs(dayStartMs);
     final timetable = ref.watch(timetableDataProvider(dayStartMs));
     // 狭幅では詰めた表示にし、「番組表」ラベルを隠して操作部を優先する。
-    final compact =
-        MediaQuery.sizeOf(context).width < AdaptiveBreakpoints.rail;
+    final compact = MediaQuery.sizeOf(context).width < AdaptiveBreakpoints.rail;
 
     // 再計算・裏更新のたびに読み込み表示に戻すとグリッドが点滅する。
     // 前回データを出し続ける。
@@ -144,17 +140,12 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
         if (error is BackendUnconfiguredException) {
           return Scaffold(
             appBar: AppBar(title: const Text('番組表')),
-            body: _Unconfigured(
-              onOpenSettings: () => context.go('/settings'),
-            ),
+            body: _Unconfigured(onOpenSettings: () => context.go('/settings')),
           );
         }
         return Scaffold(
           appBar: AppBar(title: const Text('番組表')),
-          body: _Error(
-            message: '$error',
-            onRetry: () => _refresh(dayStartMs),
-          ),
+          body: _Error(message: '$error', onRetry: () => _refresh(dayStartMs)),
         );
       },
       data: (data) {
@@ -163,11 +154,11 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
         );
         if (types.isEmpty) {
           return Scaffold(
-          appBar: _TimetableBar(
-            compact: compact,
-            types: types,
-            selectedType: null,
-            onTypeSelected: (_) {},
+            appBar: _TimetableBar(
+              compact: compact,
+              types: types,
+              selectedType: null,
+              onTypeSelected: (_) {},
               dayStartMs: dayStartMs,
               visibleHourMs: _visibleHourMs,
               onPickDate: _pickDate,
@@ -190,8 +181,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
             compact: compact,
             types: types,
             selectedType: selectedType,
-            onTypeSelected: (type) =>
-                setState(() => _selectedType = type),
+            onTypeSelected: (type) => setState(() => _selectedType = type),
             dayStartMs: dayStartMs,
             visibleHourMs: _visibleHourMs,
             onPickDate: _pickDate,
@@ -274,9 +264,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
       timetableDayStartMs(DateTime.now().millisecondsSinceEpoch),
       _dayOffset,
     );
-    final initialJst = toJst(
-      DateTime.fromMillisecondsSinceEpoch(dayStartMs),
-    );
+    final initialJst = toJst(DateTime.fromMillisecondsSinceEpoch(dayStartMs));
     final initialDate = DateTime(
       initialJst.year,
       initialJst.month,
@@ -292,8 +280,12 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
     );
     if (picked == null || !mounted) return;
     final pickedStartMs = timetableDayStartMs(
-      DateTime.utc(picked.year, picked.month, picked.day, 3)
-          .millisecondsSinceEpoch,
+      DateTime.utc(
+        picked.year,
+        picked.month,
+        picked.day,
+        3,
+      ).millisecondsSinceEpoch,
     );
     setState(() {
       _dayOffset = timetableDayOffsetForDayStart(
@@ -468,6 +460,7 @@ class _TypeMenu extends StatelessWidget {
             controller.open();
           }
         }
+
         return FilledButton.tonal(
           onPressed: toggleTypeMenu,
           style: _barButtonStyle(compact: compact),
@@ -529,6 +522,7 @@ class _TimeMenu extends StatelessWidget {
             controller.open();
           }
         }
+
         return ValueListenableBuilder<int>(
           valueListenable: visibleHourMs,
           builder: (context, hourMs, _) {
@@ -580,10 +574,7 @@ class _Unconfigured extends StatelessWidget {
           const SizedBox(height: 16),
           Text('サーバーが設定されていません', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          FilledButton(
-            onPressed: onOpenSettings,
-            child: const Text('設定を開く'),
-          ),
+          FilledButton(onPressed: onOpenSettings, child: const Text('設定を開く')),
         ],
       ),
     );
@@ -605,11 +596,7 @@ class _Error extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 64,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 64, color: theme.colorScheme.error),
             const SizedBox(height: 16),
             Text('取得に失敗しました', style: theme.textTheme.titleMedium),
             const SizedBox(height: 8),

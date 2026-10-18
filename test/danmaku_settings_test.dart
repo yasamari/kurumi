@@ -104,9 +104,7 @@ void main() {
     });
 
     test('速度を下げると遅くなる', () {
-      final option = danmakuOptionOf(
-        const DanmakuDisplaySettings(speed: 0.5),
-      );
+      final option = danmakuOptionOf(const DanmakuDisplaySettings(speed: 0.5));
       expect(option.duration, 16);
       expect(option.staticDuration, 10);
     });

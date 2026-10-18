@@ -210,11 +210,9 @@ Future<void> showPlayerSettingsMenu(
       builder: (context) => Padding(
         padding: const EdgeInsets.all(_settingsMenuMargin),
         child: _SettingsMenuPanel(
-          maxHeight: MediaQuery.sizeOf(context).height *
-              _settingsSheetMaxHeightRatio,
-          borderRadius: const BorderRadius.vertical(
-            top: Radius.circular(16),
-          ),
+          maxHeight:
+              MediaQuery.sizeOf(context).height * _settingsSheetMaxHeightRatio,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
           player: player,
           dualMonoChannel: dualMonoChannel,
           onAudioSelected: onAudioSelected,
@@ -331,7 +329,10 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
         );
         final spaceAbove = anchorRect.top - padding.top - _settingsMenuMargin;
         final spaceBelow =
-            overlayHeight - anchorRect.bottom - padding.bottom - _settingsMenuMargin;
+            overlayHeight -
+            anchorRect.bottom -
+            padding.bottom -
+            _settingsMenuMargin;
         final placeAbove = spaceAbove >= spaceBelow;
         final maxHeight = (placeAbove ? spaceAbove : spaceBelow)
             .clamp(_settingsMenuMinSpace, _settingsMenuMaxHeight)
@@ -389,11 +390,10 @@ class _PlayerSettingsMenuRoute extends PopupRoute<void> {
     return FadeTransition(
       opacity: curved,
       child: SlideTransition(
-        position:
-            Tween<Offset>(
-              begin: const Offset(0, 0.04),
-              end: Offset.zero,
-            ).animate(curved),
+        position: Tween<Offset>(
+          begin: const Offset(0, 0.04),
+          end: Offset.zero,
+        ).animate(curved),
         child: child,
       ),
     );
@@ -571,13 +571,10 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
   Widget _pageTransition(Widget child, Animation<double> animation) {
     // 入ってくる子 (現在のページのキーを持つ) は横からスライドする。
     if (child.key == ValueKey(_page)) {
-      final slide =
-          Tween<Offset>(
-            begin: Offset(_slideSign, 0),
-            end: Offset.zero,
-          ).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-          );
+      final slide = Tween<Offset>(
+        begin: Offset(_slideSign, 0),
+        end: Offset.zero,
+      ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
       final fade = CurvedAnimation(parent: animation, curve: Curves.easeOut);
       return FadeTransition(
         opacity: fade,
@@ -612,12 +609,8 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
   Widget _pageLayout(Widget? currentChild, List<Widget> previousChildren) {
     final List<Widget> children = previousChildren
         .map<Widget>(
-          (previousChild) => Positioned(
-            top: 0,
-            left: 0,
-            right: 0,
-            child: previousChild,
-          ),
+          (previousChild) =>
+              Positioned(top: 0, left: 0, right: 0, child: previousChild),
         )
         .toList();
     final current = currentChild;
@@ -695,8 +688,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
           stream: widget.player.stream.tracks,
           builder: (context, tracksSnapshot) {
             final tracks =
-                tracksSnapshot.data?.audio ??
-                widget.player.state.tracks.audio;
+                tracksSnapshot.data?.audio ?? widget.player.state.tracks.audio;
             return StreamBuilder<Track>(
               stream: widget.player.stream.track,
               builder: (context, trackSnapshot) {
@@ -722,12 +714,8 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
                       dualMonoChannel: widget.dualMonoChannel,
                     ),
                   ),
-                  trailing: selectable
-                      ? const Icon(Icons.chevron_right)
-                      : null,
-                  onTap: selectable
-                      ? () => _go(_SettingsPage.audio, 1)
-                      : null,
+                  trailing: selectable ? const Icon(Icons.chevron_right) : null,
+                  onTap: selectable ? () => _go(_SettingsPage.audio, 1) : null,
                 );
               },
             );
@@ -805,9 +793,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
           onChanged: editable
               ? (raw) => _changeDanmaku(
                   _danmaku.copyWith(
-                    settings: settings.copyWith(
-                      opacity: danmakuOpacityOf(raw),
-                    ),
+                    settings: settings.copyWith(opacity: danmakuOpacityOf(raw)),
                   ),
                 )
               : null,
@@ -822,9 +808,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
           onChanged: editable
               ? (raw) => _changeDanmaku(
                   _danmaku.copyWith(
-                    settings: settings.copyWith(
-                      speed: danmakuSpeedOf(raw),
-                    ),
+                    settings: settings.copyWith(speed: danmakuSpeedOf(raw)),
                   ),
                 )
               : null,
@@ -936,8 +920,7 @@ class _SettingsMenuPanelState extends State<_SettingsMenuPanel> {
                   _dualMonoTile(
                     context,
                     title: DualMonoChannel.main.label,
-                    checked:
-                        widget.dualMonoChannel != DualMonoChannel.sub,
+                    checked: widget.dualMonoChannel != DualMonoChannel.sub,
                     choice: const DualMonoChoice(DualMonoChannel.main),
                   ),
                   _dualMonoTile(

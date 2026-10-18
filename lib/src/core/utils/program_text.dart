@@ -34,9 +34,10 @@ List<ProgramTextSegment> parseProgramTextSymbols(String input) {
   var position = 0;
   for (final match in pattern.allMatches(input)) {
     if (match.start > position) {
-      segments.add(
-        (text: input.substring(position, match.start), isSymbol: false),
-      );
+      segments.add((
+        text: input.substring(position, match.start),
+        isSymbol: false,
+      ));
     }
     segments.add((text: match.group(1)!, isSymbol: true));
     position = match.end;
@@ -48,8 +49,7 @@ List<ProgramTextSegment> parseProgramTextSymbols(String input) {
 }
 
 /// [formatProgramText] で使う変換マップ。挿入順に適用される。
-final Map<String, String> _translationMap =
-    buildProgramTextTranslationMap();
+final Map<String, String> _translationMap = buildProgramTextTranslationMap();
 
 /// 変換マップを構築する。
 ///

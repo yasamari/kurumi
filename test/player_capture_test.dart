@@ -104,8 +104,7 @@ void main() {
       final comment = exif.getTag(0x9c9c);
       expect(comment, isNotNull);
       final decoded =
-          jsonDecode(_decodeUtf16Le(comment!.toData()))
-              as Map<String, dynamic>;
+          jsonDecode(_decodeUtf16Le(comment!.toData())) as Map<String, dynamic>;
       expect(decoded['title'], '番組名');
       expect(decoded['is_comment_composited'], isFalse);
       expect(exif.exifIfd['DateTimeOriginal'].toString(), contains('2025'));
@@ -169,8 +168,7 @@ void main() {
       expect(center.b, closeTo(10, 10));
       final comment = decoded.exif.getTag(0x9c9c)!;
       final decodedJson =
-          jsonDecode(_decodeUtf16Le(comment.toData()))
-              as Map<String, dynamic>;
+          jsonDecode(_decodeUtf16Le(comment.toData())) as Map<String, dynamic>;
       expect(decodedJson['is_comment_composited'], isTrue);
     });
 
@@ -210,10 +208,7 @@ void main() {
     test('PNG 以外・壊れた入力は null', () {
       expect(pngSize(Uint8List(0)), isNull);
       expect(pngSize(Uint8List.fromList([1, 2, 3])), isNull);
-      expect(
-        pngSize(Uint8List.fromList(List.filled(32, 0))),
-        isNull,
-      );
+      expect(pngSize(Uint8List.fromList(List.filled(32, 0))), isNull);
     });
   });
 
@@ -226,18 +221,12 @@ void main() {
     });
 
     test('下限は 1.0、上限は 4.0', () {
-      expect(
-        captureOverlayPixelRatio(baseWidth: 640, boundaryWidth: 960),
-        1.0,
-      );
+      expect(captureOverlayPixelRatio(baseWidth: 640, boundaryWidth: 960), 1.0);
       expect(
         captureOverlayPixelRatio(baseWidth: 3840, boundaryWidth: 640),
         4.0,
       );
-      expect(
-        captureOverlayPixelRatio(baseWidth: 1920, boundaryWidth: 0),
-        1.0,
-      );
+      expect(captureOverlayPixelRatio(baseWidth: 1920, boundaryWidth: 0), 1.0);
     });
   });
 

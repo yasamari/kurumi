@@ -38,10 +38,7 @@ TvRepository tvRepository(Ref ref) {
       dio,
       baseUrl: endpoint.baseUrl,
     ),
-    BackendType.konomiTv => KonomiTvRepository(
-      dio,
-      baseUrl: endpoint.baseUrl,
-    ),
+    BackendType.konomiTv => KonomiTvRepository(dio, baseUrl: endpoint.baseUrl),
   };
 }
 

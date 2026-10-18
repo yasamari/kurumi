@@ -80,9 +80,7 @@ class ChannelSwitchPanel extends ConsumerWidget {
                     for (final type in types)
                       _ChannelList(
                         items: items
-                            .where(
-                              (item) => item.channel.channelType == type,
-                            )
+                            .where((item) => item.channel.channelType == type)
                             .toList(),
                         onChannelSelected: onChannelSelected,
                       ),
