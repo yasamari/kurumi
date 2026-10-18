@@ -19,6 +19,7 @@ import '../../core/media/now_playing_item.dart';
 import '../../core/settings/app_settings.dart';
 import '../../core/settings/app_settings_state.dart';
 import '../../core/widgets/program_detail_body.dart';
+import '../../data/nx_jikkyo/jikkyo_comment.dart';
 import '../../domain/entities/video_program.dart';
 import '../../domain/providers/backend_provider.dart';
 import '../../domain/repositories/tv_repository.dart';
@@ -28,6 +29,7 @@ import 'audio_switch.dart';
 import 'capture_list_panel.dart';
 import 'cm_sections.dart';
 import 'cm_seek_bar.dart';
+import 'comment_graph.dart';
 import 'comment_list_panel.dart';
 import 'danmaku_settings.dart';
 import 'jikkyo_comment_source.dart';
@@ -210,6 +212,14 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
   late final JikkyoPastCommentController _pastComments;
   late final String _sessionId;
 
+  /// コメント数グラフの通知元。取得後に一度だけ生成し、参照だけシークバーへ
+  /// 渡す。購読は `CmSeekBar` の中だけで行うため、コメント到着で映像サブツリー
+  /// (`PlayerVideoView`) は作り直されない。
+  final ValueNotifier<CommentGraph?> _commentGraph = ValueNotifier(null);
+
+  /// グラフ生成の元にしたコメント列。同一参照の再通知で作り直さないための鍵。
+  List<JikkyoComment>? _graphSourceComments;
+
   /// 弾幕の共有状態。向きに依存しない位置なので、画面回転・フルスクリーンで
   /// 作り直されても描画中の弾幕が保たれる ([JikkyoDanmakuOverlay] 参照)。
   late final DanmakuClock _danmakuClock =
@@ -283,6 +293,7 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
       _streamError = 'サーバーが設定されていません';
     }
     _pastComments = JikkyoPastCommentController(video: widget.video);
+    _pastComments.addListener(_onPastCommentsChanged);
     _pastComments.start();
     // システムのメディア操作 (通知・MPRIS・SMTC) の委譲先として登録する。
     // 解除は `dispose` 側 ([MediaControls.detach] のコメントを参照)。
@@ -495,6 +506,26 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     }
   }
 
+  /// 過去コメントの取得状態をコメント数グラフへ反映する。
+  ///
+  /// 取得は一括なので、届いた時点で一度だけ生成する。コメント列の参照が
+  /// 変わったときだけ作り直し、同一内容の再通知では計算しない。取得前・
+  /// 非対応・失敗・空のときはグラフを消す。
+  void _onPastCommentsChanged() {
+    final comments = _pastComments.state.comments;
+    if (comments.isEmpty) {
+      _graphSourceComments = null;
+      _commentGraph.value = null;
+      return;
+    }
+    if (identical(comments, _graphSourceComments)) return;
+    _graphSourceComments = comments;
+    _commentGraph.value = buildCommentGraph(
+      comments: comments,
+      syncStart: _pastComments.syncStart,
+    );
+  }
+
   /// CM自動スキップ。設定オンでCM区間に入ったら終端へ飛ばす。
   ///
   /// `notifyListeners` は起こさない。入り方 (シーク流入か自然再生か) を
@@ -583,7 +614,9 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
     // 画質変更で新旧画面の破棄順が入れ替わっても壊れないよう、`owner` で同一性
     // を判別する ([PipMode.disable] を参照)。
     unawaited(PipMode.instance.disable(owner: this));
+    _pastComments.removeListener(_onPastCommentsChanged);
     _pastComments.dispose();
+    _commentGraph.dispose();
     _danmakuClock.dispose();
     _danmakuStore.dispose();
     _captures.dispose();
@@ -658,6 +691,9 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
           // ホバー位置のサムネイル。KonomiTV のタイル並び画像から切り出す。
           // null (未生成・非対応) のときはプレビューを出さない。
           seekThumbnail: widget.video.thumbnailTiles,
+          // コメント数グラフ。実況対応チャンネルのときだけ非 null にする
+          // (取得前でも渡すため、コメント到着でフォークの切替は起きない)。
+          commentGraph: pastComments.isSupported ? _commentGraph : null,
           seekableBottomButtonBar: [
             const MaterialPositionIndicator(),
             // CM区間に入っている間だけ出る (それ以外は大きさゼロ)。

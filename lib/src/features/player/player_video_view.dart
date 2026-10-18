@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -5,6 +6,7 @@ import '../../domain/entities/cm_section.dart';
 import '../../domain/entities/video_thumbnail_tiles.dart';
 import 'cm_material_controls.dart';
 import 'cm_material_desktop_controls.dart';
+import 'comment_graph.dart';
 import 'player_controls_theme.dart';
 import 'player_status_views.dart';
 
@@ -59,10 +61,11 @@ enum PlayerControlsLayout {
 /// 写さないという方針を守るため)。この値が false になるのは PiP 中だけで、
 /// 通常表示には戻るのでテーマデータ側の副作用は無い。
 ///
-/// CM区間がある録画再生、またはホバー位置のサムネイルが出せる録画再生では、
-/// 標準コントロールのうちシークバーだけをフォーク ([CmMaterialVideoControls] /
+/// CM区間がある録画再生、ホバー位置のサムネイルが出せる録画再生、または
+/// コメント数グラフを出す録画再生では、標準コントロールのうちシークバーだけを
+/// フォーク ([CmMaterialVideoControls] /
 /// [CmMaterialDesktopVideoControls]) へ差し替える。テーマデータ・ボタン行は
-/// upstream と共通で、差しているのはシークバーだけ。どちらもない録画再生と
+/// upstream と共通で、差しているのはシークバーだけ。いずれも無い録画再生と
 /// ライブでは upstream の `AdaptiveVideoControls` をそのまま使うため、通常の
 /// 再生の見た目は変わらない。差し替え理由は [CmSeekBar] のコメントを参照。
 class PlayerVideoView extends StatelessWidget {
@@ -82,6 +85,7 @@ class PlayerVideoView extends StatelessWidget {
     this.showControls = true,
     this.cmSections = const [],
     this.seekThumbnail,
+    this.commentGraph,
   }) : assert(
          layout != PlayerControlsLayout.live ||
              (livePrimaryButtonBar != null &&
@@ -145,6 +149,15 @@ class PlayerVideoView extends StatelessWidget {
   /// プレビューを重ねられるフォーク ([CmSeekBar]) を使う。
   final VideoThumbnailTiles? seekThumbnail;
 
+  /// トラック直上に重ねるコメント数グラフの通知元。null なら描かない。
+  ///
+  /// 録画再生 ([PlayerControlsLayout.seekable]) のうち、実況コメントが
+  /// 対応しているチャンネルのときだけ非 null を渡す。**コメント取得前でも
+  /// 非 null にする** (実況対応は構築時に確定するため)。取得後にコメントが
+  /// 届いても [PlayerVideoView] の作り直しが起きず、[CmSeekBar] の中だけで
+  /// 表示が更新される。
+  final ValueListenable<CommentGraph?>? commentGraph;
+
   @override
   Widget build(BuildContext context) {
     // 映像が画面端まで描画されているかどうか (横画面) を表す。標準コントロールは
@@ -160,11 +173,13 @@ class PlayerVideoView extends StatelessWidget {
     // テーマデータに入れておく。
     final seekBar = seekBarColorsFrom(Theme.of(context).colorScheme);
 
-    // CM区間がある・ホバー位置のサムネイルが出せる録画再生では、標準
-    // シークバーを出さずフォークに置き換える。
+    // CM区間がある・ホバー位置のサムネイルが出せる・コメント数グラフを出す
+    // 録画再生では、標準シークバーを出さずフォークに置き換える。
     final useForkedSeekBar =
         layout == PlayerControlsLayout.seekable &&
-        (cmSections.isNotEmpty || seekThumbnail != null);
+        (cmSections.isNotEmpty ||
+            seekThumbnail != null ||
+            commentGraph != null);
 
     // 通常表示とフルスクリーンは余白が違うのでテーマデータを分ける
     // (縦画面の通常表示は外側の `SafeArea` がインセットを消費済み)。
@@ -304,12 +319,14 @@ class PlayerVideoView extends StatelessWidget {
                         state,
                         cmSections: cmSections,
                         seekThumbnail: seekThumbnail,
+                        commentGraph: commentGraph,
                       )
                     else
                       CmMaterialVideoControls(
                         state,
                         cmSections: cmSections,
                         seekThumbnail: seekThumbnail,
+                        commentGraph: commentGraph,
                       ),
                 ],
               ),

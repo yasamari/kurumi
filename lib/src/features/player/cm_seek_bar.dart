@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
@@ -10,6 +11,7 @@ import '../../domain/entities/video_thumbnail_tiles.dart';
 import 'cm_material_controls.dart';
 import 'cm_material_desktop_controls.dart';
 import 'cm_sections.dart';
+import 'comment_graph.dart';
 import 'player_controls_theme.dart';
 import 'seek_thumbnail.dart';
 
@@ -45,6 +47,7 @@ class CmSeekBar extends StatefulWidget {
     required this.cmSections,
     required this.isDesktop,
     this.seekThumbnail,
+    this.commentGraph,
   });
 
   final ValueNotifier<Duration>? delta;
@@ -61,6 +64,14 @@ class CmSeekBar extends StatefulWidget {
   /// ホバー位置のサムネイル並び。null ならプレビューを出さない
   /// (バックエンドが未対応・未生成のとき)。
   final VideoThumbnailTiles? seekThumbnail;
+
+  /// トラック直上に重ねるコメント数グラフの通知元。null なら描かない
+  /// (ライブ・実況非対応の録画)。
+  ///
+  /// コメントは取得後に不変なので、参照だけ受け取り購読はこのウィジェットの
+  /// **中だけ**で行う。コメント到着で映像サブツリーへ再構築を波及させない
+  /// ([PlayerPlaybackController.danmakuPreferences] と同じ流儀)。
+  final ValueListenable<CommentGraph?>? commentGraph;
 
   @override
   CmSeekBarState createState() => CmSeekBarState();
@@ -244,6 +255,8 @@ class CmSeekBarState extends State<CmSeekBar> {
   Widget build(BuildContext context) {
     final theme = cmSeekBarThemeOf(context, isDesktop: widget.isDesktop);
     final cmColor = cmSectionColorFrom(Theme.of(context).colorScheme);
+    final graphColor = seekBarColorsFrom(Theme.of(context).colorScheme)
+        .position;
     final durationSec = duration.inMilliseconds / 1000.0;
     final fractions = cmSectionFractions(widget.cmSections, durationSec);
     // KURUMI-CM: ホバー位置の表示はデスクトップだけ。
@@ -257,6 +270,7 @@ class CmSeekBarState extends State<CmSeekBar> {
         thumbnail != null &&
         duration != Duration.zero &&
         (widget.isDesktop ? hover : tapped);
+    final graph = widget.commentGraph;
     return Container(
       clipBehavior: Clip.none,
       margin: theme.margin,
@@ -342,6 +356,38 @@ class CmSeekBarState extends State<CmSeekBar> {
                           ],
                         ),
                       ),
+                      // KURUMI-CM: コメント数グラフ。トラックの直上に重ねる
+                      // (操作は受け付けない)。再生尺が未確定なら横位置が
+                      // 出せないので描かない。高さ 20 はサムネイルプレビューの
+                      // 間隔 (26) より小さいため重ならない。
+                      if (graph != null)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: (theme.containerHeight + trackHeight) / 2,
+                          height: commentGraphHeight,
+                          child: IgnorePointer(
+                            child: ValueListenableBuilder<CommentGraph?>(
+                              valueListenable: graph,
+                              builder: (context, value, _) {
+                                if (value == null ||
+                                    value.isEmpty ||
+                                    durationSec <= 0) {
+                                  return const SizedBox.shrink();
+                                }
+                                return CustomPaint(
+                                  painter: CommentGraphPainter(
+                                    samples: value.samples,
+                                    bucketSec: value.bucketSec,
+                                    durationSec: durationSec,
+                                    lineColor: graphColor,
+                                    fillColor: graphColor,
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        ),
                       Positioned(
                         left: tapped
                             ? (constraints.maxWidth - theme.thumbSize / 2) *

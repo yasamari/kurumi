@@ -5,6 +5,7 @@
 // ignore_for_file: non_constant_identifier_names
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'package:media_kit_video/media_kit_video_controls/src/controls/extensions/duration.dart';
@@ -14,6 +15,7 @@ import 'package:media_kit_video/media_kit_video_controls/src/controls/widgets/vi
 import '../../domain/entities/cm_section.dart';
 import '../../domain/entities/video_thumbnail_tiles.dart';
 import 'cm_seek_bar.dart';
+import 'comment_graph.dart';
 
 // KURUMI-CM: media_kit_video 2.0.1 のフォーク。CM区間表示のため、テーマ・
 // ボタン類は package のものをそのまま使い、状態とシークバーのみを持つ。
@@ -30,11 +32,13 @@ Widget CmMaterialVideoControls(
   VideoState state, {
   List<CmSection> cmSections = const [],
   VideoThumbnailTiles? seekThumbnail,
+  ValueListenable<CommentGraph?>? commentGraph,
 }) {
   return VideoControlsThemeDataInjector(
     child: _MaterialVideoControls(
       cmSections: cmSections,
       seekThumbnail: seekThumbnail,
+      commentGraph: commentGraph,
     ),
   );
 }
@@ -58,12 +62,16 @@ class _MaterialVideoControls extends StatefulWidget {
   const _MaterialVideoControls({
     this.cmSections = const [],
     this.seekThumbnail,
+    this.commentGraph,
   });
 
   final List<CmSection> cmSections;
 
   /// シークバーのホバー位置に出すサムネイル並び。null なら出さない。
   final VideoThumbnailTiles? seekThumbnail;
+
+  /// シークバーのトラック直上に重ねるコメント数グラフ。null なら出さない。
+  final ValueListenable<CommentGraph?>? commentGraph;
 
   @override
   State<_MaterialVideoControls> createState() => _MaterialVideoControlsState();
@@ -569,6 +577,7 @@ class _MaterialVideoControlsState extends State<_MaterialVideoControls> {
                                       cmSections: widget.cmSections,
                                       isDesktop: false,
                                       seekThumbnail: widget.seekThumbnail,
+                                      commentGraph: widget.commentGraph,
                                       onSeekStart: () {
                                         _timer?.cancel();
                                       },
