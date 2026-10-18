@@ -165,7 +165,20 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
   void _onAttach(DanmakuController<int> controller) {
     if (_disposed) return;
     _controllers.add(controller);
+    // 弾幕 off 中など画面が無い間にストアへ溜めたコメントを取り込むため、
+    // attach 直後にも次のフレームを立てる (画面の initState は post-frame で
+    // 起き上がるが、そのフレームが立たない環境では届かないため)。
+    _ensureFrame();
   }
+
+  /// コメント投入に使う画面コントローラー。無ければ null (弾幕 off 中)。
+  ///
+  /// ストアへ直接書くと、エンジンが「起き上がり」を post-frame に委ねるため
+  /// フレームが立たない環境 (Linux/Wayland) ではコメントが溜まるだけになる。
+  /// コントローラー経由ならエンジンの Ticker がその場で動き出し、以降のフレーム
+  /// が保証される。画面が1つも無いときだけストアへ直接書いて保持する。
+  DanmakuController<int>? get _activeController =>
+      _controllers.isEmpty ? null : _controllers.first;
 
   void _onDetach(DanmakuController<int> controller) {
     _controllers.remove(controller);
@@ -198,17 +211,21 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
   void _ensureFrame() => SchedulerBinding.instance.ensureVisualUpdate();
 
   void _onLiveComment(JikkyoComment comment) {
-    // 受信時の時計値を birth にする。store へ直接登録するため、
-    // `DanmakuScreen` 未構築 (無効時) でも捨てずに保持される。
-    widget.store.add(
-      DanmakuItem(
-        content: buildJikkyoDanmaku(comment),
-        width: 0,
-        height: 0,
-        birthTick: widget.clock.nowMs,
-      ),
-      key: _commentKey(comment),
-    );
+    // 受信時の時計値を birth にする。画面が無い (無効時) ときは store へ直接
+    // 登録して捨てずに保持し、画面があればコントローラー経由で登録してその場で
+    // Ticker を起こす (上記 [_activeController] 参照)。
+    final content = buildJikkyoDanmaku(comment);
+    final birthTick = widget.clock.nowMs;
+    final key = _commentKey(comment);
+    final controller = _activeController;
+    if (controller != null) {
+      controller.addDanmaku(content, birthTick: birthTick, key: key);
+    } else {
+      widget.store.add(
+        DanmakuItem(content: content, width: 0, height: 0, birthTick: birthTick),
+        key: key,
+      );
+    }
     _ensureFrame();
   }
 
@@ -219,21 +236,32 @@ class _JikkyoDanmakuOverlayState extends State<JikkyoDanmakuOverlay> {
       _addedState = state;
       final birthMsOf = widget.birthMsOf;
       if (birthMsOf == null) return;
-      widget.store.addAll(
-        state.comments.map(
-          (comment) => (
+      final entries = <DanmakuBatchEntry<int>>[
+        for (final comment in state.comments)
+          (
             content: buildJikkyoDanmaku(comment),
             birthTick: birthMsOf(comment),
             key: _commentKey(comment),
           ),
-        ),
-        widget.clock.nowMs,
-      );
+      ];
+      // 画面があればコントローラー経由で一括登録し、その場で Ticker を起こす
+      // ([_activeController] 参照)。無ければストアへ直接書いて保持する。
+      final controller = _activeController;
+      if (controller != null) {
+        controller.addAll(entries);
+      } else {
+        widget.store.addAll(entries, widget.clock.nowMs);
+      }
       _ensureFrame();
     } else if (state.status == JikkyoCommentStatus.connecting) {
       // 取得し直し: 古い登録を捨て、完了時に取り直す。
       _addedState = null;
-      widget.store.clear();
+      final controller = _activeController;
+      if (controller != null) {
+        controller.clear();
+      } else {
+        widget.store.clear();
+      }
       _ensureFrame();
     }
   }

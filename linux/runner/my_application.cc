@@ -55,6 +55,13 @@ static void my_application_activate(GApplication* application) {
   gtk_window_set_default_size(window, 1280, 720);
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
+  // Flutter 3.47 で Linux の既定になった Impeller は、NVIDIA プロプライエタリ
+  // ドライバで弾幕が描画されない (canvas_danmaku が `Picture.toImageSync` で
+  // 作ったテキスト画像を `canvas.drawImage` で合成しても画面に出ない)。映像
+  // テクスチャや通常のウィジェットは出るため、GPU ラスタライズを使う弾幕だけが
+  // 消える。Skia (Impeller 無効) では正しく表示されるので、Linux は Skia を使う。
+  // 詳細は AGENTS.md の「Native media stack」を参照。
+  fl_dart_project_set_enable_impeller(project, FALSE);
   fl_dart_project_set_dart_entrypoint_arguments(
       project, self->dart_entrypoint_arguments);
 
