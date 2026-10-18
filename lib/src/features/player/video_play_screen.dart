@@ -409,15 +409,13 @@ class _VideoPlayerState extends ConsumerState<_VideoPlayer> {
 
   void _syncDanmakuRunning() {
     if (!mounted) return;
-    if (danmakuClockShouldRun(
-      playing: _playingForDanmaku,
-      buffering: _bufferingForDanmaku,
-    )) {
-      _danmakuClock.seekTo(_playback.player.state.position.inMilliseconds);
-      _danmakuClock.setRunning(true);
-    } else {
-      _danmakuClock.setRunning(false);
-    }
+
+    _danmakuClock.setRunning(
+      danmakuClockShouldRun(
+        playing: _playingForDanmaku,
+        buffering: _bufferingForDanmaku,
+      ),
+    );
   }
 
   /// キャプチャを実行する。成功時は通知せず、キャプチャタブへ追加する。
