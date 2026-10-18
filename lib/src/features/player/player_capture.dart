@@ -311,7 +311,7 @@ Uint8List composeCaptureBytes(CaptureComposeArgs args) {
       height: overlayHeight,
       bytes: overlayRgbaBytes.buffer,
       bytesOffset: overlayRgbaBytes.offsetInBytes,
-      // 既定の RGBA 順は Flutter の rawRgba と同じ。
+      // Flutter の `rawStraightRgba` (straight alpha) と同じ。
       numChannels: 4,
     );
     // 比が違うときの引き伸ばしを避け、アスペクトを保って中央に置く
@@ -322,14 +322,19 @@ Uint8List composeCaptureBytes(CaptureComposeArgs args) {
       overlayWidth: overlay.width,
       overlayHeight: overlay.height,
     );
-    img.compositeImage(
-      base,
-      overlay,
-      dstX: fit.dstX,
-      dstY: fit.dstY,
-      dstW: fit.dstW,
-      dstH: fit.dstH,
-    );
+    // nearest 伸縮で文字がジャギるのを避けるため、fit サイズへ線形補間で
+    // 先にリサイズしてから 1:1 で合成する (ゼロ遅延を保つため DPR の
+    // 引き上げはしない)。
+    final resizedOverlay =
+        (overlay.width == fit.dstW && overlay.height == fit.dstH)
+        ? overlay
+        : img.copyResize(
+            overlay,
+            width: fit.dstW,
+            height: fit.dstH,
+            interpolation: img.Interpolation.linear,
+          );
+    img.compositeImage(base, resizedOverlay, dstX: fit.dstX, dstY: fit.dstY);
   }
   base.exif = buildCaptureExif(
     json: args.exifJson,
@@ -393,7 +398,9 @@ Future<({Uint8List bytes, int width, int height})?> captureDanmakuOverlay(
   if (boundary.size.isEmpty) return null;
   final image = await boundary.toImage(pixelRatio: pixelRatio);
   try {
-    final byteData = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final byteData = await image.toByteData(
+      format: ui.ImageByteFormat.rawStraightRgba,
+    );
     if (byteData == null) return null;
     return (
       bytes: byteData.buffer.asUint8List(
