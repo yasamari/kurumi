@@ -27,27 +27,33 @@ class CaptureListPanel extends StatelessWidget {
         }
         // 新しいものが先頭に来るよう逆順で並べる (一覧自体は撮影順のまま)。
         final reversed = entries.reversed.toList();
-        return GridView.builder(
-          padding: const EdgeInsets.all(8),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            crossAxisSpacing: 8,
-            mainAxisSpacing: 8,
-            // サムネイルは 16:9 で並べる。
-            childAspectRatio: 16 / 9,
-          ),
-          itemCount: reversed.length,
-          itemBuilder: (context, index) {
-            final entry = reversed[index];
-            return InkWell(
-              onTap: () => _showCaptureDetail(context, entry),
-              child: AspectRatio(
-                aspectRatio: 16 / 9,
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.memory(entry.jpegBytes, fit: BoxFit.cover),
-                ),
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            // 幅に合わせて最大3列まで表示する。
+            final columns = (constraints.maxWidth / 180).floor().clamp(1, 3);
+            return GridView.builder(
+              padding: const EdgeInsets.all(8),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: columns,
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+                // サムネイルは 16:9 で並べる。
+                childAspectRatio: 16 / 9,
               ),
+              itemCount: reversed.length,
+              itemBuilder: (context, index) {
+                final entry = reversed[index];
+                return InkWell(
+                  onTap: () => _showCaptureDetail(context, entry),
+                  child: AspectRatio(
+                    aspectRatio: 16 / 9,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.memory(entry.jpegBytes, fit: BoxFit.cover),
+                    ),
+                  ),
+                );
+              },
             );
           },
         );
