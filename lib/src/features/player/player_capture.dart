@@ -346,14 +346,43 @@ Uint8List composeCaptureBytes(CaptureComposeArgs args) {
 
 /// mpv の現在フレームを撮像する。
 ///
-/// 字幕入りで取る (`includeLibassSubtitles: true`)。mpv の `s` キー相当で、
-/// ARIB ビットマップ字幕も含まれる (Linux 実機で確認済み)。
+/// `player.screenshot()` は内部で `screenshot-raw` を同期実行する。mpv の
+/// コアが色変換まで行うため、その間の処理が再生を詰まらせる。`screenshot-to-file`
+/// は mpv の worker command を使い、色変換とファイル書込をコアのロック外で
+/// 行うので、再生を止める時間を短くできる。
 ///
-/// **設定は変えない。** `PlayerConfiguration.libass` は既定 (false) のままで
-/// よい — 撮像は `screenshot-raw subtitles` で mpv 描画済みの字幕を拾うため、
-/// アプリが `sub-visibility` で直接制御している字幕がそのまま写る。
-Future<Uint8List?> takePlayerScreenshot(Player player) {
-  return player.screenshot(format: 'image/png', includeLibassSubtitles: true);
+/// 字幕入りで取る (`subtitles`)。mpv の `s` キー相当で、ARIB ビットマップ
+/// 字幕も含まれる。PNG 拡張子で撮像し、既存の合成処理へ渡す。
+/// `NativePlayer.command` は既定の非同期 libmpv API を使うため、完了待ちでも
+/// UI isolate はブロックしない。
+Future<Uint8List?> takePlayerScreenshot(Player player) async {
+  final platform = player.platform;
+  if (platform is! NativePlayer) return null;
+
+  final directory = await Directory.systemTemp.createTemp(
+    'kurumi-player-capture-',
+  );
+  final file = File('${directory.path}/frame.png');
+  try {
+    if (Platform.isAndroid) {
+      // Android の gpu VO で既定の撮像を行うと、撮像時に renderer の再初期化が
+      // 入り再生が中断されることがある。ソフトウェア変換を別スレッドで行わせる。
+      await platform.setProperty('screenshot-sw', 'yes');
+    }
+    await platform.command([
+      'screenshot-to-file',
+      file.path,
+      'subtitles',
+    ]);
+    if (!await file.exists()) return null;
+    return await file.readAsBytes();
+  } finally {
+    try {
+      await directory.delete(recursive: true);
+    } catch (_) {
+      // 一時ファイルの後片付け失敗はキャプチャ結果に影響させない。
+    }
+  }
 }
 
 /// 撮像に使う弾幕境界のキーを選ぶ。
