@@ -663,15 +663,28 @@ class _ColumnListState extends State<_ColumnList> {
           builder: (context, constraints) {
             _viewportHeight = constraints.maxHeight;
             _updateWindow();
-            // スクロール中は平行移動の更新だけ行い、セルツリーを
-            // 作り直さない (`child` は窓がずれたときにだけ更新される)。
-            return AnimatedBuilder(
-              animation: widget.link,
-              builder: (context, child) => Transform.translate(
-                offset: Offset(0, -widget.link.offset),
-                child: child,
+            // セルは1日分の絶対座標に置くため、ビューポート高さの箱を
+            // `Transform` で動かすとヒットテストが箱の外を弾き、スクロール
+            // 後のタップが届かなくなる。`Transform` の外側に内容全体の高さ
+            // (`SizedBox`) を持たせ、描画範囲とヒットテスト範囲を一致させる
+            // (はみ出した分は外側のビューポートが切る)。
+            return OverflowBox(
+              alignment: Alignment.topLeft,
+              maxHeight: double.infinity,
+              child: SizedBox(
+                height: timetableHeightPx(
+                  widget.data.startMs,
+                  widget.data.endMs,
+                ),
+                child: AnimatedBuilder(
+                  animation: widget.link,
+                  builder: (context, child) => Transform.translate(
+                    offset: Offset(0, -widget.link.offset),
+                    child: child,
+                  ),
+                  child: _buildCells(),
+                ),
               ),
-              child: _buildCells(),
             );
           },
         ),
