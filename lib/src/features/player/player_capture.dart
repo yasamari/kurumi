@@ -364,11 +364,7 @@ Future<Uint8List?> takePlayerScreenshot(Player player) async {
   );
   final file = File('${directory.path}/frame.png');
   try {
-    if (Platform.isAndroid) {
-      // Android の gpu VO で既定の撮像を行うと、撮像時に renderer の再初期化が
-      // 入り再生が中断されることがある。ソフトウェア変換を別スレッドで行わせる。
-      await platform.setProperty('screenshot-sw', 'yes');
-    }
+    await platform.setProperty('screenshot-sw', 'yes');
     await platform.command([
       'screenshot-to-file',
       file.path,

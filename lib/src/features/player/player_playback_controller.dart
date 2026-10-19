@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io' show Platform;
 
 
 import 'package:flutter/foundation.dart';
@@ -49,14 +48,6 @@ class PlayerPlaybackController extends ChangeNotifier {
     subtitlesEnabled = ValueNotifier(initialSubtitlesEnabled);
     videoController = VideoController(
       player,
-      configuration: VideoControllerConfiguration(
-        // Linux の NVIDIA 環境では `hwdec=auto` が zero-copy (nvdec/vulkan) を
-        // 選び、mpv の `screenshot-raw` がハードウェアフレームの CPU 読み戻しに
-        // 失敗して null を返す (Intel iGPU / Android では発生しない)。
-        // `*-copy` はデコードを GPU で行いつつフレームをシステムメモリへコピー
-        // するため、撮像が CPU 側フレームで確実に成功する。
-        hwdec: Platform.isLinux ? 'auto-copy' : null,
-      ),
     );
     // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
     // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`
