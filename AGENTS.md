@@ -205,7 +205,7 @@ Mirakurun (`/api/programs` 約10MB・期間絞り不可) の全量取得を減�
 プラットフォームごとに libmpv の入手元が違う。編集時は 3 つ全部を見る。
 
 - **Linux** — `flake.nix` が `ffmpeg-headless` ベースの最小構成 ffmpeg (`withAribcaption` のみ足す。Android の `default.sh` と同方針) + それにリンクした最小構成 mpv を、ルートの `mpegts-tsreadex.patch` 付きでビルドする。このパッチは fileset に含まれていないが、flake の式が `patches` リストで直接参照するので sources には入る。カスタム構成のため初回は ffmpeg/mpv のローカルコンパイルが必要 (バイナリキャッシュなし)。
-- **Android** — `packages/media_kit_libs_android_video` (pub.dev 版 1.3.8 のベンダリング) を `pubspec.yaml` の `dependency_overrides` で path 差し替えている。その `android/build.gradle` が **自前の** `yasamari/libmpv-android-video-build` リリースから `.jar` を取得し、ffmpeg に libaribcaption を有効化してある。
+- **Android** — `packages/media_kit_libs_android_video` (pub.dev 版 1.3.8 のベンダリング) を `pubspec.yaml` の `dependency_overrides` で path 差し替えている。その `android/build.gradle` が **自前の** `yasamari/libmpv-android-video-build` リリースから `.jar` を取得し、ffmpeg に libaribcaption を有効化してある。**ffmpeg の `--enable-swscale-alpha` は必須** — `--disable-swscale-alpha` (upstream 流のサイズ削減) だとソフトウェア撮像 (`screenshot-sw=yes`) の OSD 合成で swscale が overlay の alpha を 255 で埋め (`libswscale/swscale.c` の `needAlpha=0` 経路)、ARIB 字幕の半透明背景 (libaribcaption 既定 0x80) が不透明黒で撮像される。
 - **iOS / macOS / Windows** — pub.dev 版のまま。ARIB 字幕は非対応。
 
 自前ビルドを更新したときは:

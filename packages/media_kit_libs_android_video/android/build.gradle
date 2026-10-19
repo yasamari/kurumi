@@ -59,10 +59,10 @@ task downloadDependencies(type: Exec) {
         // Download all *.jar dependencies & verify their MD5 checksums.
         // libaribcaption を有効化して ARIB 字幕に対応した自前のビルドを使う。
         def filesToDownload = [
-            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20260930/default-arm64-v8a.jar", "md5": "649639e7655bb5af3d7fb254357975d3", "destination": file("$buildDir/20260930/default-arm64-v8a.jar")],
-            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20260930/default-armeabi-v7a.jar", "md5": "7ffa8e9961f819760a2758a8804f5304", "destination": file("$buildDir/20260930/default-armeabi-v7a.jar")],
-            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20260930/default-x86_64.jar", "md5": "94037fbbcbf64c9b2e84e2c02fec8a05", "destination": file("$buildDir/20260930/default-x86_64.jar")],
-            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20260930/default-x86.jar", "md5": "2a765405ea899fc6f58ba5d5c74f81d1", "destination": file("$buildDir/20260930/default-x86.jar")]
+            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20261019/default-arm64-v8a.jar", "md5": "d2c6751d9f79f02ae80cf035c8846dad", "destination": file("$buildDir/20261019/default-arm64-v8a.jar")],
+            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20261019/default-armeabi-v7a.jar", "md5": "a95f34c8eeaa74d82dee6adcfe0cec24", "destination": file("$buildDir/20261019/default-armeabi-v7a.jar")],
+            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20261019/default-x86_64.jar", "md5": "0e7cd2ca5599ae5283fa0742ce1774c1", "destination": file("$buildDir/20261019/default-x86_64.jar")],
+            ["url": "https://github.com/yasamari/libmpv-android-video-build/releases/download/20261019/default-x86.jar", "md5": "5658d86576269680c87970fbce1232c2", "destination": file("$buildDir/20261019/default-x86.jar")]
         ]
 
         filesToDownload.each { fileInfo ->
