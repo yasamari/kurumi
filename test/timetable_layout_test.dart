@@ -414,6 +414,110 @@ void main() {
     });
   });
 
+  group('表示窓', () {
+    List<TimetableColumnSegment> segmentsOfHeights(List<double> heights) {
+      final result = <TimetableColumnSegment>[];
+      var top = 0.0;
+      for (final height in heights) {
+        result.add((topPx: top, heightPx: height, program: null));
+        top += height;
+      }
+      return result;
+    }
+
+    test('空の列は空の窓になる', () {
+      expect(
+        timetableSegmentWindow(
+          segments: const [],
+          offsetPx: 0,
+          viewportHeightPx: 900,
+          cacheExtentPx: 250,
+        ),
+        (first: 0, last: 0),
+      );
+    });
+
+    test('可視範囲と余白に重なるセグメントが入る', () {
+      final segments = segmentsOfHeights([180, 180, 180, 180, 180]);
+      // 2件目の先頭から1件分。余白なしなら2件目だけ。
+      expect(
+        timetableSegmentWindow(
+          segments: segments,
+          offsetPx: 180,
+          viewportHeightPx: 180,
+          cacheExtentPx: 0,
+        ),
+        (first: 1, last: 2),
+      );
+      // 前後に250pxの余白を足すと1〜4件目まで。
+      expect(
+        timetableSegmentWindow(
+          segments: segments,
+          offsetPx: 180,
+          viewportHeightPx: 180,
+          cacheExtentPx: 250,
+        ),
+        (first: 0, last: 4),
+      );
+    });
+
+    test('半分だけ見えるセグメントも含む', () {
+      final segments = segmentsOfHeights([180, 180, 180]);
+      expect(
+        timetableSegmentWindow(
+          segments: segments,
+          offsetPx: 90,
+          viewportHeightPx: 180,
+          cacheExtentPx: 0,
+        ),
+        (first: 0, last: 2),
+      );
+    });
+
+    test('末尾を超えたオフセットでは最後のセグメントを返す', () {
+      final segments = segmentsOfHeights([180, 180, 180]);
+      expect(
+        timetableSegmentWindow(
+          segments: segments,
+          offsetPx: 1000,
+          viewportHeightPx: 180,
+          cacheExtentPx: 0,
+        ),
+        (first: 2, last: 3),
+      );
+    });
+
+    test('高さの異なるセグメントでも二分探索で正しく引ける', () {
+      // 30・60・15・45分番組相当の高さを繰り返す。
+      final segments = segmentsOfHeights([
+        for (var i = 0; i < 100; i++) ...<double>[90, 180, 45, 135],
+      ]);
+      for (var i = 0; i < segments.length; i++) {
+        final range = timetableSegmentWindow(
+          segments: segments,
+          offsetPx: segments[i].topPx,
+          viewportHeightPx: 1,
+          cacheExtentPx: 0,
+        );
+        expect(range.first, i, reason: 'topPx=${segments[i].topPx}');
+        expect(range.last, i + 1, reason: 'topPx=${segments[i].topPx}');
+      }
+    });
+
+    test('先頭より上へスクロールしても先頭から返す', () {
+      final segments = segmentsOfHeights([180, 180]);
+      expect(
+        timetableSegmentWindow(
+          segments: segments,
+          offsetPx: -100,
+          viewportHeightPx: 180,
+          cacheExtentPx: 0,
+        ),
+        (first: 0, last: 1),
+      );
+    });
+  });
+
   group('セルの表示量', () {
     test('文章表示の要否が決まる', () {
       expect(timetableCellShowsText(35.9), isFalse);

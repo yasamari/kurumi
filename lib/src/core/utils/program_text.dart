@@ -29,10 +29,9 @@ typedef ProgramTextSegment = ({String text, bool isSymbol});
 ///
 /// `[]` (空) や閉じていない `[` は記号とみなさず通常文に残す。
 List<ProgramTextSegment> parseProgramTextSymbols(String input) {
-  final pattern = RegExp(r'\[([^\[\]]+)\]');
   final segments = <ProgramTextSegment>[];
   var position = 0;
-  for (final match in pattern.allMatches(input)) {
+  for (final match in _symbolPattern.allMatches(input)) {
     if (match.start > position) {
       segments.add((
         text: input.substring(position, match.start),
@@ -47,6 +46,11 @@ List<ProgramTextSegment> parseProgramTextSymbols(String input) {
   }
   return segments;
 }
+
+/// `[字]` 形式の記号を切り出すパターン。
+///
+/// セル構築のたびに `RegExp` を作らないよう1つを使い回す。
+final _symbolPattern = RegExp(r'\[([^\[\]]+)\]');
 
 /// [formatProgramText] で使う変換マップ。挿入順に適用される。
 final Map<String, String> _translationMap = buildProgramTextTranslationMap();

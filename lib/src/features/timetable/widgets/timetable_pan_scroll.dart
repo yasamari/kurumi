@@ -5,14 +5,15 @@ import '../timetable_scroll_link.dart';
 
 /// 番組表のドラッグを両軸同時に受け、ホイールも両軸へ配る。
 ///
-/// グリッドは縦横それぞれ `ListView.builder` を持つが、縦列 (各チャンネル列) が
-/// 横列 (チャンネルを並べた `ListView`) の内側にある。どちらも軸でロックされた
-/// `DragGestureRecognizer` を使うため、斜めのドラッグでは深い縦列側が先に
-/// ジェスチャーを取って横成分が落ち、1軸しか動かない。
+/// グリッドは横列 (`ListView.builder`) の内側に縦方向の内容を持つ2軸構造。
+/// 縦の実 `Scrollable` はガターの `ListView` だけで、チャンネル列は
+/// スクロールを持たない (`Transform` で追従する)。それでも横向きの
+/// `ListView` は軸でロックされた `DragGestureRecognizer` を持つため、
+/// 斜めのドラッグでは深い側が先にジェスチャーを取って1軸しか動かない。
 ///
-/// そのため列の `ListView` は `NeverScrollableScrollPhysics` にして
-/// recognizer を外し、ここで「両軸を同時に動かすパン」を1本だけ受ける。
-/// 受け取った量は縦横の [TimetableScrollLink] へ流すので、斜めでも
+/// そのためスクロール可能な `ListView` は `NeverScrollableScrollPhysics`
+/// にして recognizer を外し、ここで「両軸を同時に動かすパン」を1本だけ
+/// 受ける。受け取った量は縦横の [TimetableScrollLink] へ流すので、斜めでも
 /// 1軸だけでも同じ経路で動く。端のクランプ・慣性は各 `ScrollPosition` の
 /// 物理に委ね、従来のホイール・スクロールバー操作もそのまま動く。
 ///

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
@@ -20,14 +21,15 @@ import 'timetable_program_cell.dart';
 /// - 横方向はヘッダーと列の2本の `ListView.builder` を [TimetableScrollLink]
 ///   で連動させる。どちらも可視付近だけ作る (全列を `Row` に並べると不可視
 ///   列のセルまで初回フレームで作ってしまう)
-/// - 縦方向は列ごとの `ListView.builder` (番組境界が列で異なるため) を
-///   [TimetableScrollLink] で連動させる。どちらも仮想化される
-/// - 罫線・nowラインは `AnimatedBuilder` で線だけ作り直し、列の再構築は
-///   起きない
+/// - 縦方向の実スクロールはガターの `ListView` 1本だけ。各列は
+///   [TimetableScrollLink.offset] を購読し、表示窓のセルだけを
+///   `Transform` で平行移動する (列ごとの viewport 再レイアウトが無い)
+/// - 罫線・nowラインはスクロール外のオーバーレイで、`Transform` の更新だけ
+///   行う (罫線24本は日付が変わるまで作り直さない)
 ///
 /// ドラッグ・ホイールは [TimetablePanScroll] が1本で受ける (斜めも可)。
-/// 列の `ListView` は `NeverScrollableScrollPhysics` なので自分では
-/// スクロールしない。慣性・端のクランプ・仮想化はこれまでどおり。
+/// ガター・ヘッダー・横列の `ListView` は `NeverScrollableScrollPhysics` なので
+/// 自分ではスクロールしない。慣性・端のクランプはこれまでどおり。
 class TimetableGrid extends StatefulWidget {
   const TimetableGrid({
     super.key,
@@ -145,7 +147,6 @@ class _TimetableGridState extends State<TimetableGrid> {
     final TimetableData data = widget.data;
     final List<TimetableChannel> columns = data.channels;
     final gridHeight = timetableHeightPx(data.startMs, data.endMs);
-    final hourMarks = timetableHourMarksMs(data.startMs, data.endMs);
     final outline = Theme.of(context).colorScheme.outlineVariant;
 
     return LayoutBuilder(
@@ -236,30 +237,27 @@ class _TimetableGridState extends State<TimetableGrid> {
                           },
                         ),
                         // 横スクロールしても横罫線の見え方は変わらないため、
-                        // オーバーレイはスクロール外に置く。
-                        Positioned.fill(
+                        // オーバーレイはスクロール外に置く。罫線・nowラインの
+                        // 中身は日付が変わらない限り作り直さず、スクロール中は
+                        // 平行移動の更新だけにする (`Transform` は再描画のみで
+                        // 子の再構築を起こさない)。
+                        Positioned(
+                          top: 0,
+                          left: 0,
+                          right: 0,
+                          height: gridHeight,
                           child: IgnorePointer(
                             child: AnimatedBuilder(
                               animation: _vLink,
-                              builder: (context, _) => Stack(
-                                children: [
-                                  for (final mark in hourMarks)
-                                    Positioned(
-                                      top:
-                                          timetableOffsetPx(
-                                            mark,
-                                            data.startMs,
-                                          ) -
-                                          _vLink.offset,
-                                      left: 0,
-                                      right: 0,
-                                      child: Container(
-                                        height: 1,
-                                        color: outline,
-                                      ),
-                                    ),
-                                  _NowLine(data: data, offset: _vLink.offset),
-                                ],
+                              builder: (context, child) => Transform.translate(
+                                offset: Offset(0, -_vLink.offset),
+                                child: child,
+                              ),
+                              child: RepaintBoundary(
+                                child: _HourGridOverlay(
+                                  data: data,
+                                  outline: outline,
+                                ),
                               ),
                             ),
                           ),
@@ -344,9 +342,10 @@ class _TimetableGridState extends State<TimetableGrid> {
 
 /// 端到達時の日送りボタン。上端で「前の日」、下端で「次の日」を出す。
 ///
-/// 列の再構築は起こさず、表示の切り替えだけを `AnimatedBuilder` で受ける。
+/// 表示の切り替えは端への到達/離脱でしか起きないため、スクロール中は
+/// `ValueNotifier` の更新だけにしてボタンの再構築を起こさない。
 /// コールバックが null の側は出さない。
-class _EdgeButtons extends StatelessWidget {
+class _EdgeButtons extends StatefulWidget {
   const _EdgeButtons({
     required this.verticalLink,
     required this.onRequestPreviousDay,
@@ -358,52 +357,83 @@ class _EdgeButtons extends StatelessWidget {
   final VoidCallback? onRequestNextDay;
 
   @override
+  State<_EdgeButtons> createState() => _EdgeButtonsState();
+}
+
+class _EdgeButtonsState extends State<_EdgeButtons> {
+  final ValueNotifier<bool> _showTop = ValueNotifier(false);
+  final ValueNotifier<bool> _showBottom = ValueNotifier(false);
+
+  @override
+  void initState() {
+    super.initState();
+    widget.verticalLink.addListener(_sync);
+    _sync();
+  }
+
+  @override
+  void didUpdateWidget(covariant _EdgeButtons oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.verticalLink, widget.verticalLink) ||
+        oldWidget.onRequestPreviousDay != widget.onRequestPreviousDay ||
+        oldWidget.onRequestNextDay != widget.onRequestNextDay) {
+      _sync();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.verticalLink.removeListener(_sync);
+    _showTop.dispose();
+    _showBottom.dispose();
+    super.dispose();
+  }
+
+  /// 端の表示状態を同期する。値が変わったときだけ listeners へ通知される。
+  void _sync() {
+    final max = widget.verticalLink.maxOffset;
+    final offset = widget.verticalLink.offset;
+    _showTop.value =
+        widget.onRequestPreviousDay != null && max > 0 && offset <= 1;
+    _showBottom.value =
+        widget.onRequestNextDay != null && max > 0 && offset >= max - 1;
+  }
+
+  @override
   Widget build(BuildContext context) {
-    if (onRequestPreviousDay == null && onRequestNextDay == null) {
+    if (widget.onRequestPreviousDay == null &&
+        widget.onRequestNextDay == null) {
       return const SizedBox.shrink();
     }
-    return AnimatedBuilder(
-      animation: verticalLink,
-      builder: (context, _) {
-        final max = verticalLink.maxOffset;
-        // 内容がビューポートに収まる (max が 0) ときは出さない。
-        final showTop =
-            onRequestPreviousDay != null && max > 0 && verticalLink.offset <= 1;
-        final showBottom =
-            onRequestNextDay != null &&
-            max > 0 &&
-            verticalLink.offset >= max - 1;
-        return Stack(
-          children: [
-            Positioned(
-              top: 12,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: _EdgeButton(
-                  visible: showTop,
-                  icon: Icons.expand_less,
-                  label: '前の日',
-                  onPressed: onRequestPreviousDay ?? () {},
-                ),
-              ),
+    return Stack(
+      children: [
+        Positioned(
+          top: 12,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: _EdgeButton(
+              visible: _showTop,
+              icon: Icons.expand_less,
+              label: '前の日',
+              onPressed: widget.onRequestPreviousDay ?? () {},
             ),
-            Positioned(
-              bottom: 12,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: _EdgeButton(
-                  visible: showBottom,
-                  icon: Icons.expand_more,
-                  label: '次の日',
-                  onPressed: onRequestNextDay ?? () {},
-                ),
-              ),
+          ),
+        ),
+        Positioned(
+          bottom: 12,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: _EdgeButton(
+              visible: _showBottom,
+              icon: Icons.expand_more,
+              label: '次の日',
+              onPressed: widget.onRequestNextDay ?? () {},
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 }
@@ -417,32 +447,36 @@ class _EdgeButton extends StatelessWidget {
     required this.onPressed,
   });
 
-  final bool visible;
+  final ValueListenable<bool> visible;
   final IconData icon;
   final String label;
   final VoidCallback onPressed;
 
   @override
   Widget build(BuildContext context) {
-    return ExcludeSemantics(
-      excluding: !visible,
-      child: IgnorePointer(
-        ignoring: !visible,
-        child: AnimatedOpacity(
-          opacity: visible ? 1 : 0,
-          duration: const Duration(milliseconds: 200),
-          child: ElevatedButton.icon(
-            onPressed: onPressed,
-            icon: Icon(icon, size: 20),
-            label: Text(label),
+    return ValueListenableBuilder<bool>(
+      valueListenable: visible,
+      builder: (context, visible, child) => ExcludeSemantics(
+        excluding: !visible,
+        child: IgnorePointer(
+          ignoring: !visible,
+          child: AnimatedOpacity(
+            opacity: visible ? 1 : 0,
+            duration: const Duration(milliseconds: 200),
+            child: child,
           ),
         ),
+      ),
+      child: ElevatedButton.icon(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 20),
+        label: Text(label),
       ),
     );
   }
 }
 
-/// 子のスクロールバーを出さない。列ごとの縦リスト用。
+/// 子のスクロールバーを出さない。ガター・ヘッダー用。
 ///
 /// 列ごとにスクロールバーが出ると30本近く並んでうるさいため消す。
 /// 横スクロールバー (単一) は残す。
@@ -540,81 +574,161 @@ class _ColumnList extends StatefulWidget {
 }
 
 class _ColumnListState extends State<_ColumnList> {
-  late final ScrollController _controller = widget.link.attach();
+  /// この列のセグメント列 (空白埋めで1日分の高さに揃う)。データが
+  /// 変わらない限り作り直さない。
+  late List<TimetableColumnSegment> _segments = _buildSegments();
+
+  /// 縦方向の表示窓 `[first, last)`。窓がずれたときだけ作り直す。
+  int _first = 0;
+  int _last = 0;
+
+  /// 窓内セグメントの構築済みウィジェット。窓がずれたとき、新しく
+  /// 入った添字だけを構築する (同じ添字のウィジェットを作り直すと
+  /// 要素が総入れ替えになり、窓内の全セルが再構築されてしまう)。
+  final Map<int, Widget> _cellCache = {};
+
+  /// 列の高さ (横 `ListView` のアイテム高)。窓の計算に使う。
+  double _viewportHeight = 0;
+
+  List<TimetableColumnSegment> _buildSegments() {
+    final data = widget.data;
+    return timetableColumnSegments(
+      programs: widget.column.programs,
+      rangeStartMs: data.startMs,
+      rangeEndMs: data.endMs,
+      gridHeightPx: timetableHeightPx(data.startMs, data.endMs),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.link.addListener(_syncWindow);
+  }
+
+  @override
+  void didUpdateWidget(covariant _ColumnList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.link, widget.link)) {
+      oldWidget.link.removeListener(_syncWindow);
+      widget.link.addListener(_syncWindow);
+    }
+    if (!identical(oldWidget.column, widget.column) ||
+        !identical(oldWidget.data, widget.data)) {
+      _segments = _buildSegments();
+      _cellCache.clear();
+    }
+  }
 
   @override
   void dispose() {
-    widget.link.detach(_controller);
+    widget.link.removeListener(_syncWindow);
     super.dispose();
+  }
+
+  /// 共有オフセットの変化に合わせて表示窓を追従させる。窓の出入りが
+  /// 起きたときだけ再構築する (スクロール中はここで setState しない)。
+  void _syncWindow() {
+    if (_updateWindow()) setState(() {});
+  }
+
+  /// 窓を再計算する。変化があれば true。
+  bool _updateWindow() {
+    if (_viewportHeight <= 0) return false;
+    final range = timetableSegmentWindow(
+      segments: _segments,
+      offsetPx: widget.link.offset,
+      viewportHeightPx: _viewportHeight,
+      cacheExtentPx: _windowCacheExtentPx,
+    );
+    if (range.first == _first && range.last == _last) return false;
+    _first = range.first;
+    _last = range.last;
+    _cellCache.removeWhere((index, _) => index < _first || index >= _last);
+    return true;
   }
 
   @override
   Widget build(BuildContext context) {
-    final data = widget.data;
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final gridHeightPx = timetableHeightPx(data.startMs, data.endMs);
-    // 空白埋めで全列がちょうど同じ高さになる。列の高さが揃っていないと
-    // オフセット共有の前提が崩れ、短い列への追従で引き戻される。
-    final segments = timetableColumnSegments(
-      programs: widget.column.programs,
-      rangeStartMs: data.startMs,
-      rangeEndMs: data.endMs,
-      gridHeightPx: gridHeightPx,
-    );
+    final colorScheme = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
-        border: Border(
-          right: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
-        ),
+        border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
       ),
       // 波紋描画用の `Material` は列に1つだけ置く (セルごとの `Material` は
       // 初回構築のウィジェット数を膨らませるため)。
       child: Material(
         type: MaterialType.transparency,
-        child: _NoScrollbar(
-          child: ListView.custom(
-            controller: _controller,
-            // 斜めスクロールのためドラッグは `TimetablePanScroll` に
-            // 一本化する。仮想化 (可視セルだけ作る) はコントローラーの
-            // 駆動で残る。
-            physics: const NeverScrollableScrollPhysics(),
-            // 総高さは空白埋めで既知なので、`ListView` の推定に任せず
-            // 正確に与える (番組のない列が早期にクランプして共有
-            // オフセットを引き戻すのを防ぐ)。
-            childrenDelegate: _ExactExtentChildDelegate(
-              (context, index) {
-                final segment = segments[index];
-                final program = segment.program;
-                if (program == null) {
-                  return SizedBox(height: segment.heightPx);
-                }
-                final startMs = program.startAt.millisecondsSinceEpoch;
-                final endMs = program.endAt.millisecondsSinceEpoch;
-                return SizedBox(
-                  height: segment.heightPx,
-                  child: Padding(
-                    padding: const EdgeInsets.only(
-                      bottom: timetableCellGap,
-                      right: timetableCellGap,
-                    ),
-                    child: TimetableProgramCell(
-                      program: program,
-                      heightPx: segment.heightPx,
-                      isOnAir: startMs <= nowMs && nowMs < endMs,
-                      onTap: () => widget.onProgramTap(program),
-                    ),
-                  ),
-                );
-              },
-              totalExtentPx: gridHeightPx,
-              childCount: segments.length,
-              addAutomaticKeepAlives: false,
-              // セル内容は静的でスクロールでは再描画されないため、セル単位の
-              // 境界は作らない (レイヤー数を抑える)。
-              addRepaintBoundaries: false,
-            ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            _viewportHeight = constraints.maxHeight;
+            _updateWindow();
+            // スクロール中は平行移動の更新だけ行い、セルツリーを
+            // 作り直さない (`child` は窓がずれたときにだけ更新される)。
+            return AnimatedBuilder(
+              animation: widget.link,
+              builder: (context, child) => Transform.translate(
+                offset: Offset(0, -widget.link.offset),
+                child: child,
+              ),
+              child: _buildCells(),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// 表示窓のセルを1日分の座標に配置する。列の外へはみ出した分は
+  /// 横 `ListView` のビューポートが切る。
+  Widget _buildCells() {
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    final segments = _segments;
+    return Stack(
+      clipBehavior: Clip.none,
+      children: [
+        for (var index = _first; index < _last; index++)
+          _cellCache.putIfAbsent(
+            index,
+            () => _buildSegment(index, segments[index], nowMs),
+          ),
+      ],
+    );
+  }
+
+  Widget _buildSegment(int index, TimetableColumnSegment segment, int nowMs) {
+    final program = segment.program;
+    if (program == null) {
+      return Positioned(
+        key: ValueKey('gap-$index'),
+        top: segment.topPx,
+        left: 0,
+        right: 0,
+        height: segment.heightPx,
+        child: const SizedBox.shrink(),
+      );
+    }
+    final startMs = program.startAt.millisecondsSinceEpoch;
+    final endMs = program.endAt.millisecondsSinceEpoch;
+    return Positioned(
+      key: ValueKey(program.eventId),
+      top: segment.topPx,
+      left: 0,
+      right: 0,
+      height: segment.heightPx,
+      // セルは内容が変わらないため、動かないセルのレイヤーは合成だけで
+      // 済ませる (スクロールで描き直さない)。
+      child: RepaintBoundary(
+        child: Padding(
+          padding: const EdgeInsets.only(
+            bottom: timetableCellGap,
+            right: timetableCellGap,
+          ),
+          child: TimetableProgramCell(
+            program: program,
+            heightPx: segment.heightPx,
+            isOnAir: startMs <= nowMs && nowMs < endMs,
+            onTap: () => widget.onProgramTap(program),
           ),
         ),
       ),
@@ -622,37 +736,11 @@ class _ColumnListState extends State<_ColumnList> {
   }
 }
 
-/// 列の総高さが既知のときに `maxScrollExtent` を正確に与えるデリゲート。
+/// 表示窓の前後に付ける余白 (px)。
 ///
-/// 番組のない時間帯を1つの巨大な空白セルで埋めるため、`ListView` 既定の
-/// `estimateMaxScrollOffset` は可視範囲より下の空白をまだ構築していない
-/// 時点で総高さを過小評価する。過小評価された列はスクロール中に手前で
-/// クランプし、その `ScrollPosition` の通知が [TimetableScrollLink] の
-/// 共有オフセットを引き戻す (一部時間しか放送しない列で顕著)。総高さは
-/// `timetableColumnSegments` の空白埋めで全列・ガターと一致するため、
-/// それをそのまま `scrollExtent` として返す。
-class _ExactExtentChildDelegate extends SliverChildBuilderDelegate {
-  _ExactExtentChildDelegate(
-    super.builder, {
-    required this.totalExtentPx,
-    super.childCount,
-    super.addAutomaticKeepAlives,
-    super.addRepaintBoundaries,
-  });
-
-  /// 全列で揃えた列の総高さ (px)。
-  final double totalExtentPx;
-
-  @override
-  double? estimateMaxScrollOffset(
-    int firstIndex,
-    int lastIndex,
-    double leadingScrollOffset,
-    double trailingScrollOffset,
-  ) {
-    return totalExtentPx;
-  }
-}
+/// 高速な慣性スクロールでも窓の追従が1フレーム遅れない距離として
+/// `ListView` の既定キャッシュ (250px) と同程度にする。
+const double _windowCacheExtentPx = 250;
 
 /// チャンネルヘッダー。ロゴ+番号・局名。タップで視聴へ遷移する。
 class _ChannelHeader extends StatelessWidget {
@@ -716,12 +804,38 @@ class _ChannelHeader extends StatelessWidget {
   }
 }
 
-/// 現在時刻のライン。30秒ごとに自分だけ作り直す。
-class _NowLine extends StatefulWidget {
-  const _NowLine({required this.data, required this.offset});
+/// 罫線とnowラインの重ね描き。日付が変わらない限り作り直さない。
+///
+/// スクロールへの追従は親の `Transform` が行うため、ここでは1日分の
+/// 絶対座標 (日開始からのオフセット) で配置する。
+class _HourGridOverlay extends StatelessWidget {
+  const _HourGridOverlay({required this.data, required this.outline});
 
   final TimetableData data;
-  final double offset;
+  final Color outline;
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        for (final mark in timetableHourMarksMs(data.startMs, data.endMs))
+          Positioned(
+            top: timetableOffsetPx(mark, data.startMs),
+            left: 0,
+            right: 0,
+            child: Container(height: 1, color: outline),
+          ),
+        _NowLine(data: data),
+      ],
+    );
+  }
+}
+
+/// 現在時刻のライン。30秒ごとに自分だけ作り直す。
+class _NowLine extends StatefulWidget {
+  const _NowLine({required this.data});
+
+  final TimetableData data;
 
   @override
   State<_NowLine> createState() => _NowLineState();
@@ -752,7 +866,7 @@ class _NowLineState extends State<_NowLine> {
     if (_nowMs < data.startMs || _nowMs >= data.endMs) {
       return const SizedBox.shrink();
     }
-    final top = timetableOffsetPx(_nowMs, data.startMs) - widget.offset;
+    final top = timetableOffsetPx(_nowMs, data.startMs);
     final gridHeight = timetableHeightPx(data.startMs, data.endMs);
     if (top < 0 || top > gridHeight) return const SizedBox.shrink();
     final colorScheme = Theme.of(context).colorScheme;
@@ -760,9 +874,8 @@ class _NowLineState extends State<_NowLine> {
       DateTime.fromMillisecondsSinceEpoch(_nowMs),
       DateTime.fromMillisecondsSinceEpoch(_nowMs),
     ).split('-').first;
-    // 外側のオーバーレイ `Stack` に対して配置するため `Positioned.fill` で
-    // 包む。素の `Stack` を返すと0サイズになり、子の `Positioned` の基準が
-    // ずれて線が見えなくなる。
+    // 親のオーバーレイ `Stack` は1日分の高さを持つため、`Positioned.fill`
+    // でその全面を占有してから内側で配置する。
     return Positioned.fill(
       child: Stack(
         children: [

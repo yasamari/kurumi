@@ -7,19 +7,24 @@ import 'timetable_layout.dart';
 /// ガター・各チャンネル列・ヘッダー行のスクロールを1本に束ねる。
 ///
 /// 横スクロールはヘッダーと列の2本の `ListView.builder` (可視付近だけ作る
-/// ため)、縦スクロールは列ごとの `ListView.builder` (番組境界が列で異なる
-/// ため) を持つ。いずれかの列のスクロールを他列へ `jumpTo` で伝える。再入は
-/// ガードする。
+/// ため) を持ち、いずれかのスクロールを他方へ `jumpTo` で伝える。縦スクロール
+/// の実 `Scrollable` はガターの1本だけで、各チャンネル列はこの [offset] を
+/// 購読して表示窓 (可視範囲 + キャッシュ) のセルだけを `Transform` で
+/// 平行移動する (`_ColumnList`)。列ごとに `ListView` を持たないため、
+/// スクロール中に 11 列分の viewport を再レイアウトする必要がない。
+/// 再入はガードする。
 ///
-/// **斜めスクロールはここで実現する。** 列の `ListView` は
-/// `NeverScrollableScrollPhysics` にしてドラッグのジェスチャー競合を外して
-/// あり、入ってくるのは `TimetablePanScroll` の1本のパンだけ。縦横2本の
-/// リンクが同じドラッグ量の dy・dx を同時に受けるので、斜めドラッグがその
-/// まま両軸のスクロールになる。端のクランプは [dragBy] で、慣性・ホイールは
-/// 各 `ScrollPosition` の物理 (`goBallistic` / `pointerScroll`) で処理する。
+/// **斜めスクロールはここで実現する。** 横列・ヘッダー・ガターの
+/// `ListView` は `NeverScrollableScrollPhysics` にしてドラッグのジェスチャー
+/// 競合を外してあり、入ってくるのは `TimetablePanScroll` の1本のパンだけ。
+/// 縦横2本のリンクが同じドラッグ量の dy・dx を同時に受けるので、斜め
+/// ドラッグがそのまま両軸のスクロールになる。端のクランプは [dragBy] で、
+/// 慣性・ホイールは各 `ScrollPosition` の物理 (`goBallistic` /
+/// `pointerScroll`) で処理する。
 ///
-/// [offset] の変更は `notifyListeners` で配信し、罫線・nowラインの
-/// 再配置 (`AnimatedBuilder`) に使う。列自体の再構築は起きない。
+/// [offset] の変更は `notifyListeners` で配信し、各列の表示窓の追従・
+/// 罫線・nowラインの再配置 (`AnimatedBuilder`) に使う。窓が変わらない間は
+/// 列のセルツリーは再構築されない。
 class TimetableScrollLink extends ChangeNotifier {
   final Map<ScrollController, VoidCallback> _members = {};
 
@@ -141,8 +146,8 @@ class TimetableScrollLink extends ChangeNotifier {
 
   /// 参加メンバーの最大スクロール量。未レイアウト (節点なし) では 0。
   ///
-  /// 全列の高さは `timetableColumnSegments` の空白埋めで揃うため、先頭の
-  /// 値を使えば全列共通になる。端ボタンの表示判定に使う。
+  /// 縦はガターの `ListView` が唯一のメンバーで、その総高さ (`itemExtent`
+  /// から正確に求まる) が全列共通の最大量になる。端ボタンの表示判定に使う。
   double get maxOffset => _maxOffset;
 
   double get _maxOffset {

@@ -301,9 +301,15 @@ List<TimetableChannel> timetableColumnsOfType(
 String timetableGenreMajor(List<String> genres) {
   if (genres.isEmpty) return '';
   final label = genres.first;
-  final index = label.indexOf(RegExp('[／・/・]'));
+  final index = label.indexOf(_genreSeparator);
   return index < 0 ? label : label.substring(0, index);
 }
+
+/// ジャンル文字列の大分類との区切り (`ニュース／報道` の `／` など)。
+///
+/// セルごとに `RegExp` を作るとスクロール中の新規セル構築で無駄な
+/// コンパイルが走るため、1つを使い回す。
+final _genreSeparator = RegExp('[／・/・]');
 
 /// ジャンル大分類ごとのシード色。セルのアクセントバーと背景ティントに使う。
 Color timetableGenreSeedColor(String major) {
@@ -404,6 +410,41 @@ List<TimetableColumnSegment> timetableColumnSegments({
     ));
   }
   return segments;
+}
+
+/// セグメント列のうち表示窓に入る添字の半開区間 `[first, last)` を返す。
+///
+/// 窓は可視範囲 (`[offsetPx, offsetPx + viewportHeightPx)`) の前後に
+/// [cacheExtentPx] の余白を足したもの。列の描画は窓内のセルだけを構築し、
+/// スクロール中は平行移動だけで済ませる (窓がずれたときだけ出入りする)。
+/// 窓は連続スクロールで1件ずつずれるため、構築のやり直しは最小になる。
+({int first, int last}) timetableSegmentWindow({
+  required List<TimetableColumnSegment> segments,
+  required double offsetPx,
+  required double viewportHeightPx,
+  required double cacheExtentPx,
+}) {
+  if (segments.isEmpty) return (first: 0, last: 0);
+  final top = offsetPx - cacheExtentPx;
+  final bottom = offsetPx + viewportHeightPx + cacheExtentPx;
+  // 下端が窓の上端を超える最初のセグメント (二分探索)。セグメントは
+  // 上から順に隙間なく並んでいるため、添字がそのまま表示順になる。
+  var lo = 0;
+  var hi = segments.length;
+  while (lo < hi) {
+    final mid = (lo + hi) >> 1;
+    if (segments[mid].topPx + segments[mid].heightPx <= top) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+  final first = lo < segments.length ? lo : segments.length - 1;
+  var last = first;
+  while (last < segments.length && segments[last].topPx < bottom) {
+    last++;
+  }
+  return (first: first, last: last);
 }
 
 /// セル高さから文章表示の要否を決める。この高さ以上では省略記号付きの
