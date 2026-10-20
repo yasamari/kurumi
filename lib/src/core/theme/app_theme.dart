@@ -10,7 +10,11 @@ const Color _fallbackSeed = Colors.deepOrange;
 ThemeData buildLightTheme(ColorScheme? dynamicScheme) {
   return ThemeData(
     colorScheme:
-        dynamicScheme ?? ColorScheme.fromSeed(seedColor: _fallbackSeed),
+        dynamicScheme ??
+        ColorScheme.fromSeed(
+          seedColor: _fallbackSeed,
+          dynamicSchemeVariant: DynamicSchemeVariant.expressive,
+        ),
     useMaterial3: true,
   );
 }
@@ -23,6 +27,7 @@ ThemeData buildDarkTheme(ColorScheme? dynamicScheme) {
         ColorScheme.fromSeed(
           seedColor: _fallbackSeed,
           brightness: Brightness.dark,
+          dynamicSchemeVariant: DynamicSchemeVariant.expressive,
         ),
     useMaterial3: true,
   );
