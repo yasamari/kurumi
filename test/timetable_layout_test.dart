@@ -518,6 +518,47 @@ void main() {
     });
   });
 
+  group('セグメントのヒットテスト', () {
+    List<TimetableColumnSegment> segmentsOfHeights(List<double> heights) {
+      final result = <TimetableColumnSegment>[];
+      var top = 0.0;
+      for (final height in heights) {
+        result.add((topPx: top, heightPx: height, program: null));
+        top += height;
+      }
+      return result;
+    }
+
+    test('境界は次のセグメントに属する', () {
+      final segments = segmentsOfHeights([100, 50, 200]);
+      expect(timetableSegmentIndexAt(segments: segments, yPx: 0), 0);
+      expect(timetableSegmentIndexAt(segments: segments, yPx: 99.9), 0);
+      expect(timetableSegmentIndexAt(segments: segments, yPx: 100), 1);
+      expect(timetableSegmentIndexAt(segments: segments, yPx: 150), 2);
+    });
+
+    test('範囲外はnullになる', () {
+      final segments = segmentsOfHeights([100, 50]);
+      expect(timetableSegmentIndexAt(segments: segments, yPx: -0.1), isNull);
+      expect(timetableSegmentIndexAt(segments: segments, yPx: 150), isNull);
+      expect(timetableSegmentIndexAt(segments: const [], yPx: 0), isNull);
+    });
+
+    test('小さなセグメントが連続しても引ける', () {
+      final segments = segmentsOfHeights([for (var i = 0; i < 100; i++) 4.5]);
+      for (var i = 0; i < segments.length; i++) {
+        final segment = segments[i];
+        expect(
+          timetableSegmentIndexAt(
+            segments: segments,
+            yPx: segment.topPx + segment.heightPx / 2,
+          ),
+          i,
+        );
+      }
+    });
+  });
+
   group('セルの表示量', () {
     test('文章表示の要否が決まる', () {
       expect(timetableCellShowsText(35.9), isFalse);

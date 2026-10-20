@@ -450,3 +450,30 @@ List<TimetableColumnSegment> timetableColumnSegments({
 /// セル高さから文章表示の要否を決める。この高さ以上では省略記号付きの
 /// 通常表示になり、未満では切り詰め表示 (見切れ上等) になる。
 bool timetableCellShowsText(double heightPx) => heightPx >= 36;
+
+/// 縦位置 [yPx] を含むセグメントの添字を返す。範囲外は null。
+///
+/// セグメントは上から隙間なく並んでいる。境界は次のセグメントに属する
+/// (半開区間 `[top, top + height)`)。列のタップ位置から番組を引くのに使う。
+int? timetableSegmentIndexAt({
+  required List<TimetableColumnSegment> segments,
+  required double yPx,
+}) {
+  if (segments.isEmpty || yPx < 0) return null;
+  if (yPx >= segments.last.topPx + segments.last.heightPx) return null;
+  var lo = 0;
+  var hi = segments.length - 1;
+  while (lo <= hi) {
+    final mid = (lo + hi) >> 1;
+    final segment = segments[mid];
+    final bottom = segment.topPx + segment.heightPx;
+    if (yPx < segment.topPx) {
+      hi = mid - 1;
+    } else if (yPx >= bottom) {
+      lo = mid + 1;
+    } else {
+      return mid;
+    }
+  }
+  return null;
+}

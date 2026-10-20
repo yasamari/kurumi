@@ -191,20 +191,24 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
           ),
           // 日替わりでグリッドを作り直す (先頭へ戻す)。種別切替では
           // 作り直さないため、同じ時刻位置を保ったまま列だけ変わる。
-          body: TimetableGrid(
-            key: ValueKey(dayStartMs),
-            data: filtered,
-            visibleHourMs: _visibleHourMs,
-            jumpToTimeMs: _scrollRequestMs,
-            scrollRequestId: _scrollRequestId,
-            onRequestPreviousDay: _goPreviousDayBottom,
-            onRequestNextDay: _goNextDayTop,
-            onProgramTap: (column, program) => showTimetableProgramSheet(
-              context: context,
-              column: column,
-              program: program,
+          // スクロール中にアプリバー・ナビゲーションバーまで再ラスタライズ
+          // しないよう、グリッドを1枚のレイヤーに閉じ込める。
+          body: RepaintBoundary(
+            child: TimetableGrid(
+              key: ValueKey(dayStartMs),
+              data: filtered,
+              visibleHourMs: _visibleHourMs,
+              jumpToTimeMs: _scrollRequestMs,
+              scrollRequestId: _scrollRequestId,
+              onRequestPreviousDay: _goPreviousDayBottom,
+              onRequestNextDay: _goNextDayTop,
+              onProgramTap: (column, program) => showTimetableProgramSheet(
+                context: context,
+                column: column,
+                program: program,
+              ),
+              onChannelTap: (channel) => context.push('/watch/${channel.id}'),
             ),
-            onChannelTap: (channel) => context.push('/watch/${channel.id}'),
           ),
         );
       },

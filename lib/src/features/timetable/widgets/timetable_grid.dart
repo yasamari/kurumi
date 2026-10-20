@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
@@ -12,20 +11,20 @@ import '../../../domain/entities/timetable.dart';
 import '../../../domain/entities/tv_program.dart';
 import '../timetable_layout.dart';
 import '../timetable_scroll_link.dart';
+import 'timetable_column_view.dart';
+import 'timetable_grid_overlay.dart';
 import 'timetable_pan_scroll.dart';
-import 'timetable_program_cell.dart';
 
 /// 番組表グリッド。縦=時間・横=チャンネルの2軸スクロール。
 ///
 /// 高フレームレートのための構成:
 /// - 横方向はヘッダーと列の2本の `ListView.builder` を [TimetableScrollLink]
-///   で連動させる。どちらも可視付近だけ作る (全列を `Row` に並べると不可視
-///   列のセルまで初回フレームで作ってしまう)
+///   で連動させる。どちらも可視付近だけ作る
 /// - 縦方向の実スクロールはガターの `ListView` 1本だけ。各列は
-///   [TimetableScrollLink.offset] を購読し、表示窓のセルだけを
-///   `Transform` で平行移動する (列ごとの viewport 再レイアウトが無い)
-/// - 罫線・nowラインはスクロール外のオーバーレイで、`Transform` の更新だけ
-///   行う (罫線24本は日付が変わるまで作り直さない)
+///   [TimetableScrollLink.offset] を購読し、1枚の `CustomPaint` で
+///   セル背景と事前ラスタライズ済みの本文画像を描く (セルごとのウィジェット
+///   構築・テキストの再ラスタライズをスクロール中に行わない)
+/// - 罫線・nowラインもビューポート全体の1枚の `CustomPaint` で描く
 ///
 /// ドラッグ・ホイールは [TimetablePanScroll] が1本で受ける (斜めも可)。
 /// ガター・ヘッダー・横列の `ListView` は `NeverScrollableScrollPhysics` なので
@@ -224,9 +223,12 @@ class _TimetableGridState extends State<TimetableGrid> {
                           physics: const NeverScrollableScrollPhysics(),
                           itemExtent: timetableColumnWidth,
                           itemCount: columns.length,
+                          // 列はスクロール中すべて再描画されるため、列ごとの
+                          // レイヤーは合成コストになるだけ。1枚にまとめる。
+                          addRepaintBoundaries: false,
                           itemBuilder: (context, index) {
                             final column = columns[index];
-                            return _ColumnList(
+                            return TimetableColumnView(
                               key: ValueKey(column.channel.id),
                               link: _vLink,
                               data: data,
@@ -236,29 +238,13 @@ class _TimetableGridState extends State<TimetableGrid> {
                             );
                           },
                         ),
-                        // 横スクロールしても横罫線の見え方は変わらないため、
-                        // オーバーレイはスクロール外に置く。罫線・nowラインの
-                        // 中身は日付が変わらない限り作り直さず、スクロール中は
-                        // 平行移動の更新だけにする (`Transform` は再描画のみで
-                        // 子の再構築を起こさない)。
-                        Positioned(
-                          top: 0,
-                          left: 0,
-                          right: 0,
-                          height: gridHeight,
+                        // 罫線・nowラインはビューポート1枚のキャンバスに描く。
+                        // スクロール中は共有オフセットの通知で再描画するだけ。
+                        Positioned.fill(
                           child: IgnorePointer(
-                            child: AnimatedBuilder(
-                              animation: _vLink,
-                              builder: (context, child) => Transform.translate(
-                                offset: Offset(0, -_vLink.offset),
-                                child: child,
-                              ),
-                              child: RepaintBoundary(
-                                child: _HourGridOverlay(
-                                  data: data,
-                                  outline: outline,
-                                ),
-                              ),
+                            child: TimetableGridOverlay(
+                              data: data,
+                              link: _vLink,
                             ),
                           ),
                         ),
@@ -526,8 +512,6 @@ class _GutterListState extends State<_GutterList> {
         itemExtent: 60 * timetablePxPerMin,
         itemCount: hours,
         addAutomaticKeepAlives: false,
-        // 時刻ラベルは静的なため境界は作らない。
-        addRepaintBoundaries: false,
         itemBuilder: (context, index) {
           final hour = toJst(
             DateTime.fromMillisecondsSinceEpoch(
@@ -553,207 +537,6 @@ class _GutterListState extends State<_GutterList> {
     );
   }
 }
-
-/// チャンネル1列。番組ブロックを番組尺通りの高さで並べる。
-class _ColumnList extends StatefulWidget {
-  const _ColumnList({
-    super.key,
-    required this.link,
-    required this.data,
-    required this.column,
-    required this.onProgramTap,
-  });
-
-  final TimetableScrollLink link;
-  final TimetableData data;
-  final TimetableChannel column;
-  final void Function(TvProgram program) onProgramTap;
-
-  @override
-  State<_ColumnList> createState() => _ColumnListState();
-}
-
-class _ColumnListState extends State<_ColumnList> {
-  /// この列のセグメント列 (空白埋めで1日分の高さに揃う)。データが
-  /// 変わらない限り作り直さない。
-  late List<TimetableColumnSegment> _segments = _buildSegments();
-
-  /// 縦方向の表示窓 `[first, last)`。窓がずれたときだけ作り直す。
-  int _first = 0;
-  int _last = 0;
-
-  /// 窓内セグメントの構築済みウィジェット。窓がずれたとき、新しく
-  /// 入った添字だけを構築する (同じ添字のウィジェットを作り直すと
-  /// 要素が総入れ替えになり、窓内の全セルが再構築されてしまう)。
-  final Map<int, Widget> _cellCache = {};
-
-  /// 列の高さ (横 `ListView` のアイテム高)。窓の計算に使う。
-  double _viewportHeight = 0;
-
-  List<TimetableColumnSegment> _buildSegments() {
-    final data = widget.data;
-    return timetableColumnSegments(
-      programs: widget.column.programs,
-      rangeStartMs: data.startMs,
-      rangeEndMs: data.endMs,
-      gridHeightPx: timetableHeightPx(data.startMs, data.endMs),
-    );
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    widget.link.addListener(_syncWindow);
-  }
-
-  @override
-  void didUpdateWidget(covariant _ColumnList oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.link, widget.link)) {
-      oldWidget.link.removeListener(_syncWindow);
-      widget.link.addListener(_syncWindow);
-    }
-    if (!identical(oldWidget.column, widget.column) ||
-        !identical(oldWidget.data, widget.data)) {
-      _segments = _buildSegments();
-      _cellCache.clear();
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.link.removeListener(_syncWindow);
-    super.dispose();
-  }
-
-  /// 共有オフセットの変化に合わせて表示窓を追従させる。窓の出入りが
-  /// 起きたときだけ再構築する (スクロール中はここで setState しない)。
-  void _syncWindow() {
-    if (_updateWindow()) setState(() {});
-  }
-
-  /// 窓を再計算する。変化があれば true。
-  bool _updateWindow() {
-    if (_viewportHeight <= 0) return false;
-    final range = timetableSegmentWindow(
-      segments: _segments,
-      offsetPx: widget.link.offset,
-      viewportHeightPx: _viewportHeight,
-      cacheExtentPx: _windowCacheExtentPx,
-    );
-    if (range.first == _first && range.last == _last) return false;
-    _first = range.first;
-    _last = range.last;
-    _cellCache.removeWhere((index, _) => index < _first || index >= _last);
-    return true;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(right: BorderSide(color: colorScheme.outlineVariant)),
-      ),
-      // 波紋描画用の `Material` は列に1つだけ置く (セルごとの `Material` は
-      // 初回構築のウィジェット数を膨らませるため)。
-      child: Material(
-        type: MaterialType.transparency,
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            _viewportHeight = constraints.maxHeight;
-            _updateWindow();
-            // セルは1日分の絶対座標に置くため、ビューポート高さの箱を
-            // `Transform` で動かすとヒットテストが箱の外を弾き、スクロール
-            // 後のタップが届かなくなる。`Transform` の外側に内容全体の高さ
-            // (`SizedBox`) を持たせ、描画範囲とヒットテスト範囲を一致させる
-            // (はみ出した分は外側のビューポートが切る)。
-            return OverflowBox(
-              alignment: Alignment.topLeft,
-              maxHeight: double.infinity,
-              child: SizedBox(
-                height: timetableHeightPx(
-                  widget.data.startMs,
-                  widget.data.endMs,
-                ),
-                child: AnimatedBuilder(
-                  animation: widget.link,
-                  builder: (context, child) => Transform.translate(
-                    offset: Offset(0, -widget.link.offset),
-                    child: child,
-                  ),
-                  child: _buildCells(),
-                ),
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
-
-  /// 表示窓のセルを1日分の座標に配置する。列の外へはみ出した分は
-  /// 横 `ListView` のビューポートが切る。
-  Widget _buildCells() {
-    final nowMs = DateTime.now().millisecondsSinceEpoch;
-    final segments = _segments;
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        for (var index = _first; index < _last; index++)
-          _cellCache.putIfAbsent(
-            index,
-            () => _buildSegment(index, segments[index], nowMs),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildSegment(int index, TimetableColumnSegment segment, int nowMs) {
-    final program = segment.program;
-    if (program == null) {
-      return Positioned(
-        key: ValueKey('gap-$index'),
-        top: segment.topPx,
-        left: 0,
-        right: 0,
-        height: segment.heightPx,
-        child: const SizedBox.shrink(),
-      );
-    }
-    final startMs = program.startAt.millisecondsSinceEpoch;
-    final endMs = program.endAt.millisecondsSinceEpoch;
-    return Positioned(
-      key: ValueKey(program.eventId),
-      top: segment.topPx,
-      left: 0,
-      right: 0,
-      height: segment.heightPx,
-      // セルは内容が変わらないため、動かないセルのレイヤーは合成だけで
-      // 済ませる (スクロールで描き直さない)。
-      child: RepaintBoundary(
-        child: Padding(
-          padding: const EdgeInsets.only(
-            bottom: timetableCellGap,
-            right: timetableCellGap,
-          ),
-          child: TimetableProgramCell(
-            program: program,
-            heightPx: segment.heightPx,
-            isOnAir: startMs <= nowMs && nowMs < endMs,
-            onTap: () => widget.onProgramTap(program),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// 表示窓の前後に付ける余白 (px)。
-///
-/// 高速な慣性スクロールでも窓の追従が1フレーム遅れない距離として
-/// `ListView` の既定キャッシュ (250px) と同程度にする。
-const double _windowCacheExtentPx = 250;
 
 /// チャンネルヘッダー。ロゴ+番号・局名。タップで視聴へ遷移する。
 class _ChannelHeader extends StatelessWidget {
@@ -812,109 +595,6 @@ class _ChannelHeader extends StatelessWidget {
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// 罫線とnowラインの重ね描き。日付が変わらない限り作り直さない。
-///
-/// スクロールへの追従は親の `Transform` が行うため、ここでは1日分の
-/// 絶対座標 (日開始からのオフセット) で配置する。
-class _HourGridOverlay extends StatelessWidget {
-  const _HourGridOverlay({required this.data, required this.outline});
-
-  final TimetableData data;
-  final Color outline;
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        for (final mark in timetableHourMarksMs(data.startMs, data.endMs))
-          Positioned(
-            top: timetableOffsetPx(mark, data.startMs),
-            left: 0,
-            right: 0,
-            child: Container(height: 1, color: outline),
-          ),
-        _NowLine(data: data),
-      ],
-    );
-  }
-}
-
-/// 現在時刻のライン。30秒ごとに自分だけ作り直す。
-class _NowLine extends StatefulWidget {
-  const _NowLine({required this.data});
-
-  final TimetableData data;
-
-  @override
-  State<_NowLine> createState() => _NowLineState();
-}
-
-class _NowLineState extends State<_NowLine> {
-  late Timer _timer;
-  int _nowMs = DateTime.now().millisecondsSinceEpoch;
-
-  @override
-  void initState() {
-    super.initState();
-    _timer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => setState(() => _nowMs = DateTime.now().millisecondsSinceEpoch),
-    );
-  }
-
-  @override
-  void dispose() {
-    _timer.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final data = widget.data;
-    if (_nowMs < data.startMs || _nowMs >= data.endMs) {
-      return const SizedBox.shrink();
-    }
-    final top = timetableOffsetPx(_nowMs, data.startMs);
-    final gridHeight = timetableHeightPx(data.startMs, data.endMs);
-    if (top < 0 || top > gridHeight) return const SizedBox.shrink();
-    final colorScheme = Theme.of(context).colorScheme;
-    final label = formatTimetableCellTime(
-      DateTime.fromMillisecondsSinceEpoch(_nowMs),
-      DateTime.fromMillisecondsSinceEpoch(_nowMs),
-    ).split('-').first;
-    // 親のオーバーレイ `Stack` は1日分の高さを持つため、`Positioned.fill`
-    // でその全面を占有してから内側で配置する。
-    return Positioned.fill(
-      child: Stack(
-        children: [
-          Positioned(
-            top: top,
-            left: 0,
-            right: 0,
-            child: Container(height: 2, color: colorScheme.error),
-          ),
-          Positioned(
-            top: top - 11,
-            left: 4,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: colorScheme.error,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                label,
-                style: Theme.of(context).textTheme.labelSmall
-                    ?.copyWith(color: colorScheme.onError, height: 1.0),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

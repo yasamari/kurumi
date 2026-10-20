@@ -9,8 +9,8 @@ import 'timetable_layout.dart';
 /// 横スクロールはヘッダーと列の2本の `ListView.builder` (可視付近だけ作る
 /// ため) を持ち、いずれかのスクロールを他方へ `jumpTo` で伝える。縦スクロール
 /// の実 `Scrollable` はガターの1本だけで、各チャンネル列はこの [offset] を
-/// 購読して表示窓 (可視範囲 + キャッシュ) のセルだけを `Transform` で
-/// 平行移動する (`_ColumnList`)。列ごとに `ListView` を持たないため、
+/// 購読して表示窓 (可視範囲 + キャッシュ) を計算し、1枚のキャンバスへ描く
+/// (`TimetableColumnView`)。列ごとに `ListView` を持たないため、
 /// スクロール中に 11 列分の viewport を再レイアウトする必要がない。
 /// 再入はガードする。
 ///
@@ -23,16 +23,29 @@ import 'timetable_layout.dart';
 /// `pointerScroll`) で処理する。
 ///
 /// [offset] の変更は `notifyListeners` で配信し、各列の表示窓の追従・
-/// 罫線・nowラインの再配置 (`AnimatedBuilder`) に使う。窓が変わらない間は
-/// 列のセルツリーは再構築されない。
+/// 罫線・nowラインの再描画に使う。窓が変わらない間は列のセルツリーは
+/// 再構築されない。
 class TimetableScrollLink extends ChangeNotifier {
   final Map<ScrollController, VoidCallback> _members = {};
 
   bool _syncing = false;
   double _offset = 0;
+  int _lastScrollAtMs = 0;
 
   /// 現在の共有オフセット。
   double get offset => _offset;
+
+  /// ドラッグ・慣性・ホイールで直近に動いたか。
+  ///
+  /// フリック開始直後は最初のスクロール通知まで1フレーム以上かかるため、
+  /// その間もスクロール中として扱い、停止後の窓再構築が走らないよう
+  /// 操作の開始時点で記録する。
+  bool get isScrolling =>
+      DateTime.now().millisecondsSinceEpoch - _lastScrollAtMs < 100;
+
+  void _markScrolling() {
+    _lastScrollAtMs = DateTime.now().millisecondsSinceEpoch;
+  }
 
   /// 連動に参加するコントローラーを作る。現在のオフセットを引き継ぐ。
   ///
@@ -56,6 +69,7 @@ class TimetableScrollLink extends ChangeNotifier {
 
   /// 全列を指定オフセットへ動かす (初回表示のnowジャンプ用)。
   void jumpTo(double offset) {
+    _markScrolling();
     if (offset == _offset) {
       // 変化なしでも描画側の初期配置のため通知する。
       notifyListeners();
@@ -92,6 +106,7 @@ class TimetableScrollLink extends ChangeNotifier {
   /// そのまま効く。
   void pointerScrollBy(double delta) {
     if (delta == 0) return;
+    _markScrolling();
     // 各メンバーが個別に `pointerScroll` すると、そのたびに通知が上がって
     // [_onScrolled] 経由で他メンバーが追従し、1回のホイールでメンバー数の
     // 分だけ加算されてしまう。ループ中は同期を止め、最後に共有オフセットを
@@ -120,6 +135,7 @@ class TimetableScrollLink extends ChangeNotifier {
       final next = member.offset;
       if (next == _offset) return;
       _offset = next;
+      _markScrolling();
       notifyListeners();
       return;
     }
@@ -131,6 +147,7 @@ class TimetableScrollLink extends ChangeNotifier {
   /// 物理・同じ最大距離を持つため同じ速度から同じ軌道になり、[offset] の
   /// 同期で揃う。
   void flingBy(double velocity) {
+    _markScrolling();
     // 指の速度と逆方向へ進む。`ListView` の position は常に
     // `ScrollPositionWithSingleContext` (入れ子の scroll view の position は
     // 別クラスなので慣性は任せない)。
@@ -170,6 +187,7 @@ class TimetableScrollLink extends ChangeNotifier {
     final next = leader.offset;
     if (next == _offset) return;
     _offset = next;
+    _markScrolling();
     _syncing = true;
     try {
       for (final member in _members.keys) {
