@@ -485,6 +485,11 @@ class _TimetableColumnPainter extends CustomPainter {
       final bottomPx = _snap(top + segment.heightPx - timetableCellGap, dpr);
       if (bottomPx <= topPx) continue;
 
+      // 本文がまだ用意できていないセルは、背景・アクセントだけの空箱を
+      // 出さないよう丸ごと描かない。Picture ができた時点で通知される。
+      final raster = cache.rasterFor(program);
+      if (raster == null) continue;
+
       _fillPaint.color = style.surfaceContainerHigh;
       canvas.drawRect(Rect.fromLTRB(0, topPx, cellWidth, bottomPx), _fillPaint);
       _fillPaint.color = timetableGenreSeedColor(
@@ -492,24 +497,21 @@ class _TimetableColumnPainter extends CustomPainter {
       );
       canvas.drawRect(Rect.fromLTRB(0, topPx, 4, bottomPx), _fillPaint);
 
-      final raster = cache.rasterFor(program);
-      if (raster != null) {
-        final contentTop = _snap(top + timetableCellContentTop, dpr);
-        final contentLeft = _snap(timetableCellContentLeft, dpr);
-        final contentHeight = timetableCellContentHeight(segment.heightPx);
-        if (contentHeight > 0) {
-          canvas.save();
-          canvas.clipRect(
-            Rect.fromLTWH(
-              contentLeft,
-              contentTop,
-              timetableCellContentWidth,
-              contentHeight,
-            ),
-          );
-          raster.paint(canvas, Offset(contentLeft, contentTop));
-          canvas.restore();
-        }
+      final contentTop = _snap(top + timetableCellContentTop, dpr);
+      final contentLeft = _snap(timetableCellContentLeft, dpr);
+      final contentHeight = timetableCellContentHeight(segment.heightPx);
+      if (contentHeight > 0) {
+        canvas.save();
+        canvas.clipRect(
+          Rect.fromLTWH(
+            contentLeft,
+            contentTop,
+            timetableCellContentWidth,
+            contentHeight,
+          ),
+        );
+        raster.paint(canvas, Offset(contentLeft, contentTop));
+        canvas.restore();
       }
     }
 
