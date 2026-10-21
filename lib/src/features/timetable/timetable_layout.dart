@@ -11,7 +11,26 @@ import '../../domain/entities/tv_program.dart';
 // 描画はすべてこの値から組み立てる。ウィジェット側で時刻計算をしないこと。
 
 /// 1分あたりの論理ピクセル。1時間=180px、24時間=4320px。
+///
+/// 実際の寸法はズーム倍率を掛ける (`timetablePxPerMinAt`)。
 const double timetablePxPerMin = 3.0;
+
+/// ズームの下限・上限と、ボタン/キー操作1回あたりの倍率。
+const double timetableMinZoom = 0.5;
+const double timetableMaxZoom = 3.0;
+const double timetableZoomStep = 1.25;
+
+/// ズーム倍率を扱える範囲へ丸める。
+double timetableClampZoom(double zoom) {
+  if (zoom.isNaN) return 1.0;
+  return zoom.clamp(timetableMinZoom, timetableMaxZoom).toDouble();
+}
+
+/// ズーム適用後の1分あたりの縦ピクセル。
+double timetablePxPerMinAt(double zoom) => timetablePxPerMin * zoom;
+
+/// ズーム適用後のチャンネル1列の幅。
+double timetableColumnWidthAt(double zoom) => timetableColumnWidth * zoom;
 
 /// 番組表1日分の長さ (放送日は4時始まりの24時間)。
 const int timetableDayLengthMs = 24 * 3600 * 1000;
@@ -92,10 +111,11 @@ int timetableTopVisibleTimeMs({
   required double offsetPx,
   required int dayStartMs,
   required int dayEndMs,
+  double zoom = 1.0,
 }) {
   final clampedOffset = offsetPx < 0 ? 0.0 : offsetPx;
   final timeMs =
-      dayStartMs + (clampedOffset / timetablePxPerMin * 60000).round();
+      dayStartMs + (clampedOffset / timetablePxPerMinAt(zoom) * 60000).round();
   if (timeMs < dayStartMs) return dayStartMs;
   if (timeMs >= dayEndMs) return dayEndMs - 1;
   return timeMs;
@@ -109,12 +129,14 @@ int timetableVisibleHourMs({
   required double offsetPx,
   required int dayStartMs,
   required int dayEndMs,
+  double zoom = 1.0,
 }) {
   return timetableHourStartMs(
     timeMs: timetableTopVisibleTimeMs(
       offsetPx: offsetPx,
       dayStartMs: dayStartMs,
       dayEndMs: dayEndMs,
+      zoom: zoom,
     ),
     dayStartMs: dayStartMs,
   );
@@ -147,9 +169,37 @@ double timetableJumpTargetPx({
   required int dayStartMs,
   required double viewportHeightPx,
   required double gridHeightPx,
+  double zoom = 1.0,
 }) {
   final target =
-      timetableOffsetPx(timeMs, dayStartMs) - viewportHeightPx * 0.25;
+      timetableOffsetPx(timeMs, dayStartMs, zoom: zoom) -
+      viewportHeightPx * 0.25;
+  return target
+      .clamp(0.0, max(0.0, gridHeightPx - viewportHeightPx))
+      .toDouble();
+}
+
+/// ズーム倍率が [oldZoom] から [newZoom] に変わるとき、画面位置 [focalPx]
+/// (ビューポート上端からの論理px) の指す時刻を固定したままにする新しい
+/// 縦スクロールオフセットを返す。
+///
+/// ピンチ操作の中心や、ボタン/キー操作時のビューポート中央を基準にする。
+/// 倍率の変更で内容が伸縮するため、同じ時刻を同じ画面位置に置くには
+/// オフセットも比例させる。両端は [gridHeightPx] (変更後の高さ) で
+/// クランプする。
+/// [newFocalPx] を省略すると [focalPx] と同じ位置に固定する。ヘッダーや
+/// ガターの寸法もズームで変わる場合は、画面上の同じ y/x を指す新しい
+/// 内容座標を [newFocalPx] に渡す。
+double timetableZoomedOffset({
+  required double offsetPx,
+  required double focalPx,
+  required double oldZoom,
+  required double newZoom,
+  required double viewportHeightPx,
+  required double gridHeightPx,
+}) {
+  if (oldZoom <= 0 || newZoom <= 0) return offsetPx;
+  final target = (offsetPx + focalPx) * (newZoom / oldZoom) - focalPx;
   return target
       .clamp(0.0, max(0.0, gridHeightPx - viewportHeightPx))
       .toDouble();
@@ -161,13 +211,13 @@ bool isTimetableToday(int dayStartMs, int nowMs) {
 }
 
 /// 日開始からの経過msを縦オフセット(px)に変換する。
-double timetableOffsetPx(int timeMs, int dayStartMs) {
-  return (timeMs - dayStartMs) / 60000 * timetablePxPerMin;
+double timetableOffsetPx(int timeMs, int dayStartMs, {double zoom = 1.0}) {
+  return (timeMs - dayStartMs) / 60000 * timetablePxPerMinAt(zoom);
 }
 
 /// 期間の縦幅(px)を返す。
-double timetableHeightPx(int startMs, int endMs) {
-  return (endMs - startMs) / 60000 * timetablePxPerMin;
+double timetableHeightPx(int startMs, int endMs, {double zoom = 1.0}) {
+  return (endMs - startMs) / 60000 * timetablePxPerMinAt(zoom);
 }
 
 /// 番組の表示範囲を `[rangeStartMs, rangeEndMs)` で切り詰める。
@@ -192,6 +242,7 @@ double timetableProgramTopPx({
   required int endMs,
   required int rangeStartMs,
   required int rangeEndMs,
+  double zoom = 1.0,
 }) {
   final clamped = clampProgramToRange(
     startMs: startMs,
@@ -200,7 +251,7 @@ double timetableProgramTopPx({
     rangeEndMs: rangeEndMs,
   );
   final topMs = clamped?.startMs ?? rangeStartMs;
-  return timetableOffsetPx(topMs, rangeStartMs);
+  return timetableOffsetPx(topMs, rangeStartMs, zoom: zoom);
 }
 
 /// 番組セルの高さ(px)。範囲外の番組は0。
@@ -209,6 +260,7 @@ double timetableProgramHeightPx({
   required int endMs,
   required int rangeStartMs,
   required int rangeEndMs,
+  double zoom = 1.0,
 }) {
   final clamped = clampProgramToRange(
     startMs: startMs,
@@ -217,7 +269,7 @@ double timetableProgramHeightPx({
     rangeEndMs: rangeEndMs,
   );
   if (clamped == null) return 0;
-  return timetableHeightPx(clamped.startMs, clamped.endMs);
+  return timetableHeightPx(clamped.startMs, clamped.endMs, zoom: zoom);
 }
 
 /// ドラッグ量から次のスクロールオフセットを求める。
@@ -362,6 +414,7 @@ List<TimetableColumnSegment> timetableColumnSegments({
   required int rangeStartMs,
   required int rangeEndMs,
   required double gridHeightPx,
+  double zoom = 1.0,
 }) {
   final sorted = [...programs]..sort((a, b) => a.startAt.compareTo(b.startAt));
   final segments = <TimetableColumnSegment>[];
@@ -374,12 +427,14 @@ List<TimetableColumnSegment> timetableColumnSegments({
       endMs: endMs,
       rangeStartMs: rangeStartMs,
       rangeEndMs: rangeEndMs,
+      zoom: zoom,
     );
     final height = timetableProgramHeightPx(
       startMs: startMs,
       endMs: endMs,
       rangeStartMs: rangeStartMs,
       rangeEndMs: rangeEndMs,
+      zoom: zoom,
     );
     if (height <= 0) continue;
     // 重なりは先行番組を優先し、はみ出しを切り詰める。二重計上すると

@@ -24,6 +24,7 @@ class TimetableColumnView extends StatefulWidget {
     required this.data,
     required this.column,
     required this.onProgramTap,
+    this.zoom = 1.0,
   });
 
   final TimetableScrollLink link;
@@ -31,12 +32,20 @@ class TimetableColumnView extends StatefulWidget {
   final TimetableChannel column;
   final void Function(TvProgram program) onProgramTap;
 
+  /// 番組表のズーム倍率。列幅・時間軸の両方に掛かる。
+  final double zoom;
+
   @override
   State<TimetableColumnView> createState() => _TimetableColumnViewState();
 }
 
 class _TimetableColumnViewState extends State<TimetableColumnView> {
-  late List<TimetableColumnSegment> _segments = _buildSegments();
+  /// 等倍時のセグメント。キャッシュのキーをズームに依存させないため、
+  /// ズーム後の座標とは別に保持する。
+  late List<TimetableColumnSegment> _baseSegments = _buildBaseSegments();
+
+  /// 描画・ヒットテスト用のズーム後セグメント。
+  late List<TimetableColumnSegment> _segments = _zoomSegments();
 
   TimetableCellStyle? _style;
   TimetableCellRasterCache? _cache;
@@ -55,13 +64,34 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
   double _lastOffset = 0;
   Timer? _resumeTimer;
 
-  List<TimetableColumnSegment> _buildSegments() {
+  /// 0 除算を避けた現在のズーム倍率。
+  double get _zoom => widget.zoom > 0 ? widget.zoom : 1.0;
+
+  /// 表示用 (ズーム後) の px を等倍時の px に戻す。
+  ///
+  /// セル画像は等倍で焼いて描画時に拡大縮小するため、キャッシュには
+  /// 常に等倍の寸法を渡す。こうするとズームしても画像が破棄されない。
+  double _basePx(double px) => px / _zoom;
+
+  List<TimetableColumnSegment> _buildBaseSegments() {
     return timetableColumnSegments(
       programs: widget.column.programs,
       rangeStartMs: widget.data.startMs,
       rangeEndMs: widget.data.endMs,
       gridHeightPx: timetableHeightPx(widget.data.startMs, widget.data.endMs),
     );
+  }
+
+  List<TimetableColumnSegment> _zoomSegments() {
+    final zoom = _zoom;
+    return [
+      for (final segment in _baseSegments)
+        (
+          topPx: segment.topPx * zoom,
+          heightPx: segment.heightPx * zoom,
+          program: segment.program,
+        ),
+    ];
   }
 
   @override
@@ -93,9 +123,15 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
       widget.link.addListener(_onScroll);
       _resetWindow();
     }
-    if (!identical(oldWidget.column, widget.column) ||
-        !identical(oldWidget.data, widget.data)) {
-      _segments = _buildSegments();
+    final dataChanged =
+        !identical(oldWidget.column, widget.column) ||
+        !identical(oldWidget.data, widget.data);
+    if (dataChanged) {
+      _baseSegments = _buildBaseSegments();
+      _segments = _zoomSegments();
+      _resetWindow();
+    } else if (oldWidget.zoom != widget.zoom) {
+      _segments = _zoomSegments();
       _resetWindow();
     }
   }
@@ -191,7 +227,7 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
       if (!cache.needsWork(
         program: program,
         isOnAir: startMs <= nowMs && nowMs < endMs,
-        cellHeightPx: segment.heightPx,
+        cellHeightPx: _baseSegments[index].heightPx,
       )) {
         continue;
       }
@@ -218,8 +254,8 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
     }
     cache.retain(
       eventIds: eventIds,
-      offsetPx: widget.link.offset,
-      viewportHeightPx: _viewportHeight,
+      offsetPx: _basePx(widget.link.offset),
+      viewportHeightPx: _basePx(_viewportHeight),
     );
 
     final previous = _pending.toList();
@@ -237,7 +273,7 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
       if (!cache.needsWork(
         program: program,
         isOnAir: startMs <= nowMs && nowMs < endMs,
-        cellHeightPx: segment.heightPx,
+        cellHeightPx: _baseSegments[index].heightPx,
       )) {
         return;
       }
@@ -318,15 +354,15 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
         if (!cache.needsWork(
           program: program,
           isOnAir: startMs <= nowMs && nowMs < endMs,
-          cellHeightPx: segment.heightPx,
+          cellHeightPx: _baseSegments[index].heightPx,
         )) {
           continue;
         }
         await cache.ensure(
           program: program,
           isOnAir: startMs <= nowMs && nowMs < endMs,
-          cellHeightPx: segment.heightPx,
-          topPx: segment.topPx,
+          cellHeightPx: _baseSegments[index].heightPx,
+          topPx: _baseSegments[index].topPx,
         );
         break;
       }
@@ -390,6 +426,7 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
               cache: cache,
               link: widget.link,
               style: style,
+              zoom: widget.zoom,
               onProgramTap: widget.onProgramTap,
             ),
             child: const SizedBox.expand(),
@@ -422,6 +459,7 @@ class _TimetableColumnPainter extends CustomPainter {
     required this.cache,
     required this.link,
     required this.style,
+    required this.zoom,
     required this.onProgramTap,
   }) : super(repaint: Listenable.merge([link, cache]));
 
@@ -429,6 +467,7 @@ class _TimetableColumnPainter extends CustomPainter {
   final TimetableCellRasterCache cache;
   final TimetableScrollLink link;
   final TimetableCellStyle style;
+  final double zoom;
   final void Function(TvProgram program) onProgramTap;
 
   @override
@@ -471,7 +510,15 @@ class _TimetableColumnPainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final dpr = style.devicePixelRatio;
     final offset = _snap(link.offset, dpr);
-    final cellWidth = math.max(0.0, size.width - timetableCellGap);
+    final scale = zoom > 0 ? zoom : 1.0;
+    // セル画像は等倍で焼いてあるため、余白・本文位置・画像をまとめて
+    // 倍率で拡大縮小する。文字サイズも画像と一緒にそのまま変わる。
+    final gap = timetableCellGap * scale;
+    final cellWidth = math.max(0.0, size.width - gap);
+    final accentWidth = 4 * scale;
+    final contentLeft = timetableCellContentLeft * scale;
+    final contentTopInset = timetableCellContentTop * scale;
+    final contentWidth = timetableCellContentWidth * scale;
     _borderPaint.color = style.outlineVariant;
 
     for (final segment in segments) {
@@ -482,7 +529,7 @@ class _TimetableColumnPainter extends CustomPainter {
       if (program == null) continue;
 
       final topPx = _snap(top, dpr);
-      final bottomPx = _snap(top + segment.heightPx - timetableCellGap, dpr);
+      final bottomPx = _snap(top + segment.heightPx - gap, dpr);
       if (bottomPx <= topPx) continue;
 
       // 本文がまだ用意できていないセルは、背景・アクセントだけの空箱を
@@ -495,22 +542,20 @@ class _TimetableColumnPainter extends CustomPainter {
       _fillPaint.color = timetableGenreSeedColor(
         timetableGenreMajor(program.genres),
       );
-      canvas.drawRect(Rect.fromLTRB(0, topPx, 4, bottomPx), _fillPaint);
+      canvas.drawRect(
+        Rect.fromLTRB(0, topPx, accentWidth, bottomPx),
+        _fillPaint,
+      );
 
-      final contentTop = _snap(top + timetableCellContentTop, dpr);
-      final contentLeft = _snap(timetableCellContentLeft, dpr);
-      final contentHeight = timetableCellContentHeight(segment.heightPx);
+      final contentTop = _snap(top + contentTopInset, dpr);
+      final contentHeight =
+          timetableCellContentHeight(segment.heightPx / scale) * scale;
       if (contentHeight > 0) {
         canvas.save();
         canvas.clipRect(
-          Rect.fromLTWH(
-            contentLeft,
-            contentTop,
-            timetableCellContentWidth,
-            contentHeight,
-          ),
+          Rect.fromLTWH(contentLeft, contentTop, contentWidth, contentHeight),
         );
-        raster.paint(canvas, Offset(contentLeft, contentTop));
+        raster.paint(canvas, Offset(contentLeft, contentTop), scale: scale);
         canvas.restore();
       }
     }
@@ -527,6 +572,7 @@ class _TimetableColumnPainter extends CustomPainter {
     return !identical(oldDelegate.segments, segments) ||
         !identical(oldDelegate.cache, cache) ||
         !identical(oldDelegate.link, link) ||
+        oldDelegate.zoom != zoom ||
         oldDelegate.style != style;
   }
 

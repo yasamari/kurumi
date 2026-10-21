@@ -15,10 +15,14 @@ class TimetableGridOverlay extends StatefulWidget {
     super.key,
     required this.data,
     required this.link,
+    this.zoom = 1.0,
   });
 
   final TimetableData data;
   final TimetableScrollLink link;
+
+  /// 番組表のズーム倍率。罫線・nowラインの時刻→px変換に使う。
+  final double zoom;
 
   @override
   State<TimetableGridOverlay> createState() => _TimetableGridOverlayState();
@@ -46,7 +50,8 @@ class _TimetableGridOverlayState extends State<TimetableGridOverlay> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final labelStyle = theme.textTheme.labelSmall?.copyWith(
+    final baseLabelStyle = theme.textTheme.labelSmall;
+    final labelStyle = baseLabelStyle?.copyWith(
       color: colorScheme.onError,
       height: 1.0,
     );
@@ -76,6 +81,7 @@ class _TimetableGridOverlayState extends State<TimetableGridOverlay> {
       painter: _TimetableGridOverlayPainter(
         data: widget.data,
         link: widget.link,
+        zoom: widget.zoom,
         marks: timetableHourMarksMs(widget.data.startMs, widget.data.endMs),
         nowMs: _nowMs,
         outline: colorScheme.outlineVariant,
@@ -95,6 +101,7 @@ class _TimetableGridOverlayPainter extends CustomPainter {
   _TimetableGridOverlayPainter({
     required this.data,
     required this.link,
+    required this.zoom,
     required this.marks,
     required this.nowMs,
     required this.outline,
@@ -108,6 +115,7 @@ class _TimetableGridOverlayPainter extends CustomPainter {
 
   final TimetableData data;
   final TimetableScrollLink link;
+  final double zoom;
   final List<int> marks;
   final int nowMs;
   final Color outline;
@@ -127,7 +135,7 @@ class _TimetableGridOverlayPainter extends CustomPainter {
     _linePaint.color = outline;
     for (final mark in marks) {
       final y = _snap(
-        timetableOffsetPx(mark, data.startMs) - offset,
+        timetableOffsetPx(mark, data.startMs, zoom: zoom) - offset,
         devicePixelRatio,
       );
       if (y < 0 || y > size.height) continue;
@@ -136,7 +144,7 @@ class _TimetableGridOverlayPainter extends CustomPainter {
 
     if (nowMs < data.startMs || nowMs >= data.endMs) return;
     final y = _snap(
-      timetableOffsetPx(nowMs, data.startMs) - offset,
+      timetableOffsetPx(nowMs, data.startMs, zoom: zoom) - offset,
       devicePixelRatio,
     );
     if (y < -20 || y > size.height + 20) return;
@@ -158,6 +166,7 @@ class _TimetableGridOverlayPainter extends CustomPainter {
   bool shouldRepaint(covariant _TimetableGridOverlayPainter oldDelegate) {
     return !identical(oldDelegate.data, data) ||
         !identical(oldDelegate.link, link) ||
+        oldDelegate.zoom != zoom ||
         oldDelegate.nowMs != nowMs ||
         oldDelegate.outline != outline ||
         oldDelegate.error != error ||

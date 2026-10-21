@@ -67,6 +67,34 @@ class TimetableScrollLink extends ChangeNotifier {
     controller.dispose();
   }
 
+  /// ズーム時に、新しい最大スクロール距離が反映される前のオフセットを
+  /// 適用する。通常の [jumpTo] は現在の `maxScrollExtent` でクランプされる
+  /// ため、拡大直後は目標位置まで動けない。ここではクランプせずに
+  /// `ScrollPosition` の値を置き換え、次のレイアウトで新しい距離を受け入れる。
+  ///
+  /// レイアウト後に `jumpTo` すると、新しい倍率で描かれた1フレームだけ
+  /// 旧オフセットの位置に見える (ピンチ中に上下へ揺れる原因)。
+  void jumpToUnclamped(double offset) {
+    _markScrolling();
+    final changed = offset != _offset;
+    _offset = offset;
+    _syncing = true;
+    try {
+      for (final member in _members.keys) {
+        if (!member.hasClients) continue;
+        final position = member.position;
+        // 慣性スクロール中でも置き換えが勝つよう、活動を止めてから
+        // `correctPixels` で値を入れる。次のレイアウトで新しい最大距離が
+        // 反映される際、`pixels` が変わっていれば境界でクランプされない。
+        if (position is ScrollPositionWithSingleContext) position.goIdle();
+        position.correctPixels(offset);
+      }
+    } finally {
+      _syncing = false;
+    }
+    if (changed) notifyListeners();
+  }
+
   /// 全列を指定オフセットへ動かす (初回表示のnowジャンプ用)。
   void jumpTo(double offset) {
     _markScrolling();

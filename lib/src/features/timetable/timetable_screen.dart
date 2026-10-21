@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -11,6 +12,7 @@ import '../shell/app_destinations.dart';
 import '../tv/epg_providers.dart';
 import 'timetable_layout.dart';
 import 'timetable_providers.dart';
+import 'timetable_zoom.dart';
 import 'widgets/timetable_grid.dart';
 import 'widgets/timetable_program_sheet.dart';
 
@@ -47,6 +49,10 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
     _initialVisibleHourMs(),
   );
 
+  /// ズーム倍率。グリッドはピンチで、デスクトップはキー・バーのボタンで
+  /// 変更する。画面の作り直しでは作り直さない。
+  final TimetableZoomController _zoom = TimetableZoomController();
+
   /// [_visibleHourMs] を初期化したときの放送日開始時刻。日送りでずれたら
   /// 初期値に戻す (スクロール位置はグリッドの作り直しで先頭へ戻るため)。
   late int _visibleDayStartMs = timetableDayStartMsForOffset(
@@ -57,6 +63,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
   @override
   void dispose() {
     _visibleHourMs.dispose();
+    _zoom.dispose();
     super.dispose();
   }
 
@@ -102,7 +109,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
 
     // 再計算・裏更新のたびに読み込み表示に戻すとグリッドが点滅する。
     // 前回データを出し続ける。
-    return timetable.when(
+    final content = timetable.when(
       skipLoadingOnReload: true,
       skipLoadingOnRefresh: true,
       loading: () => Scaffold(
@@ -113,6 +120,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
           onTypeSelected: (_) {},
           dayStartMs: dayStartMs,
           visibleHourMs: _visibleHourMs,
+          zoom: _zoom,
           onPickDate: _pickDate,
           onTimeSelected: _jumpToTime,
           onGoNow: _goNow,
@@ -129,6 +137,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
                 channels: const [],
               ),
               visibleHourMs: _visibleHourMs,
+              zoom: _zoom,
               onProgramTap: (_, _) {},
               onChannelTap: (_) {},
             ),
@@ -161,6 +170,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
               onTypeSelected: (_) {},
               dayStartMs: dayStartMs,
               visibleHourMs: _visibleHourMs,
+              zoom: _zoom,
               onPickDate: _pickDate,
               onTimeSelected: _jumpToTime,
               onGoNow: _goNow,
@@ -184,6 +194,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
             onTypeSelected: (type) => setState(() => _selectedType = type),
             dayStartMs: dayStartMs,
             visibleHourMs: _visibleHourMs,
+            zoom: _zoom,
             onPickDate: _pickDate,
             onTimeSelected: _jumpToTime,
             onGoNow: _goNow,
@@ -197,6 +208,7 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
             child: TimetableGrid(
               key: ValueKey(dayStartMs),
               data: filtered,
+              zoom: _zoom,
               visibleHourMs: _visibleHourMs,
               jumpToTimeMs: _scrollRequestMs,
               scrollRequestId: _scrollRequestId,
@@ -212,6 +224,27 @@ class _TimetableScreenState extends ConsumerState<TimetableScreen> {
           ),
         );
       },
+    );
+
+    // デスクトップ向けのキーボード操作。`+`/`-` で拡大縮小、`0` で等倍。
+    // バーのボタンにフォーカスが移っても効くよう、Scaffold ごと包む。
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.equal): _zoom.zoomIn,
+        const SingleActivator(LogicalKeyboardKey.equal, shift: true):
+            _zoom.zoomIn,
+        // JIS 配列の `+` (Shift+セミコロン)。
+        const SingleActivator(LogicalKeyboardKey.semicolon, shift: true):
+            _zoom.zoomIn,
+        const SingleActivator(LogicalKeyboardKey.numpadAdd): _zoom.zoomIn,
+        const SingleActivator(LogicalKeyboardKey.minus): _zoom.zoomOut,
+        const SingleActivator(LogicalKeyboardKey.minus, shift: true):
+            _zoom.zoomOut,
+        const SingleActivator(LogicalKeyboardKey.numpadSubtract): _zoom.zoomOut,
+        const SingleActivator(LogicalKeyboardKey.digit0): _zoom.reset,
+        const SingleActivator(LogicalKeyboardKey.numpad0): _zoom.reset,
+      },
+      child: Focus(autofocus: true, child: content),
     );
   }
 
@@ -320,6 +353,19 @@ ButtonStyle _barButtonStyle({bool compact = false}) {
   );
 }
 
+/// ズームのボタンを出すプラットフォームか。
+///
+/// タッチ端末は2本指のピンチで操作できるため、バーを詰めないよう
+/// デスクトップだけにボタンを出す。
+bool _showsTimetableZoomButtons(BuildContext context) {
+  return switch (Theme.of(context).platform) {
+    TargetPlatform.macOS ||
+    TargetPlatform.windows ||
+    TargetPlatform.linux => true,
+    _ => false,
+  };
+}
+
 /// 番組表の1行バー。種別・日付・時刻・現在ボタンを1行に収める。
 ///
 /// 狭幅では詰めた表示にし、入り切らない場合もスクロールではなく縮小で
@@ -333,6 +379,7 @@ class _TimetableBar extends StatelessWidget implements PreferredSizeWidget {
     required this.onTypeSelected,
     required this.dayStartMs,
     required this.visibleHourMs,
+    required this.zoom,
     required this.onPickDate,
     required this.onTimeSelected,
     required this.onGoNow,
@@ -353,6 +400,9 @@ class _TimetableBar extends StatelessWidget implements PreferredSizeWidget {
 
   /// グリッド上端に見えている時刻の正時。時刻ボタンに表示する。
   final ValueListenable<int> visibleHourMs;
+
+  /// グリッドのズーム倍率。デスクトップでは操作ボタンを出す。
+  final TimetableZoomController zoom;
 
   final VoidCallback onPickDate;
   final ValueChanged<int> onTimeSelected;
@@ -421,6 +471,39 @@ class _TimetableBar extends StatelessWidget implements PreferredSizeWidget {
         ),
       ),
       actions: [
+        if (_showsTimetableZoomButtons(context))
+          ListenableBuilder(
+            listenable: zoom,
+            builder: (context, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton.filledTonal(
+                  tooltip: '縮小 (Ctrl+ホイール / -)',
+                  iconSize: 26,
+                  icon: const Icon(Icons.zoom_out),
+                  onPressed: zoom.canZoomOut ? zoom.zoomOut : null,
+                ),
+                SizedBox(
+                  width: 56,
+                  child: Center(
+                    child: Tooltip(
+                      message: '拡大率',
+                      child: Text(
+                        '${(zoom.zoom * 100).round()}%',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
+                    ),
+                  ),
+                ),
+                IconButton.filledTonal(
+                  tooltip: '拡大 (Ctrl+ホイール / +)',
+                  iconSize: 26,
+                  icon: const Icon(Icons.zoom_in),
+                  onPressed: zoom.canZoomIn ? zoom.zoomIn : null,
+                ),
+              ],
+            ),
+          ),
         IconButton.filledTonal(
           tooltip: '現在時刻に移動',
           icon: const Icon(Icons.my_location, size: 20),

@@ -130,6 +130,77 @@ void main() {
       expect(timetableHeightPx(dayStartMs, dayEndMs), 4320);
     });
 
+    test('ズーム倍率が座標と高さに掛かる', () {
+      expect(
+        timetableOffsetPx(dayStartMs + 3600 * 1000, dayStartMs, zoom: 2),
+        360,
+      );
+      expect(timetableHeightPx(dayStartMs, dayEndMs, zoom: 0.5), 2160);
+      expect(timetablePxPerMinAt(1.5), 4.5);
+      expect(timetableColumnWidthAt(2), timetableColumnWidth * 2);
+    });
+
+    test('ズーム倍率は範囲内に丸める', () {
+      expect(timetableClampZoom(0.1), timetableMinZoom);
+      expect(timetableClampZoom(10), timetableMaxZoom);
+      expect(timetableClampZoom(1.5), 1.5);
+      expect(timetableClampZoom(double.nan), 1.0);
+    });
+
+    test('ズームしても焦点位置の時刻が動かない', () {
+      // 1倍・オフセット0で焦点200pxは放送日開始から200px (200/3分)。
+      const focalPx = 200.0;
+      final before = timetableTopVisibleTimeMs(
+        offsetPx: focalPx,
+        dayStartMs: dayStartMs,
+        dayEndMs: dayEndMs,
+      );
+      final newOffset = timetableZoomedOffset(
+        offsetPx: 0,
+        focalPx: focalPx,
+        oldZoom: 1,
+        newZoom: 2,
+        viewportHeightPx: 800,
+        gridHeightPx: timetableHeightPx(dayStartMs, dayEndMs, zoom: 2),
+      );
+      // 焦点は新しいオフセットからも200pxの位置にある。
+      expect(newOffset, 200);
+      expect(
+        timetableTopVisibleTimeMs(
+          offsetPx: newOffset + focalPx,
+          dayStartMs: dayStartMs,
+          dayEndMs: dayEndMs,
+          zoom: 2,
+        ),
+        before,
+      );
+    });
+
+    test('ズーム後のオフセットは両端でクランプされる', () {
+      expect(
+        timetableZoomedOffset(
+          offsetPx: 0,
+          focalPx: 0,
+          oldZoom: 1,
+          newZoom: 2,
+          viewportHeightPx: 800,
+          gridHeightPx: timetableHeightPx(dayStartMs, dayEndMs, zoom: 2),
+        ),
+        0,
+      );
+      expect(
+        timetableZoomedOffset(
+          offsetPx: 0,
+          focalPx: 9000,
+          oldZoom: 1,
+          newZoom: 2,
+          viewportHeightPx: 800,
+          gridHeightPx: timetableHeightPx(dayStartMs, dayEndMs, zoom: 2),
+        ),
+        timetableHeightPx(dayStartMs, dayEndMs, zoom: 2) - 800,
+      );
+    });
+
     test('範囲切り詰めができる', () {
       final clamped = clampProgramToRange(
         startMs: dayStartMs - 3600 * 1000,

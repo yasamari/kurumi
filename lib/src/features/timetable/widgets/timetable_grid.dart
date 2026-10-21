@@ -11,6 +11,7 @@ import '../../../domain/entities/timetable.dart';
 import '../../../domain/entities/tv_program.dart';
 import '../timetable_layout.dart';
 import '../timetable_scroll_link.dart';
+import '../timetable_zoom.dart';
 import 'timetable_column_view.dart';
 import 'timetable_grid_overlay.dart';
 import 'timetable_pan_scroll.dart';
@@ -35,6 +36,7 @@ class TimetableGrid extends StatefulWidget {
     required this.data,
     required this.onProgramTap,
     required this.onChannelTap,
+    required this.zoom,
     this.visibleHourMs,
     this.jumpToTimeMs,
     this.scrollRequestId = 0,
@@ -50,6 +52,9 @@ class TimetableGrid extends StatefulWidget {
 
   /// チャンネルヘッダータップ時のコールバック (視聴遷移用)。
   final void Function(Channel channel) onChannelTap;
+
+  /// 表示倍率。ピンチ・キーボード・バーのボタンで変更される。
+  final TimetableZoomController zoom;
 
   /// グリッド上端に見えている時刻の正時 (ms epoch) を書き込む先。
   ///
@@ -94,10 +99,21 @@ class _TimetableGridState extends State<TimetableGrid> {
   /// 処理済みの外部スクロール要求の世代。
   int _handledRequestId = 0;
 
+  /// 直近にレイアウトしたズーム倍率とビューポート寸法。
+  ///
+  /// ズーム変更時に「同じ画面位置の時刻」を保つオフセット計算へ使う。
+  late double _zoomApplied = widget.zoom.zoom;
+  double _viewportHeight = 0;
+  double _viewportWidth = 0;
+
+  /// ピンチ中心 (パン領域のローカル座標)。ボタン・キー操作では null。
+  Offset? _zoomFocal;
+
   @override
   void initState() {
     super.initState();
     _vLink.addListener(_reportVisibleHour);
+    widget.zoom.addListener(_onZoomChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       // 初回レイアウト後に共有オフセットを配信し、端ボタンの表示を更新する。
@@ -110,6 +126,10 @@ class _TimetableGridState extends State<TimetableGrid> {
   @override
   void didUpdateWidget(covariant TimetableGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.zoom, widget.zoom)) {
+      oldWidget.zoom.removeListener(_onZoomChanged);
+      widget.zoom.addListener(_onZoomChanged);
+    }
     // 種別切替では同じオフセットのまま列だけ変わる。時刻ボタンの表示を
     // 合わせるため再計算する。
     _reportVisibleHour();
@@ -117,12 +137,69 @@ class _TimetableGridState extends State<TimetableGrid> {
 
   @override
   void dispose() {
+    widget.zoom.removeListener(_onZoomChanged);
     _vLink.removeListener(_reportVisibleHour);
     _hLink.detach(_headerController);
     _hLink.detach(_columnsController);
     _vLink.dispose();
     _hLink.dispose();
     super.dispose();
+  }
+
+  /// ズーム倍率が変わったら、ピンチ中心 (無ければビューポート中央) の
+  /// 時刻・チャンネルを固定したままスクロール位置を合わせ直す。
+  ///
+  /// 列幅・1分あたりの高さが変わるため、単に倍率を反映するだけだと
+  /// 見ている位置が飛ぶ。オフセットは次のレイアウトに入る前に
+  /// [TimetableScrollLink.jumpToUnclamped] で適用する。レイアウト後に
+  /// `jumpTo` すると、新しい倍率で描かれた1フレームだけ旧オフセットの
+  /// 位置に見え、ピンチ中に上下へ揺れる (高倍率ほど顕著)。
+  void _onZoomChanged() {
+    if (!mounted) return;
+    final newZoom = widget.zoom.zoom;
+    final oldZoom = _zoomApplied;
+    if (newZoom == oldZoom) return;
+    final data = widget.data;
+    final focal = _zoomFocal;
+    _zoomFocal = null;
+
+    // ヘッダーとガターは固定寸法なのでビューポートも変わらない。
+    final verticalFocal = focal == null
+        ? _viewportHeight / 2
+        : (focal.dy - timetableHeaderHeight).clamp(0.0, _viewportHeight);
+    final horizontalFocal = focal == null
+        ? _viewportWidth / 2
+        : (focal.dx - timetableGutterWidth).clamp(0.0, _viewportWidth);
+
+    final gridHeight = timetableHeightPx(
+      data.startMs,
+      data.endMs,
+      zoom: newZoom,
+    );
+    final gridWidth = data.channels.length * timetableColumnWidthAt(newZoom);
+
+    _zoomApplied = newZoom;
+    _vLink.jumpToUnclamped(
+      timetableZoomedOffset(
+        offsetPx: _vLink.offset,
+        focalPx: verticalFocal,
+        oldZoom: oldZoom,
+        newZoom: newZoom,
+        viewportHeightPx: _viewportHeight,
+        gridHeightPx: gridHeight,
+      ),
+    );
+    _hLink.jumpToUnclamped(
+      timetableZoomedOffset(
+        offsetPx: _hLink.offset,
+        focalPx: horizontalFocal,
+        oldZoom: oldZoom,
+        newZoom: newZoom,
+        viewportHeightPx: _viewportWidth,
+        gridHeightPx: gridWidth,
+      ),
+    );
+    setState(() {});
   }
 
   /// 縦オフセットの変化を時刻ボタンの表示へ反映する。正時が変わった
@@ -135,6 +212,7 @@ class _TimetableGridState extends State<TimetableGrid> {
       offsetPx: _vLink.offset,
       dayStartMs: data.startMs,
       dayEndMs: data.endMs,
+      zoom: widget.zoom.zoom,
     );
     if (target.value != hourMs) {
       target.value = hourMs;
@@ -145,15 +223,20 @@ class _TimetableGridState extends State<TimetableGrid> {
   Widget build(BuildContext context) {
     final TimetableData data = widget.data;
     final List<TimetableChannel> columns = data.channels;
-    final gridHeight = timetableHeightPx(data.startMs, data.endMs);
+    final zoom = widget.zoom.zoom;
+    final gridHeight = timetableHeightPx(data.startMs, data.endMs, zoom: zoom);
+    final columnWidth = timetableColumnWidthAt(zoom);
+    // 時刻ガターとチャンネルヘッダーはズームしても固定サイズにする
+    // (時間軸・局名の視認性を一定に保つ)。
+    const gutterWidth = timetableGutterWidth;
+    const headerHeight = timetableHeaderHeight;
     final outline = Theme.of(context).colorScheme.outlineVariant;
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final viewportHeight = max(
-          0.0,
-          constraints.maxHeight - timetableHeaderHeight,
-        );
+        final viewportHeight = max(0.0, constraints.maxHeight - headerHeight);
+        _viewportHeight = viewportHeight;
+        _viewportWidth = max(0.0, constraints.maxWidth - gutterWidth);
         _scheduleJumpToNow(viewportHeight, gridHeight);
         _handleScrollRequest(viewportHeight, gridHeight);
         // デスクトップのマウスドラッグ (スクロールバー自体を摘む操作) を
@@ -161,11 +244,11 @@ class _TimetableGridState extends State<TimetableGrid> {
         final grid = Row(
           children: [
             SizedBox(
-              width: timetableGutterWidth,
+              width: gutterWidth,
               child: Column(
                 children: [
                   Container(
-                    height: timetableHeaderHeight,
+                    height: headerHeight,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(
                       border: Border(
@@ -181,7 +264,7 @@ class _TimetableGridState extends State<TimetableGrid> {
                     ),
                   ),
                   Expanded(
-                    child: _GutterList(link: _vLink, data: data),
+                    child: _GutterList(link: _vLink, data: data, zoom: zoom),
                   ),
                 ],
               ),
@@ -190,7 +273,7 @@ class _TimetableGridState extends State<TimetableGrid> {
               child: Column(
                 children: [
                   SizedBox(
-                    height: timetableHeaderHeight,
+                    height: headerHeight,
                     // 波紋描画用の `Material` はヘッダー行に1つだけ置く。
                     // ヘッダー側のスクロールバーは出さない (列側の1本だけ)。
                     child: Material(
@@ -202,10 +285,11 @@ class _TimetableGridState extends State<TimetableGrid> {
                           // 斜めスクロールのためドラッグは
                           // `TimetablePanScroll` に一本化する。
                           physics: const NeverScrollableScrollPhysics(),
-                          itemExtent: timetableColumnWidth,
+                          itemExtent: columnWidth,
                           itemCount: columns.length,
                           itemBuilder: (context, index) => _ChannelHeader(
                             column: columns[index],
+                            width: columnWidth,
                             onTap: () =>
                                 widget.onChannelTap(columns[index].channel),
                           ),
@@ -221,7 +305,7 @@ class _TimetableGridState extends State<TimetableGrid> {
                           scrollDirection: Axis.horizontal,
                           controller: _columnsController,
                           physics: const NeverScrollableScrollPhysics(),
-                          itemExtent: timetableColumnWidth,
+                          itemExtent: columnWidth,
                           itemCount: columns.length,
                           // 列はスクロール中すべて再描画されるため、列ごとの
                           // レイヤーは合成コストになるだけ。1枚にまとめる。
@@ -233,6 +317,7 @@ class _TimetableGridState extends State<TimetableGrid> {
                               link: _vLink,
                               data: data,
                               column: column,
+                              zoom: zoom,
                               onProgramTap: (program) =>
                                   widget.onProgramTap(column, program),
                             );
@@ -245,6 +330,7 @@ class _TimetableGridState extends State<TimetableGrid> {
                             child: TimetableGridOverlay(
                               data: data,
                               link: _vLink,
+                              zoom: zoom,
                             ),
                           ),
                         ),
@@ -273,6 +359,8 @@ class _TimetableGridState extends State<TimetableGrid> {
           child: TimetablePanScroll(
             verticalLink: _vLink,
             horizontalLink: _hLink,
+            zoom: widget.zoom,
+            onZoomFocal: (focal) => _zoomFocal = focal,
             child: grid,
           ),
         );
@@ -295,6 +383,7 @@ class _TimetableGridState extends State<TimetableGrid> {
           dayStartMs: data.startMs,
           viewportHeightPx: viewportHeight,
           gridHeightPx: gridHeight,
+          zoom: widget.zoom.zoom,
         ),
       );
     });
@@ -320,6 +409,7 @@ class _TimetableGridState extends State<TimetableGrid> {
           dayStartMs: widget.data.startMs,
           viewportHeightPx: viewportHeight,
           gridHeightPx: gridHeight,
+          zoom: widget.zoom.zoom,
         ),
       );
     });
@@ -480,12 +570,18 @@ class _NoScrollbar extends StatelessWidget {
   }
 }
 
-/// 時刻ガター。1時間=180px固定の `ListView` で列と連動する。
+/// 時刻ガター。1時間=180px (×ズーム倍率) の `ListView` で列と連動する。
+/// 時刻ラベルの文字サイズは倍率によらず固定。
 class _GutterList extends StatefulWidget {
-  const _GutterList({required this.link, required this.data});
+  const _GutterList({
+    required this.link,
+    required this.data,
+    required this.zoom,
+  });
 
   final TimetableScrollLink link;
   final TimetableData data;
+  final double zoom;
 
   @override
   State<_GutterList> createState() => _GutterListState();
@@ -504,12 +600,14 @@ class _GutterListState extends State<_GutterList> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final hours = (widget.data.endMs - widget.data.startMs) ~/ 3600000;
+    final hourStyle = Theme.of(context).textTheme.labelSmall
+        ?.copyWith(color: colorScheme.onSurfaceVariant);
     return _NoScrollbar(
       child: ListView.builder(
         controller: _controller,
         // 斜めスクロールのためドラッグは `TimetablePanScroll` に一本化する。
         physics: const NeverScrollableScrollPhysics(),
-        itemExtent: 60 * timetablePxPerMin,
+        itemExtent: 60 * timetablePxPerMinAt(widget.zoom),
         itemCount: hours,
         addAutomaticKeepAlives: false,
         itemBuilder: (context, index) {
@@ -526,11 +624,7 @@ class _GutterListState extends State<_GutterList> {
                 right: BorderSide(color: colorScheme.outlineVariant),
               ),
             ),
-            child: Text(
-              '$hour',
-              style: Theme.of(context).textTheme.labelSmall
-                  ?.copyWith(color: colorScheme.onSurfaceVariant),
-            ),
+            child: Text('$hour', style: hourStyle),
           );
         },
       ),
@@ -540,9 +634,14 @@ class _GutterListState extends State<_GutterList> {
 
 /// チャンネルヘッダー。ロゴ+番号・局名。タップで視聴へ遷移する。
 class _ChannelHeader extends StatelessWidget {
-  const _ChannelHeader({required this.column, required this.onTap});
+  const _ChannelHeader({
+    required this.column,
+    required this.width,
+    required this.onTap,
+  });
 
   final TimetableChannel column;
+  final double width;
   final VoidCallback onTap;
 
   @override
@@ -550,7 +649,7 @@ class _ChannelHeader extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final channel = column.channel;
     return Container(
-      width: timetableColumnWidth,
+      width: width,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainer,
         border: Border(

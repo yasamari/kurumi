@@ -235,7 +235,7 @@ class TimetableCellRaster {
   /// 画像化が完了したか。失敗した場合も Picture で表示できるため完了扱い。
   bool get isReady => _image != null || _failed;
 
-  final Paint _paint = Paint()..filterQuality = FilterQuality.none;
+  final Paint _paint = Paint();
 
   Future<void> _rasterize() async {
     if (_disposed) return;
@@ -258,18 +258,24 @@ class TimetableCellRaster {
   }
 
   /// [offset] (論理px) に本文を描く。画像が未完成なら Picture を直接描く。
-  void paint(Canvas canvas, Offset offset) {
+  ///
+  /// [scale] は番組表のズーム倍率。セル画像は等倍で焼いたまま描画時に
+  /// 拡大縮小するため、ズームのたびに文字を焼き直さない。
+  void paint(Canvas canvas, Offset offset, {double scale = 1.0}) {
     if (_disposed) return;
     final image = _image;
     if (image != null) {
+      _paint.filterQuality = scale == 1.0
+          ? FilterQuality.none
+          : FilterQuality.low;
       canvas.drawImageRect(
         image,
         Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
         Rect.fromLTWH(
           offset.dx,
           offset.dy,
-          image.width / _devicePixelRatio,
-          image.height / _devicePixelRatio,
+          image.width / _devicePixelRatio * scale,
+          image.height / _devicePixelRatio * scale,
         ),
         _paint,
       );
@@ -279,7 +285,7 @@ class TimetableCellRaster {
     if (picture == null) return;
     canvas.save();
     canvas.translate(offset.dx, offset.dy);
-    canvas.scale(1 / _devicePixelRatio);
+    canvas.scale(scale / _devicePixelRatio);
     canvas.drawPicture(picture);
     canvas.restore();
   }
@@ -304,6 +310,8 @@ class TimetableCellRaster {
   }) {
     final timeLabel = formatTimetableCellTime(program.startAt, program.endAt);
     final titleStyle = isOnAir ? style.titleStyleOnAir : style.titleStyle;
+    // 等倍で焼く。ズームは描画時のスケールで掛ける (再ラスタライズしない)。
+    final contentWidth = math.max(1.0, timetableCellContentWidth);
 
     final timePainter = TextPainter(
       text: TextSpan(text: timeLabel, style: style.timeStyle),
@@ -315,7 +323,7 @@ class TimetableCellRaster {
       textWidthBasis: style.textWidthBasis,
       maxLines: 1,
       ellipsis: '…',
-    )..layout(maxWidth: timetableCellContentWidth);
+    )..layout(maxWidth: contentWidth);
 
     final badges = <_BadgeLayout>[];
     final placeholderDimensions = <PlaceholderDimensions>[];
@@ -372,7 +380,7 @@ class TimetableCellRaster {
     if (placeholderDimensions.isNotEmpty) {
       bodyPainter.setPlaceholderDimensions(placeholderDimensions);
     }
-    bodyPainter.layout(maxWidth: timetableCellContentWidth);
+    bodyPainter.layout(maxWidth: contentWidth);
 
     final naturalHeight = timePainter.height + bodyPainter.height;
     final contentHeight = timetableCellContentHeight(cellHeightPx);
@@ -385,7 +393,7 @@ class TimetableCellRaster {
       title: program.title,
       description: program.description,
       isOnAir: isOnAir,
-      width: timetableCellContentWidth,
+      width: contentWidth,
       height: showText ? height : -1,
       showText: showText,
     );
@@ -394,7 +402,7 @@ class TimetableCellRaster {
     final canvas = Canvas(recorder);
     final dpr = style.devicePixelRatio;
     canvas.scale(dpr);
-    canvas.clipRect(Rect.fromLTWH(0, 0, timetableCellContentWidth, height));
+    canvas.clipRect(Rect.fromLTWH(0, 0, contentWidth, height));
     timePainter.paint(canvas, Offset.zero);
     bodyPainter.paint(canvas, Offset(0, timePainter.height));
 
@@ -420,7 +428,7 @@ class TimetableCellRaster {
     final picture = recorder.endRecording();
     return TimetableCellRaster._(
       key: key,
-      width: timetableCellContentWidth,
+      width: contentWidth,
       height: height,
       picture: picture,
       devicePixelRatio: dpr,
@@ -502,6 +510,7 @@ class TimetableCellRasterCache extends ChangeNotifier {
   final int maxBytes;
 
   TimetableCellStyle _style;
+
   final Map<int, TimetableCellRaster> _entries = {};
   final Map<int, double> _topPx = {};
   final Map<int, double> _heightPx = {};
@@ -536,7 +545,7 @@ class TimetableCellRasterCache extends ChangeNotifier {
       title: program.title,
       description: program.description,
       isOnAir: isOnAir,
-      width: timetableCellContentWidth,
+      width: math.max(1.0, timetableCellContentWidth),
       height: height,
       showText: showText,
     );
