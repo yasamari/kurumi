@@ -25,6 +25,9 @@ class TimetableColumnView extends StatefulWidget {
     required this.column,
     required this.onProgramTap,
     this.zoom = 1.0,
+    this.columnIndex = 0,
+    this.rasterGate,
+    this.horizontalLink,
   });
 
   final TimetableScrollLink link;
@@ -35,11 +38,25 @@ class TimetableColumnView extends StatefulWidget {
   /// 番組表のズーム倍率。列幅・時間軸の両方に掛かる。
   final double zoom;
 
+  /// 表示順の列番号。[TimetableRasterGate] の割り当てに使う。
+  final int columnIndex;
+
+  /// スクロール中の画像生成を間引くゲート。null なら制限しない。
+  final TimetableRasterGate? rasterGate;
+
+  /// 横スクロールの共有オフセット。横方向の移動中もスクロール中として
+  /// 扱うために使う (横スクロールで新しく作られた列は縦リンクが動かない)。
+  final TimetableScrollLink? horizontalLink;
+
   @override
   State<TimetableColumnView> createState() => _TimetableColumnViewState();
 }
 
 class _TimetableColumnViewState extends State<TimetableColumnView> {
+  /// 縦横どちらかがスクロール中か。
+  bool get _isScrolling =>
+      widget.link.isScrolling || (widget.horizontalLink?.isScrolling ?? false);
+
   /// 等倍時のセグメント。キャッシュのキーをズームに依存させないため、
   /// ズーム後の座標とは別に保持する。
   late List<TimetableColumnSegment> _baseSegments = _buildBaseSegments();
@@ -210,7 +227,7 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
       _first = range.first;
       _last = range.last;
     }
-    if (widget.link.isScrolling) {
+    if (_isScrolling) {
       // スクロール中も可視セルの画像だけは1件ずつ作る。Picture を毎回
       // 組み立てたり直接描いたりすると重いので、ここではキューに入れるだけ。
       // retain/先読みの再構築は停止後にまとめて行う。
@@ -359,22 +376,40 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
     if (_disposed || _generating) return;
     final cache = _cache;
     if (cache == null) return;
-    if (widget.link.isScrolling) {
+    if (_isScrolling) {
       // 停止判定のタイマーを切らさない。キューが空のまま最後の通知が来て
       // タイマーが消費されると、停止後にフォールバック生成が走らなくなる。
       _scheduleResume();
     }
-    if (_needsRebuild && !widget.link.isScrolling) {
+    if (_needsRebuild && !_isScrolling) {
       _needsRebuild = false;
       _rebuildPending(cache);
     }
     if (_pending.isEmpty) return;
+    // スクロール中は列ごとに順番を回して生成する。全列が同時に焼くと
+    // レイアウトと画像化でフレーム時間を超えるため。
+    final gate = widget.rasterGate;
+    if (gate != null && _isScrolling && !gate.allow(widget.columnIndex)) {
+      _scheduleProcess();
+      return;
+    }
     _generating = true;
     try {
       while (_pending.isNotEmpty) {
         final index = _pending.removeFirst();
         _pendingSet.remove(index);
         if (index < _first || index >= _last) continue;
+        // キューに積んだ後に窓が動いた分を捨てる。高速スクロール中に
+        // 画面外のセルを作るのは無駄で、次の窓更新で必要なら積み直される。
+        if (_isScrolling) {
+          final visible = timetableSegmentWindow(
+            segments: _segments,
+            offsetPx: widget.link.offset,
+            viewportHeightPx: _viewportHeight,
+            cacheExtentPx: 0,
+          );
+          if (index < visible.first || index >= visible.last) continue;
+        }
         final segment = _segments[index];
         final program = segment.program;
         if (program == null) continue;
@@ -455,6 +490,7 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
               segments: _segments,
               cache: cache,
               link: widget.link,
+              horizontalLink: widget.horizontalLink,
               style: style,
               zoom: widget.zoom,
               onProgramTap: widget.onProgramTap,
@@ -488,6 +524,7 @@ class _TimetableColumnPainter extends CustomPainter {
     required this.segments,
     required this.cache,
     required this.link,
+    required this.horizontalLink,
     required this.style,
     required this.zoom,
     required this.onProgramTap,
@@ -496,6 +533,7 @@ class _TimetableColumnPainter extends CustomPainter {
   final List<TimetableColumnSegment> segments;
   final TimetableCellRasterCache cache;
   final TimetableScrollLink link;
+  final TimetableScrollLink? horizontalLink;
   final TimetableCellStyle style;
   final double zoom;
   final void Function(TvProgram program) onProgramTap;
@@ -541,6 +579,11 @@ class _TimetableColumnPainter extends CustomPainter {
     final dpr = style.devicePixelRatio;
     final offset = _snap(link.offset, dpr);
     final scale = zoom > 0 ? zoom : 1.0;
+    // スクロール中は未完成の Picture を描かない。テキストのラスタライズが
+    // 毎フレーム走り、スクロールが重くなるため。画像化は非同期に進むので
+    // 次のフレーム以降に貼られる。
+    final isScrolling =
+        link.isScrolling || (horizontalLink?.isScrolling ?? false);
     // セル画像は等倍で焼いてあるため、余白・本文位置・画像をまとめて
     // 倍率で拡大縮小する。文字サイズも画像と一緒にそのまま変わる。
     final gap = timetableCellGap * scale;
@@ -564,14 +607,15 @@ class _TimetableColumnPainter extends CustomPainter {
 
       // 本文がまだ用意できていないセルは、背景・アクセントだけの空箱を
       // 出さないよう丸ごと描かない。Picture ができた時点で通知される。
+      // スクロール中はフォールバック (Picture) も出さず、画像化が済むまで
+      // 待つ (失敗したセルだけは Picture で描き続ける)。
       final raster = cache.rasterFor(program);
       if (raster == null) continue;
+      if (!raster.isReady && isScrolling) continue;
 
       _fillPaint.color = style.surfaceContainerHigh;
       canvas.drawRect(Rect.fromLTRB(0, topPx, cellWidth, bottomPx), _fillPaint);
-      _fillPaint.color = timetableGenreSeedColor(
-        timetableGenreMajor(program.genres),
-      );
+      _fillPaint.color = raster.accentColor;
       canvas.drawRect(
         Rect.fromLTRB(0, topPx, accentWidth, bottomPx),
         _fillPaint,
@@ -581,12 +625,22 @@ class _TimetableColumnPainter extends CustomPainter {
       final contentHeight =
           timetableCellContentHeight(segment.heightPx / scale) * scale;
       if (contentHeight > 0) {
-        canvas.save();
-        canvas.clipRect(
-          Rect.fromLTWH(contentLeft, contentTop, contentWidth, contentHeight),
+        // 画像が本文領域に収まるならクリップ不要。セルごとの
+        // save/clipRect/restore を減らす。
+        final needsClip = raster.height * scale > contentHeight + 0.5;
+        if (needsClip) {
+          canvas.save();
+          canvas.clipRect(
+            Rect.fromLTWH(contentLeft, contentTop, contentWidth, contentHeight),
+          );
+        }
+        raster.paint(
+          canvas,
+          Offset(contentLeft, contentTop),
+          scale: scale,
+          allowPictureFallback: !isScrolling || raster.isReady,
         );
-        raster.paint(canvas, Offset(contentLeft, contentTop), scale: scale);
-        canvas.restore();
+        if (needsClip) canvas.restore();
       }
     }
 
@@ -602,6 +656,7 @@ class _TimetableColumnPainter extends CustomPainter {
     return !identical(oldDelegate.segments, segments) ||
         !identical(oldDelegate.cache, cache) ||
         !identical(oldDelegate.link, link) ||
+        !identical(oldDelegate.horizontalLink, horizontalLink) ||
         oldDelegate.zoom != zoom ||
         oldDelegate.style != style;
   }

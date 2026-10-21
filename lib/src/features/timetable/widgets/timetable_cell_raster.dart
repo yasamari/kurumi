@@ -23,6 +23,33 @@ const double timetableCellContentWidth =
 double timetableCellContentHeight(double cellHeightPx) =>
     math.max(0.0, cellHeightPx - timetableCellGap - 4);
 
+/// セル本文の最大行数。表示高さに収まる行数に余裕を足したもの。
+///
+/// 説明文は長いことが多く、[TextPainter] が画面外の行まで組み立てると
+/// セル画像の生成 (スクロール中の主要なコスト) がその分だけ重くなる。
+/// 実際に描かれる行より後はクリップされて見えないため、行数を先に絞る。
+/// 行高は本文スタイルのうち小さい方を使い、行数を多めに見積もる
+/// (見える行を切り落とさない方向に倒す)。
+int timetableCellBodyMaxLines({
+  required double availableHeight,
+  required TextStyle titleStyle,
+  required TextStyle descriptionStyle,
+  required TextScaler textScaler,
+}) {
+  if (availableHeight <= 0) return 1;
+  double lineHeight(TextStyle style) {
+    final fontSize = style.fontSize ?? 14.0;
+    final heightFactor = style.height ?? 1.0;
+    return math.max(1.0, textScaler.scale(fontSize) * heightFactor);
+  }
+
+  final minLineHeight = math.min(
+    lineHeight(titleStyle),
+    lineHeight(descriptionStyle),
+  );
+  return math.max(1, (availableHeight / minLineHeight).ceil() + 2);
+}
+
 /// 1枚のセル画像に焼く最大の高さ (論理px)。
 ///
 /// 12時間番組のような極端に高いセルでも画像メモリが跳ねないようにする。
@@ -181,6 +208,7 @@ class TimetableCellContentKey {
     required this.height,
     required this.showText,
     required this.rasterZoom,
+    required this.accentColor,
   });
 
   final int startMs;
@@ -195,6 +223,10 @@ class TimetableCellContentKey {
   /// 画像を焼いたときのズーム倍率。倍率が変われば焼き直す。
   final double rasterZoom;
 
+  /// セル左端のアクセント色。描画時にジャンル文字列を引き直さないよう
+  /// 画像と同じタイミングで確定させる。
+  final Color accentColor;
+
   @override
   bool operator ==(Object other) {
     return other is TimetableCellContentKey &&
@@ -206,7 +238,8 @@ class TimetableCellContentKey {
         other.width == width &&
         other.height == height &&
         other.showText == showText &&
-        other.rasterZoom == rasterZoom;
+        other.rasterZoom == rasterZoom &&
+        other.accentColor == accentColor;
   }
 
   @override
@@ -220,6 +253,7 @@ class TimetableCellContentKey {
     height,
     showText,
     rasterZoom,
+    accentColor,
   );
 }
 
@@ -264,6 +298,9 @@ class TimetableCellRaster {
   /// 論理1pxあたりの画像px。DPR と実効ズーム倍率を掛けたもの。
   final double _pixelScale;
   final VoidCallback _onReady;
+
+  /// セル左端のアクセント色。
+  Color get accentColor => key.accentColor;
   ui.Picture? _picture;
   ui.Image? _image;
   Future<void>? _ready;
@@ -300,7 +337,17 @@ class TimetableCellRaster {
   /// [scale] は番組表のズーム倍率。画像は [rasterZoom] で焼いてあるため、
   /// 現在の倍率と一致していれば等倍で描画して文字がぼやけない。ズーム中に
   /// 一時的に倍率がずれても、焼き直しが終わるまでは拡大縮小して表示する。
-  void paint(Canvas canvas, Offset offset, {double scale = 1.0}) {
+  ///
+  /// [allowPictureFallback] が偽で画像がまだ無いときは何も描かない。
+  /// スクロール中は Picture の直接描画 (テキストのラスタライズ) を避け、
+  /// 画像化が済んだセルだけを貼る。画像化は非同期に進むため、次のフレーム
+  /// 以降で表示される。
+  void paint(
+    Canvas canvas,
+    Offset offset, {
+    double scale = 1.0,
+    bool allowPictureFallback = true,
+  }) {
     if (_disposed) return;
     final image = _image;
     if (image != null) {
@@ -320,6 +367,7 @@ class TimetableCellRaster {
       );
       return;
     }
+    if (!allowPictureFallback) return;
     final picture = _picture;
     if (picture == null) return;
     canvas.save();
@@ -405,6 +453,20 @@ class TimetableCellRaster {
       );
     }
 
+    // 説明文を可視高さ以上に組み立てない。長い説明のセルでは行数が
+    // 数十行になり、レイアウトと画像化のコストがその分だけ増える。
+    final contentHeight = timetableCellContentHeight(cellHeightPx);
+    final rasterHeight = showText
+        ? math.max(1.0, math.min(contentHeight, timetableCellRasterMaxHeight))
+        : null;
+    final bodyMaxLines = rasterHeight == null
+        ? 1000
+        : timetableCellBodyMaxLines(
+            availableHeight: rasterHeight - timePainter.height,
+            titleStyle: titleStyle,
+            descriptionStyle: style.descriptionStyle,
+            textScaler: style.textScaler,
+          );
     final bodyPainter = TextPainter(
       text: TextSpan(style: titleStyle, children: spans),
       textAlign: TextAlign.start,
@@ -413,7 +475,7 @@ class TimetableCellRaster {
       locale: style.locale,
       textHeightBehavior: style.textHeightBehavior,
       textWidthBasis: style.textWidthBasis,
-      maxLines: 1000,
+      maxLines: bodyMaxLines,
       ellipsis: '…',
     );
     if (placeholderDimensions.isNotEmpty) {
@@ -422,10 +484,7 @@ class TimetableCellRaster {
     bodyPainter.layout(maxWidth: contentWidth);
 
     final naturalHeight = timePainter.height + bodyPainter.height;
-    final contentHeight = timetableCellContentHeight(cellHeightPx);
-    final height = showText
-        ? math.max(1.0, math.min(contentHeight, timetableCellRasterMaxHeight))
-        : math.max(1.0, naturalHeight);
+    final height = rasterHeight ?? math.max(1.0, naturalHeight);
     final key = TimetableCellContentKey(
       startMs: program.startAt.millisecondsSinceEpoch,
       endMs: program.endAt.millisecondsSinceEpoch,
@@ -436,6 +495,7 @@ class TimetableCellRaster {
       height: showText ? height : -1,
       showText: showText,
       rasterZoom: rasterZoom,
+      accentColor: timetableGenreSeedColor(timetableGenreMajor(program.genres)),
     );
 
     final recorder = ui.PictureRecorder();
@@ -549,6 +609,56 @@ class _BadgeLayout {
   }
 }
 
+/// [frame] フレーム目に [columnIndex] の列が画像を作ってよいか。
+///
+/// 列番号からフレーム番号を引いて剰余を取ることで、フレームごとに
+/// 担当列をずらす。[stride] フレームで全列に一巡する。
+bool timetableRasterGateAllows({
+  required int frame,
+  required int columnIndex,
+  required int stride,
+}) {
+  return (columnIndex - frame) % stride == 0;
+}
+
+/// スクロール中のセル画像生成を列間で分散させるゲート。
+///
+/// 各列が毎フレーム1件ずつ画像を焼くと、可視列数 (4〜5) 分の
+/// テキストレイアウトと `Picture.toImage` が同時に走ってフレーム時間を
+/// 圧迫する。フレーム番号と列番号から「このフレームで焼いてよい列」を
+/// 決め、生成頻度をおよそ 1/[stride] に落とす。列ごとに順番が回るため
+/// 特定の列だけが遅れることはない。停止後は制限しない。
+class TimetableRasterGate {
+  TimetableRasterGate({this.stride = 3}) : assert(stride > 0);
+
+  /// 各列に番が回るまでのフレーム数。
+  final int stride;
+
+  int _frame = 0;
+  bool _advanceScheduled = false;
+
+  /// [columnIndex] の列がこのフレームで画像を作ってよいか。
+  bool allow(int columnIndex) {
+    _scheduleFrameAdvance();
+    return timetableRasterGateAllows(
+      frame: _frame,
+      columnIndex: columnIndex,
+      stride: stride,
+    );
+  }
+
+  void _scheduleFrameAdvance() {
+    if (_advanceScheduled) return;
+    _advanceScheduled = true;
+    // 次のフレームの先頭で番号を進める。同じフレーム内の各列は同じ
+    // 番号を見るため、割り当てがぶれない。
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _advanceScheduled = false;
+      _frame++;
+    });
+  }
+}
+
 /// 列1本分のセル画像キャッシュ。
 ///
 /// 可視範囲+先読み範囲の画像だけを保持し、上限を超えたら画面から遠い順に
@@ -613,39 +723,24 @@ class TimetableCellRasterCache extends ChangeNotifier {
       height: height,
       showText: showText,
       rasterZoom: rasterZoom,
+      accentColor: timetableGenreSeedColor(timetableGenreMajor(program.genres)),
     );
   }
 
-  /// Picture を作り直す必要があるか。スクロール中の可視セル用。
-  bool needsEnsure({
-    required TvProgram program,
-    required bool isOnAir,
-    required double cellHeightPx,
-  }) {
-    final existing = _entries[program.eventId];
-    return existing == null ||
-        existing.key !=
-            _keyOf(
-              program: program,
-              isOnAir: isOnAir,
-              cellHeightPx: cellHeightPx,
-            );
-  }
-
   /// 画像化まで必要か。停止後のキュー投入で使う。
+  ///
+  /// 画像化待ちのセルは内容キーを組み立てずに即 true を返す
+  /// (スクロール中に可視セルを調べる回数が多いため)。
   bool needsWork({
     required TvProgram program,
     required bool isOnAir,
     required double cellHeightPx,
   }) {
-    if (needsEnsure(
-      program: program,
-      isOnAir: isOnAir,
-      cellHeightPx: cellHeightPx,
-    )) {
-      return true;
-    }
-    return !_entries[program.eventId]!.isReady;
+    final existing = _entries[program.eventId];
+    if (existing == null) return true;
+    if (!existing.isReady) return true;
+    return existing.key !=
+        _keyOf(program: program, isOnAir: isOnAir, cellHeightPx: cellHeightPx);
   }
 
   /// 表示窓内の番組画像を用意する。既存と同じ内容なら作り直さない。

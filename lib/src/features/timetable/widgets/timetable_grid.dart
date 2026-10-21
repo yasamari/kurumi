@@ -12,6 +12,7 @@ import '../../../domain/entities/tv_program.dart';
 import '../timetable_layout.dart';
 import '../timetable_scroll_link.dart';
 import '../timetable_zoom.dart';
+import 'timetable_cell_raster.dart';
 import 'timetable_column_view.dart';
 import 'timetable_grid_overlay.dart';
 import 'timetable_pan_scroll.dart';
@@ -98,6 +99,9 @@ class _TimetableGridState extends State<TimetableGrid> {
 
   /// 処理済みの外部スクロール要求の世代。
   int _handledRequestId = 0;
+
+  /// スクロール中のセル画像生成を列間で分散させる。
+  final TimetableRasterGate _rasterGate = TimetableRasterGate();
 
   /// 直近にレイアウトしたズーム倍率とビューポート寸法。
   ///
@@ -274,24 +278,29 @@ class _TimetableGridState extends State<TimetableGrid> {
                 children: [
                   SizedBox(
                     height: headerHeight,
-                    // 波紋描画用の `Material` はヘッダー行に1つだけ置く。
-                    // ヘッダー側のスクロールバーは出さない (列側の1本だけ)。
-                    child: Material(
-                      type: MaterialType.transparency,
-                      child: _NoScrollbar(
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          controller: _headerController,
-                          // 斜めスクロールのためドラッグは
-                          // `TimetablePanScroll` に一本化する。
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemExtent: columnWidth,
-                          itemCount: columns.length,
-                          itemBuilder: (context, index) => _ChannelHeader(
-                            column: columns[index],
-                            width: columnWidth,
-                            onTap: () =>
-                                widget.onChannelTap(columns[index].channel),
+                    // 縦スクロール中もヘッダーは動かない。グリッド全体の
+                    // 再描画に巻き込まれないよう独立したレイヤーにする
+                    // (ロゴ・局名のラスタライズを毎フレームやり直さない)。
+                    child: RepaintBoundary(
+                      // 波紋描画用の `Material` はヘッダー行に1つだけ置く。
+                      // ヘッダー側のスクロールバーは出さない (列側の1本だけ)。
+                      child: Material(
+                        type: MaterialType.transparency,
+                        child: _NoScrollbar(
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            controller: _headerController,
+                            // 斜めスクロールのためドラッグは
+                            // `TimetablePanScroll` に一本化する。
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemExtent: columnWidth,
+                            itemCount: columns.length,
+                            itemBuilder: (context, index) => _ChannelHeader(
+                              column: columns[index],
+                              width: columnWidth,
+                              onTap: () =>
+                                  widget.onChannelTap(columns[index].channel),
+                            ),
                           ),
                         ),
                       ),
@@ -318,6 +327,9 @@ class _TimetableGridState extends State<TimetableGrid> {
                               data: data,
                               column: column,
                               zoom: zoom,
+                              columnIndex: index,
+                              rasterGate: _rasterGate,
+                              horizontalLink: _hLink,
                               onProgramTap: (program) =>
                                   widget.onProgramTap(column, program),
                             );

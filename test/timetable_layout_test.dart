@@ -1,5 +1,6 @@
 import 'dart:ui' show Color;
 
+import 'package:flutter/painting.dart' show TextScaler, TextStyle;
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:kurumi/src/domain/entities/channel.dart';
@@ -761,6 +762,83 @@ void main() {
         height: 1024,
       );
       expect(scale, closeTo(2.828427, 0.0001));
+    });
+  });
+
+  group('セル本文の行数', () {
+    const titleStyle = TextStyle(fontSize: 12, height: 1.25);
+    const descriptionStyle = TextStyle(fontSize: 12, height: 1.3);
+
+    int maxLines(
+      double height, {
+      TextScaler textScaler = TextScaler.noScaling,
+    }) {
+      return timetableCellBodyMaxLines(
+        availableHeight: height,
+        titleStyle: titleStyle,
+        descriptionStyle: descriptionStyle,
+        textScaler: textScaler,
+      );
+    }
+
+    test('表示高さに収まる行数に余裕を足す', () {
+      // 行高の小さい titleStyle (12 * 1.25 = 15) で見積もる。
+      expect(maxLines(70), 7);
+    });
+
+    test('文字が大きいほど行数は減る', () {
+      expect(maxLines(70, textScaler: const TextScaler.linear(2)), 5);
+    });
+
+    test('高さが0以下でも1行は残す', () {
+      expect(maxLines(0), 1);
+      expect(maxLines(-10), 1);
+    });
+  });
+
+  group('セル画像生成の割り当て', () {
+    test('フレームごとに担当列がずれる', () {
+      for (var frame = 0; frame < 3; frame++) {
+        final allowed = [
+          for (var i = 0; i < 6; i++)
+            if (timetableRasterGateAllows(
+              frame: frame,
+              columnIndex: i,
+              stride: 3,
+            ))
+              i,
+        ];
+        expect(allowed, [frame, frame + 3]);
+      }
+    });
+
+    test('列ごとに stride フレームで一巡する', () {
+      for (var i = 0; i < 10; i++) {
+        final allowedFrames = [
+          for (var frame = 0; frame < 30; frame++)
+            if (timetableRasterGateAllows(
+              frame: frame,
+              columnIndex: i,
+              stride: 3,
+            ))
+              frame,
+        ];
+        expect(allowedFrames.first, lessThan(3));
+        expect(allowedFrames.take(10).toList(), [
+          for (var n = 0; n < 10; n++) allowedFrames.first + n * 3,
+        ]);
+      }
+    });
+
+    test('stride 1 は制限しない', () {
+      for (var frame = 0; frame < 5; frame++) {
+        for (var i = 0; i < 5; i++) {
+          expect(
+            timetableRasterGateAllows(frame: frame, columnIndex: i, stride: 1),
+            isTrue,
+          );
+        }
+      }
     });
   });
 }
