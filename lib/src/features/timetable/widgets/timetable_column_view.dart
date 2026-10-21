@@ -63,14 +63,21 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
   bool _disposed = false;
   double _lastOffset = 0;
   Timer? _resumeTimer;
+  Timer? _rasterZoomTimer;
+
+  /// ズーム操作が止まってから画像を焼き直すまでの待ち時間。
+  ///
+  /// ピンチ中に毎フレーム焼き直すと重いので、操作が落ち着いてから現在の
+  /// 倍率で焼き直して文字を鮮明にする。
+  static const Duration _rasterZoomDelay = Duration(milliseconds: 160);
 
   /// 0 除算を避けた現在のズーム倍率。
   double get _zoom => widget.zoom > 0 ? widget.zoom : 1.0;
 
   /// 表示用 (ズーム後) の px を等倍時の px に戻す。
   ///
-  /// セル画像は等倍で焼いて描画時に拡大縮小するため、キャッシュには
-  /// 常に等倍の寸法を渡す。こうするとズームしても画像が破棄されない。
+  /// セル画像のレイアウトは等倍基準 (画像自体は現在の倍率で焼く) なので、
+  /// キャッシュへは常に等倍の寸法を渡す。
   double _basePx(double px) => px / _zoom;
 
   List<TimetableColumnSegment> _buildBaseSegments() {
@@ -108,7 +115,7 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
     _style = style;
     final cache = _cache;
     if (cache == null) {
-      _cache = TimetableCellRasterCache(style);
+      _cache = TimetableCellRasterCache(style, rasterZoom: _zoom);
     } else {
       cache.updateStyle(style);
     }
@@ -126,20 +133,43 @@ class _TimetableColumnViewState extends State<TimetableColumnView> {
     final dataChanged =
         !identical(oldWidget.column, widget.column) ||
         !identical(oldWidget.data, widget.data);
+    final zoomChanged = oldWidget.zoom != widget.zoom;
     if (dataChanged) {
       _baseSegments = _buildBaseSegments();
       _segments = _zoomSegments();
       _resetWindow();
-    } else if (oldWidget.zoom != widget.zoom) {
+    } else if (zoomChanged) {
       _segments = _zoomSegments();
       _resetWindow();
     }
+    if (zoomChanged) _scheduleRasterZoom();
+  }
+
+  /// ズームが落ち着いたら現在の倍率でセル画像を焼き直す。
+  ///
+  /// 焼き直しの間は旧倍率の画像を拡大して表示する (ぼやけるが操作は軽い)。
+  void _scheduleRasterZoom() {
+    _rasterZoomTimer?.cancel();
+    _rasterZoomTimer = Timer(_rasterZoomDelay, () {
+      _rasterZoomTimer = null;
+      if (_disposed) return;
+      final cache = _cache;
+      if (cache == null) return;
+      final zoom = _zoom;
+      // ごく僅かな差で焼き直し続けないよう、2% 未満は無視する。
+      final tolerance = math.max(0.01, cache.rasterZoom * 0.02);
+      if ((zoom - cache.rasterZoom).abs() <= tolerance) return;
+      cache.updateRasterZoom(zoom);
+      _resetWindow();
+      _ensureWindow();
+    });
   }
 
   @override
   void dispose() {
     _disposed = true;
     _resumeTimer?.cancel();
+    _rasterZoomTimer?.cancel();
     _pending.clear();
     _pendingSet.clear();
     widget.link.removeListener(_onScroll);

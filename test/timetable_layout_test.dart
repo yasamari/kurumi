@@ -7,6 +7,7 @@ import 'package:kurumi/src/domain/entities/channel_type.dart';
 import 'package:kurumi/src/domain/entities/timetable.dart';
 import 'package:kurumi/src/domain/entities/tv_program.dart';
 import 'package:kurumi/src/features/timetable/timetable_layout.dart';
+import 'package:kurumi/src/features/timetable/widgets/timetable_cell_raster.dart';
 
 /// 2026-10-08 (木) 10:00 JST = 2026-10-08 01:00 UTC。
 int _utcMs(int y, int mo, int d, int h, [int min = 0]) =>
@@ -727,6 +728,39 @@ void main() {
         ),
         dayStartMs + timetableDayLengthMs - 3600 * 1000,
       );
+    });
+  });
+
+  group('セル画像の解像度', () {
+    test('ズーム倍率と DPR を掛けた倍率で焼く', () {
+      expect(
+        timetableCellRasterPixelScale(
+          devicePixelRatio: 2,
+          rasterZoom: 1,
+          width: 100,
+          height: 100,
+        ),
+        2,
+      );
+      expect(
+        timetableCellRasterPixelScale(
+          devicePixelRatio: 2,
+          rasterZoom: 3,
+          width: 100,
+          height: 100,
+        ),
+        6,
+      );
+    });
+
+    test('極端に大きいセルは最大ピクセル数に収める', () {
+      final scale = timetableCellRasterPixelScale(
+        devicePixelRatio: 3,
+        rasterZoom: 3,
+        width: 1024,
+        height: 1024,
+      );
+      expect(scale, closeTo(2.828427, 0.0001));
     });
   });
 }

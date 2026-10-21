@@ -28,6 +28,29 @@ double timetableCellContentHeight(double cellHeightPx) =>
 /// 12時間番組のような極端に高いセルでも画像メモリが跳ねないようにする。
 const double timetableCellRasterMaxHeight = 1024;
 
+/// 1枚のセル画像の最大ピクセル数 (約32MB)。
+///
+/// 高倍率ズーム時に長いセルまで等倍で焼くとメモリが跳ねるため、これを
+/// 超える場合は解像度を落とす (極端に長いセルだけ少しぼやける)。
+const int timetableCellRasterMaxPixels = 8 * 1024 * 1024;
+
+/// セル画像を焼く実効ピクセル倍率 (論理1pxあたりの画像px)。
+///
+/// 通常は `devicePixelRatio * rasterZoom`。極端に大きいセルで
+/// [timetableCellRasterMaxPixels] を超える場合だけ解像度を落とす。
+double timetableCellRasterPixelScale({
+  required double devicePixelRatio,
+  required double rasterZoom,
+  required double width,
+  required double height,
+}) {
+  final desired = devicePixelRatio * rasterZoom;
+  final area = width * height;
+  if (area <= 0) return desired;
+  final maxScale = math.sqrt(timetableCellRasterMaxPixels / area);
+  return math.min(desired, maxScale);
+}
+
 /// セル本文の描画スタイル。テーマ・文字スケール・DPR をスナップショットする。
 class TimetableCellStyle {
   const TimetableCellStyle({
@@ -157,6 +180,7 @@ class TimetableCellContentKey {
     required this.width,
     required this.height,
     required this.showText,
+    required this.rasterZoom,
   });
 
   final int startMs;
@@ -168,6 +192,9 @@ class TimetableCellContentKey {
   final double height;
   final bool showText;
 
+  /// 画像を焼いたときのズーム倍率。倍率が変われば焼き直す。
+  final double rasterZoom;
+
   @override
   bool operator ==(Object other) {
     return other is TimetableCellContentKey &&
@@ -178,7 +205,8 @@ class TimetableCellContentKey {
         other.isOnAir == isOnAir &&
         other.width == width &&
         other.height == height &&
-        other.showText == showText;
+        other.showText == showText &&
+        other.rasterZoom == rasterZoom;
   }
 
   @override
@@ -191,6 +219,7 @@ class TimetableCellContentKey {
     width,
     height,
     showText,
+    rasterZoom,
   );
 }
 
@@ -204,11 +233,15 @@ class TimetableCellRaster {
     required this.width,
     required this.height,
     required this._picture,
+    required this.rasterZoom,
     required double devicePixelRatio,
     required this._onReady,
-  }) : _devicePixelRatio = devicePixelRatio,
-       pixelWidth = math.max(1, (width * devicePixelRatio).ceil()),
-       pixelHeight = math.max(1, (height * devicePixelRatio).ceil());
+  }) : _pixelScale = devicePixelRatio * rasterZoom,
+       pixelWidth = math.max(1, (width * devicePixelRatio * rasterZoom).ceil()),
+       pixelHeight = math.max(
+         1,
+         (height * devicePixelRatio * rasterZoom).ceil(),
+       );
 
   /// 画像化が完了するまで待つための Future。取得した時点で画像化を開始する。
   ///
@@ -218,13 +251,18 @@ class TimetableCellRaster {
   final TimetableCellContentKey key;
   final double width;
   final double height;
+
+  /// 画像を焼いたときのズーム倍率。
+  final double rasterZoom;
+
   final int pixelWidth;
   final int pixelHeight;
 
   /// GPU テクスチャの概算バイト数。
   int get byteSize => pixelWidth * pixelHeight * 4;
 
-  final double _devicePixelRatio;
+  /// 論理1pxあたりの画像px。DPR と実効ズーム倍率を掛けたもの。
+  final double _pixelScale;
   final VoidCallback _onReady;
   ui.Picture? _picture;
   ui.Image? _image;
@@ -259,13 +297,14 @@ class TimetableCellRaster {
 
   /// [offset] (論理px) に本文を描く。画像が未完成なら Picture を直接描く。
   ///
-  /// [scale] は番組表のズーム倍率。セル画像は等倍で焼いたまま描画時に
-  /// 拡大縮小するため、ズームのたびに文字を焼き直さない。
+  /// [scale] は番組表のズーム倍率。画像は [rasterZoom] で焼いてあるため、
+  /// 現在の倍率と一致していれば等倍で描画して文字がぼやけない。ズーム中に
+  /// 一時的に倍率がずれても、焼き直しが終わるまでは拡大縮小して表示する。
   void paint(Canvas canvas, Offset offset, {double scale = 1.0}) {
     if (_disposed) return;
     final image = _image;
     if (image != null) {
-      _paint.filterQuality = scale == 1.0
+      _paint.filterQuality = scale == rasterZoom
           ? FilterQuality.none
           : FilterQuality.low;
       canvas.drawImageRect(
@@ -274,8 +313,8 @@ class TimetableCellRaster {
         Rect.fromLTWH(
           offset.dx,
           offset.dy,
-          image.width / _devicePixelRatio * scale,
-          image.height / _devicePixelRatio * scale,
+          image.width / _pixelScale * scale,
+          image.height / _pixelScale * scale,
         ),
         _paint,
       );
@@ -285,7 +324,7 @@ class TimetableCellRaster {
     if (picture == null) return;
     canvas.save();
     canvas.translate(offset.dx, offset.dy);
-    canvas.scale(scale / _devicePixelRatio);
+    canvas.scale(scale / _pixelScale);
     canvas.drawPicture(picture);
     canvas.restore();
   }
@@ -305,12 +344,12 @@ class TimetableCellRaster {
     required bool isOnAir,
     required bool showText,
     required double cellHeightPx,
+    required double rasterZoom,
     required TimetableCellStyle style,
     required VoidCallback onReady,
   }) {
     final timeLabel = formatTimetableCellTime(program.startAt, program.endAt);
     final titleStyle = isOnAir ? style.titleStyleOnAir : style.titleStyle;
-    // 等倍で焼く。ズームは描画時のスケールで掛ける (再ラスタライズしない)。
     final contentWidth = math.max(1.0, timetableCellContentWidth);
 
     final timePainter = TextPainter(
@@ -396,12 +435,23 @@ class TimetableCellRaster {
       width: contentWidth,
       height: showText ? height : -1,
       showText: showText,
+      rasterZoom: rasterZoom,
     );
 
     final recorder = ui.PictureRecorder();
     final canvas = Canvas(recorder);
     final dpr = style.devicePixelRatio;
-    canvas.scale(dpr);
+    // ズーム後の表示サイズで焼く。レイアウト (改行・省略) は等倍のまま
+    // なので、描画時に拡大しても文字がぼやけない。極端に長いセルは
+    // ピクセル数の上限に合わせて解像度を落とす。
+    final pixelScale = timetableCellRasterPixelScale(
+      devicePixelRatio: dpr,
+      rasterZoom: rasterZoom,
+      width: contentWidth,
+      height: height,
+    );
+    final effectiveZoom = pixelScale / dpr;
+    canvas.scale(pixelScale);
     canvas.clipRect(Rect.fromLTWH(0, 0, contentWidth, height));
     timePainter.paint(canvas, Offset.zero);
     bodyPainter.paint(canvas, Offset(0, timePainter.height));
@@ -431,6 +481,7 @@ class TimetableCellRaster {
       width: contentWidth,
       height: height,
       picture: picture,
+      rasterZoom: effectiveZoom,
       devicePixelRatio: dpr,
       onReady: onReady,
     );
@@ -504,12 +555,19 @@ class _BadgeLayout {
 /// 捨てる。Picture の作成時と画像化の完了時に [ChangeNotifier] で描画側へ
 /// 通知する。
 class TimetableCellRasterCache extends ChangeNotifier {
-  TimetableCellRasterCache(this._style, {this.maxBytes = 10 * 1024 * 1024});
+  TimetableCellRasterCache(
+    this._style, {
+    this.maxBytes = 10 * 1024 * 1024,
+    this.rasterZoom = 1.0,
+  });
 
   /// 列あたりの目安。可視列数 (約4〜5) を掛けても48MB前後に収まる値。
   final int maxBytes;
 
   TimetableCellStyle _style;
+
+  /// 現在画像を焼いているズーム倍率。
+  double rasterZoom;
 
   final Map<int, TimetableCellRaster> _entries = {};
   final Map<int, double> _topPx = {};
@@ -518,6 +576,12 @@ class TimetableCellRasterCache extends ChangeNotifier {
   bool _disposed = false;
 
   TimetableCellStyle get style => _style;
+
+  /// 焼き直す倍率を指定する。呼び出し側で窓を作り直すこと。
+  void updateRasterZoom(double rasterZoom) {
+    if (this.rasterZoom == rasterZoom) return;
+    this.rasterZoom = rasterZoom;
+  }
 
   /// スタイルが変わったら全画像を捨てる (テーマ・文字スケール・DPR)。
   void updateStyle(TimetableCellStyle style) {
@@ -548,6 +612,7 @@ class TimetableCellRasterCache extends ChangeNotifier {
       width: math.max(1.0, timetableCellContentWidth),
       height: height,
       showText: showText,
+      rasterZoom: rasterZoom,
     );
   }
 
@@ -616,6 +681,7 @@ class TimetableCellRasterCache extends ChangeNotifier {
       isOnAir: isOnAir,
       showText: showText,
       cellHeightPx: cellHeightPx,
+      rasterZoom: rasterZoom,
       style: _style,
       onReady: () {
         if (!_disposed) notifyListeners();
