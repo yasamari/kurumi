@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'dart:io' show Platform;
 
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
@@ -48,6 +48,11 @@ class PlayerPlaybackController extends ChangeNotifier {
     subtitlesEnabled = ValueNotifier(initialSubtitlesEnabled);
     videoController = VideoController(
       player,
+      configuration: VideoControllerConfiguration(
+        // `*-copy` はデコードを GPU で行いつつフレームをシステムメモリへコピー
+        // するため、撮像が CPU 側フレームで確実に成功する。
+        hwdec: Platform.isLinux ? 'auto-copy' : null,
+      ),
     );
     // media_kit の `error` は mpv のログレベル `error` をそのまま流すため、
     // 一過性のデコード失敗 (`Could not open codec`、`Error decoding audio.`

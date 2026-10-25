@@ -365,11 +365,7 @@ Future<Uint8List?> takePlayerScreenshot(Player player) async {
   final file = File('${directory.path}/frame.png');
   try {
     await platform.setProperty('screenshot-sw', 'yes');
-    await platform.command([
-      'screenshot-to-file',
-      file.path,
-      'subtitles',
-    ]);
+    await platform.command(['screenshot-to-file', file.path, 'subtitles']);
     if (!await file.exists()) return null;
     return await file.readAsBytes();
   } finally {
